@@ -1420,16 +1420,14 @@ select.form-input option {
 }
 
 
-.finance-row.week-a::before,
-.finance-row.week-a .week-dot {
+tr.week-a .week-dot {
   background: var(--accent-orange);
-  box-shadow: 0 0 16px rgba(34, 211, 238, 0.28);
+  box-shadow: 0 0 16px rgba(245, 158, 11, 0.35);
 }
 
-.finance-row.week-b::before,
-.finance-row.week-b .week-dot {
+tr.week-b .week-dot {
   background: var(--accent-green);
-  box-shadow: 0 0 16px rgba(96, 165, 250, 0.28);
+  box-shadow: 0 0 16px rgba(45, 212, 191, 0.35);
 }
 
 .week-date {

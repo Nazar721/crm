@@ -77,7 +77,7 @@ const Finance = {
       const sign = t.type === 'income' ? '+' : '−';
       const week = this.weekMarker(t.date || t.plannedDate);
       return `
-        <tr>
+        <tr class="${week.className}">
           <td>${financeTypeBadge(t.type)}</td>
           <td style="color:${amountColor};font-weight:600">${sign}${this.formatBankAmount(t.amount, t.bank)}</td>
           <td>${bankBadge(t.bank)}</td>
@@ -101,7 +101,7 @@ const Finance = {
   renderTransferRow(t) {
     const week = this.weekMarker(t.date || t.plannedDate);
     return `
-      <tr>
+      <tr class="${week.className}">
         <td><span class="badge badge--blue">Конвертація</span></td>
         <td style="color:var(--accent-blue);font-weight:600">${this.formatBankAmount(t.amount, t.bank)} → ${this.formatBankAmount(t.targetAmount ?? t.amount, t.toBank)}</td>
         <td>${bankBadge(t.bank)} → ${bankBadge(t.toBank)}</td>
