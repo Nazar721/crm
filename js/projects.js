@@ -34,6 +34,11 @@ const Projects = {
   },
 
   deadlineInfo(project) {
+    // Не показувати дедлайн для проєктів в статусі "Очікування оплати"
+    if (project.status === 'Очікування оплати') {
+      return { text: '—', color: 'var(--text-secondary)' };
+    }
+
     const deadlineDays = Number(project.deadlineDays) || 0;
     const startDate = Calc.projectStartDate(project);
     if (!deadlineDays || !startDate) {
@@ -57,7 +62,7 @@ const Projects = {
     document.getElementById('modal-project-title').textContent = 'Новий проєкт';
     document.getElementById('project-name').value = '';
     document.getElementById('project-type').value = '';
-    document.getElementById('project-status').value = 'В роботі';
+    document.getElementById('project-status').value = 'Очікування оплати';
     document.getElementById('project-start-date').value = Utils.today();
     document.getElementById('project-deadline-days').value = '';
     document.getElementById('project-end-date').value = '';

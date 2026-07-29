@@ -132,7 +132,7 @@ function statusBadge(status) {
   const map = {
     'В роботі': 'badge--blue',
     'На паузі': 'badge--orange',
-    'На перевірці': 'badge--purple',
+    'Очікування оплати': 'badge--gold',
   };
   return `<span class="badge ${map[status] || 'badge--gray'}">${Utils.escHtml(status)}</span>`;
 }
