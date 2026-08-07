@@ -290,6 +290,30 @@ const Storage = {
       }));
       localStorage.setItem('crm_migrated_v15', '1');
     }
+
+    if (!localStorage.getItem('crm_migrated_v16')) {
+      this.saveProjects(this.getProjects().map(p => {
+        if (p.partnerCommission > 0 && p.partnerCommission <= 100) return p;
+        if (p.partnerCommission && p.budget) {
+          const oldVal = Number(p.partnerCommission) || 0;
+          if (oldVal > 0 && oldVal <= p.budget) {
+            return { ...p, partnerCommission: Math.round(oldVal / p.budget * 100) };
+          }
+        }
+        return p;
+      }));
+      this.saveCompleted(this.getCompleted().map(p => {
+        if (p.partnerCommission > 0 && p.partnerCommission <= 100) return p;
+        if (p.partnerCommission && p.budget) {
+          const oldVal = Number(p.partnerCommission) || 0;
+          if (oldVal > 0 && oldVal <= p.budget) {
+            return { ...p, partnerCommission: Math.round(oldVal / p.budget * 100) };
+          }
+        }
+        return p;
+      }));
+      localStorage.setItem('crm_migrated_v16', '1');
+    }
   },
 };
 
@@ -303,22 +327,27 @@ const Calc = {
     const paidToSpecialist = Number(p.paidToSpecialist) || 0;
     const myPercent = Number(p.myPercent ?? 0);
     const profitTaken = Number(p.profitTaken) || 0;
-    const partnerCommission = Number(p.partnerCommission) || 0;
+    const fopPercent = Number(p.fop) || 0;
+    const partnerCommissionPercent = Number(p.partnerCommission) || 0;
+
+    const fopAmount = Math.round(budget * fopPercent / 100);
+    const partnerCommission = Math.round(budget * partnerCommissionPercent / 100);
+    const totalDeductions = fopAmount + partnerCommission;
+    const budgetAfterDeductions = budget - totalDeductions;
 
     const paidAmount = Math.min(budget, Math.max(prepayment, 0));
-    const projectProfit = Math.round(budget * myPercent / 100);
-    const myIncome = Math.max(0, projectProfit - partnerCommission);
+    const projectProfit = Math.round(budgetAfterDeductions * myPercent / 100);
+    const myIncome = projectProfit;
     const receivedProfit = Math.round(paidAmount * myPercent / 100);
-    const specialistCost = budget - projectProfit;
+    const specialistCost = budgetAfterDeductions - projectProfit;
     const clientDebt = budget - prepayment;
     const specialistDebt = specialistCost - paidToSpecialist;
     const remainingPayment = budget - prepayment;
-    // Remaining profit should reflect how much of the project's net income is still not taken,
-    // after the partner commission has been deducted.
     const profitLeft = myIncome - profitTaken;
 
     return {
-      budget, specialistCost, prepayment, paidToSpecialist, myPercent, profitTaken, partnerCommission,
+      budget, specialistCost, prepayment, paidToSpecialist, myPercent, profitTaken,
+      fopPercent, fopAmount, partnerCommissionPercent, partnerCommission, budgetAfterDeductions,
       projectProfit, myIncome, clientDebt, specialistDebt, remainingPayment, profitLeft,
       paidAmount, receivedProfit,
     };

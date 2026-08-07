@@ -41,7 +41,7 @@ const Clients = {
       const stats = Calc.clientStats(c.id);
       return `
         <tr class="anim-row" style="animation-delay:${i * 30}ms">
-          <td><strong>${Utils.escHtml(c.name)}</strong></td>
+          <td><strong>${Utils.escHtml(c.name)}</strong>${c.isRegular ? ' <span class="badge badge--green" style="font-size:0.7em;margin-left:4px">Постійний</span>' : ''}</td>
           <td>${c.telegram ? `<a href="https://t.me/${c.telegram.replace('@', '')}" target="_blank" class="link">${Utils.escHtml(c.telegram)}</a>` : '—'}</td>
           <td>${sourceBadge(c.source)}</td>
           <td>${stats.count}</td>
@@ -70,6 +70,7 @@ const Clients = {
     document.getElementById('client-name').value = c.name;
     document.getElementById('client-telegram').value = c.telegram || '';
     document.getElementById('client-source').value = c.source || 'Інше';
+    document.getElementById('client-is-regular').checked = !!c.isRegular;
     openModal('modal-client');
   },
 
@@ -85,6 +86,7 @@ const Clients = {
     clients[idx].name = name;
     clients[idx].telegram = document.getElementById('client-telegram').value.trim();
     clients[idx].source = document.getElementById('client-source').value;
+    clients[idx].isRegular = document.getElementById('client-is-regular').checked;
     Storage.saveClients(clients);
     closeModal('modal-client');
     this.render();

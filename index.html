@@ -536,7 +536,8 @@
           <div class="form-group"><label class="form-label">Прибуток (авто)</label><input type="text" class="form-input form-input--readonly" id="project-profit" readonly></div>
           <div class="form-group"><label class="form-label">Забрав собі з прибутку (₴)</label><input type="number" class="form-input" id="project-profit-taken" min="0" placeholder="0"></div>
           <div class="form-group"><label class="form-label">Лишилось з прибутку (авто)</label><input type="text" class="form-input form-input--readonly" id="project-profit-left" readonly></div>
-          <div class="form-group"><label class="form-label">Комісія партнеру (₴)</label><input type="number" class="form-input" id="project-partner-commission" min="0" placeholder="0"></div>
+          <div class="form-group"><label class="form-label">ФОП (%)</label><input type="number" class="form-input" id="project-fop" min="0" max="100" placeholder="10"><small class="form-hint">Відсоток ФОП, віднімається від суми клієнта</small></div>
+          <div class="form-group" id="partner-commission-group" style="display:none"><label class="form-label">Комісія партнеру (%)</label><input type="number" class="form-input" id="project-partner-commission" min="0" max="100" placeholder="10"><small class="form-hint">Відсоток партнеру, віднімається від суми клієнта</small></div>
           <div class="form-group form-group--full"><label class="form-label">Опис</label><textarea class="form-input form-textarea" id="project-description" placeholder="Деталі проєкту..."></textarea></div>
         </div>
       </div>
@@ -706,6 +707,7 @@
           <div class="form-group"><label class="form-label">Ім'я *</label><input type="text" class="form-input" id="client-name"></div>
           <div class="form-group"><label class="form-label">Telegram</label><input type="text" class="form-input" id="client-telegram"></div>
           <div class="form-group form-group--full"><label class="form-label">Джерело</label><select class="form-input" id="client-source"><option value="Інше">Інше</option><option value="Telegram">Telegram</option><option value="Instagram">Instagram</option><option value="YouTube">YouTube</option><option value="Реклама">Реклама</option><option value="Сайт">Сайт</option><option value="Сарафанне радіо">Сарафанне радіо</option></select></div>
+          <div class="form-group form-group--full"><label class="form-label" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="client-is-regular" style="width:18px;height:18px"> Постійний клієнт</label></div>
         </div>
       </div>
       <div class="modal-footer">

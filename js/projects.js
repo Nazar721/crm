@@ -15,6 +15,13 @@ const Projects = {
 
   populatePartnerSelect(selectedId = '') {
     Partners.populateSelect('project-partner', selectedId);
+    this.togglePartnerCommission();
+  },
+
+  togglePartnerCommission() {
+    const partnerId = document.getElementById('project-partner').value;
+    const group = document.getElementById('partner-commission-group');
+    if (group) group.style.display = partnerId ? '' : 'none';
   },
 
   updateCalcPreview() {
@@ -23,9 +30,10 @@ const Projects = {
     const paidToSpecialist = Number(document.getElementById('project-paid-specialist').value) || 0;
     const myPercent = Number(document.getElementById('project-my-percent').value) || 0;
     const profitTaken = Number(document.getElementById('project-profit-taken').value) || 0;
+    const fop = Number(document.getElementById('project-fop').value) || 0;
     const partnerCommission = Number(document.getElementById('project-partner-commission').value) || 0;
 
-    const calc = Calc.project({ budget, prepayment, paidToSpecialist, myPercent, profitTaken, partnerCommission });
+    const calc = Calc.project({ budget, prepayment, paidToSpecialist, myPercent, profitTaken, fop, partnerCommission });
     document.getElementById('project-specialist-cost').value = calc.specialistCost || '';
     document.getElementById('project-remaining').value = Utils.formatMoney(calc.remainingPayment);
     document.getElementById('project-profit').value = Utils.formatMoney(calc.projectProfit);
@@ -77,6 +85,7 @@ const Projects = {
     document.getElementById('project-my-percent').value = '';
     document.getElementById('project-profit-taken').value = '';
     document.getElementById('project-profit-left').value = '';
+    document.getElementById('project-fop').value = '';
     document.getElementById('project-partner-commission').value = '';
     document.getElementById('project-description').value = '';
     this.populateSpecialistSelect();
@@ -114,6 +123,7 @@ const Projects = {
     document.getElementById('project-paid-specialist').value = p.paidToSpecialist || '';
     document.getElementById('project-my-percent').value = p.myPercent ?? '';
     document.getElementById('project-profit-taken').value = p.profitTaken || '';
+    document.getElementById('project-fop').value = p.fop ?? '';
     document.getElementById('project-partner-commission').value = p.partnerCommission || '';
     document.getElementById('project-description').value = p.description || '';
 
@@ -122,6 +132,7 @@ const Projects = {
     document.getElementById('project-specialist').value = p.developerId || '';
     document.getElementById('project-partner').value = p.partnerId || '';
     this.updateCalcPreview();
+    this.togglePartnerCommission();
     openModal('modal-project');
   },
 
@@ -162,6 +173,7 @@ const Projects = {
       profitTaken: Number(document.getElementById('project-profit-taken').value) || 0,
       developerId: document.getElementById('project-specialist').value,
       partnerId: document.getElementById('project-partner').value,
+      fop: Number(document.getElementById('project-fop').value) || 0,
       partnerCommission: Number(document.getElementById('project-partner-commission').value) || 0,
       description: document.getElementById('project-description').value.trim(),
     };
@@ -507,7 +519,7 @@ const calc = Calc.project(raw);
   },
 };
 
-['project-budget', 'project-prepayment', 'project-paid-specialist', 'project-my-percent', 'project-profit-taken', 'project-partner-commission'].forEach(id => {
+['project-budget', 'project-prepayment', 'project-paid-specialist', 'project-my-percent', 'project-profit-taken', 'project-fop', 'project-partner-commission'].forEach(id => {
   document.getElementById(id)?.addEventListener('input', () => Projects.updateCalcPreview());
 });
 
@@ -515,6 +527,7 @@ document.getElementById('btn-add-project').addEventListener('click', () => Proje
 document.getElementById('btn-save-project').addEventListener('click', () => Projects.save());
 document.getElementById('projects-search').addEventListener('input', () => Projects.renderAll());
 document.getElementById('projects-filter-type').addEventListener('change', () => Projects.renderAll());
+document.getElementById('project-partner').addEventListener('change', () => Projects.togglePartnerCommission());
 
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
