@@ -10,7 +10,13 @@ const overpassEndpoints = [
 ];
 
 app.use(express.text({ type: '*/*', limit: '1mb' }));
-app.use(express.static(__dirname));
+app.use(express.static(__dirname, {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.js') || filePath.endsWith('.css')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    }
+  }
+}));
 
 app.get('/api/geocode', async (req, res) => {
   const city = String(req.query.city || '').trim();
