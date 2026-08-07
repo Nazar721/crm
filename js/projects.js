@@ -446,7 +446,7 @@ const calc = Calc.project(raw);
           <td>${Utils.escHtml(specialistName)}</td>
           <td style="color:var(--accent-orange)">${Utils.formatMoney(calc.specialistDebt)}</td>
           <td style="color:var(--accent-green)">${Utils.formatMoney(calc.projectProfit)}</td>
-          <td style="color:var(--accent-orange)">${Utils.formatMoney(calc.partnerCommission)}</td>
+          <td style="color:var(--accent-orange)">${Utils.formatMoney(calc.fopAmount)}</td>
           <td style="color:var(--accent-blue)">${Utils.formatMoney(calc.profitTaken)}</td>
           <td style="color:var(--accent-orange)">${Utils.formatMoney(calc.profitLeft)}</td>
           <td>${statusBadge(p.status)}</td>
@@ -498,7 +498,7 @@ const calc = Calc.project(raw);
           <td>${Utils.formatDate(Calc.projectEndDate(p))}</td>
           <td>${p.days ?? '—'} дн.</td>
           <td>${Utils.formatMoney(calc.budget)}</td>
-          <td>${Utils.formatMoney(calc.partnerCommission)}</td>
+          <td>${Utils.formatMoney(calc.fopAmount)}</td>
           <td>
             <div>${Utils.escHtml(specialistName)}</div>
             <div style="margin-top:2px;color:var(--text-secondary)">${Utils.formatMoney(calc.specialistCost)}</div>
