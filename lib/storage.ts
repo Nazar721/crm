@@ -131,15 +131,15 @@ export function importData(payload: ExportPayload): void {
   const data = payload.data && typeof payload.data === 'object' ? payload.data : (payload as unknown as Record<string, unknown>);
 
   const nextData: Record<string, unknown[]> = {};
-  Object.entries(KEYS).forEach(([, key]) => {
-    const value = (data as Record<string, unknown>)[key];
-    nextData[key] = Array.isArray(value) ? value : [];
+  Object.entries(KEYS).forEach(([propName, lsKey]) => {
+    const value = (data as Record<string, unknown>)[propName];
+    nextData[lsKey] = Array.isArray(value) ? value : [];
   });
 
   _suppressBackups = true;
-  Object.entries(nextData).forEach(([key, value]) => set(key, value));
+  Object.entries(nextData).forEach(([lsKey, value]) => set(lsKey, value));
   if (payload.financeSettings) saveFinanceSettings(payload.financeSettings);
-  ['crm_migrated_v11', 'crm_migrated_v12', 'crm_migrated_v13', 'crm_migrated_v14', 'crm_migrated_v15'].forEach(key => localStorage.removeItem(key));
+  ['crm_migrated_v11', 'crm_migrated_v12', 'crm_migrated_v13', 'crm_migrated_v14', 'crm_migrated_v15', 'crm_migrated_v16'].forEach(key => localStorage.removeItem(key));
   _suppressBackups = false;
   afterSave();
 }
