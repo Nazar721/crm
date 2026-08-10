@@ -45,10 +45,10 @@ export default function SavingForm({ isOpen, saving, onSave, onCancel }: SavingF
         </div>
         <div className="form-group">
           <label className="form-label">Банк *</label>
-          <select className="form-input" value={bank} onChange={e => setBank(e.target.value)}>
-            <option value="">Оберіть банк</option>
-            {BANKS.map(b => <option key={b.id} value={b.id}>{b.label}</option>)}
-          </select>
+          <input list="saving-bank-list" type="text" className="form-input" value={bank} onChange={e => setBank(e.target.value)} placeholder="Назва банку" />
+          <datalist id="saving-bank-list">
+            {BANKS.map(b => <option key={b.id} value={b.label} />)}
+          </datalist>
         </div>
         <div className="form-group">
           <label className="form-label">Дата</label>

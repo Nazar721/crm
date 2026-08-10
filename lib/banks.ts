@@ -16,7 +16,7 @@ export function normalizeBank(value?: string): string {
   if (v === 'cash_usd' || v.includes('готівка $') || v.includes('cash usd') || v.includes('usd')) return 'cash_usd';
   if (v === 'cash_eur' || v.includes('готівка €') || v.includes('cash eur') || v.includes('eur')) return 'cash_eur';
   if (v === 'cash' || v.includes('готів') || v.includes('gotiv')) return 'cash';
-  return '';
+  return String(value || '').trim();
 }
 
 export function bankLabel(id: string): string {

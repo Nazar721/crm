@@ -152,13 +152,15 @@ export function bankBalances(transactions?: Transaction[]): Record<string, numbe
     const bank = normalizeBank(t.bank);
     if (!bank) return;
     const amount = bankAmountToUah(t.amount, bank);
+    if (balances[bank] === undefined) balances[bank] = 0;
     if (t.type === 'income') balances[bank] += amount;
     else if (t.type === 'expense') balances[bank] -= amount;
     else if (t.type === 'transfer') {
       const toBank = normalizeBank(t.toBank);
       if (!toBank) return;
       balances[bank] -= amount;
-      balances[toBank] = (balances[toBank] || 0) + bankAmountToUah(t.targetAmount ?? t.amount, toBank);
+      if (balances[toBank] === undefined) balances[toBank] = 0;
+      balances[toBank] += bankAmountToUah(t.targetAmount ?? t.amount, toBank);
     }
   });
   return balances;

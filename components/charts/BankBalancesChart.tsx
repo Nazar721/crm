@@ -1,15 +1,24 @@
 'use client';
 import { Bar } from 'react-chartjs-2';
 import './ChartSetup';
-import { BANKS } from '@/lib/banks';
+import { BANKS, bankLabel } from '@/lib/banks';
 
 interface BankBalancesChartProps {
   balances: Record<string, number>;
 }
 
 export default function BankBalancesChart({ balances }: BankBalancesChartProps) {
-  const labels = BANKS.map(b => b.label);
-  const data = BANKS.map(b => balances[b.id] || 0);
+  const entries = Object.entries(balances).filter(([_, v]) => v !== 0);
+  const labels = entries.map(([id]) => bankLabel(id));
+  const data = entries.map(([_, v]) => v);
+  const colors = entries.map(([id]) => {
+    const bank = BANKS.find(b => b.id === id);
+    return bank?.chartColor || 'rgba(128, 128, 128, 0.65)';
+  });
+  const borders = entries.map(([id]) => {
+    const bank = BANKS.find(b => b.id === id);
+    return bank?.borderColor || '#888';
+  });
 
   return (
     <div className="chart-body">
@@ -19,8 +28,8 @@ export default function BankBalancesChart({ balances }: BankBalancesChartProps) 
           datasets: [{
             label: 'Баланс',
             data,
-            backgroundColor: BANKS.map(b => b.chartColor),
-            borderColor: BANKS.map(b => b.borderColor),
+            backgroundColor: colors,
+            borderColor: borders,
             borderWidth: 1,
             borderRadius: 6,
           }],
