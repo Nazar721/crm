@@ -4,7 +4,7 @@ import type { Project, Specialist, Partner } from '@/types';
 import { project as calcProject } from '@/lib/calc';
 import { formatMoney } from '@/lib/utils';
 import { today } from '@/lib/utils';
-import { BANKS, bankLabel } from '@/lib/banks';
+
 import Modal from '@/components/ui/Modal';
 import ModalFooter from '@/components/ui/ModalFooter';
 
@@ -191,10 +191,7 @@ export default function ProjectForm({ isOpen, project, specialists, partners, on
         </div>
         <div className="form-group">
           <label className="form-label">Банк</label>
-          <input list="project-bank-list" type="text" className="form-input" value={bank} onChange={e => setBank(e.target.value)} placeholder="Назва банку" />
-          <datalist id="project-bank-list">
-            {BANKS.map(b => <option key={b.id} value={b.label} />)}
-          </datalist>
+          <input type="text" className="form-input" value={bank} onChange={e => setBank(e.target.value)} placeholder="Назва банку" />
         </div>
         <div className="form-group">
           <label className="form-label">Передоплата (₴)</label>
