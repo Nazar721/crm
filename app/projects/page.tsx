@@ -3,7 +3,7 @@ import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
 import { getProjects, getCompleted, getClients, getSpecialists, getPartners, getTransactions, saveProjects, saveCompleted, saveTransactions, saveClients } from '@/lib/storage';
 import { project as calcProject, projectStartDate, projectEndDate, projectDaysUsed } from '@/lib/calc';
-import { formatMoney, formatDate, today, daysBetween, generateId } from '@/lib/utils';
+import { formatMoney, formatDate, today, daysBetween, generateId, getMonthKey, getMonthLabel } from '@/lib/utils';
 import type { Project } from '@/types';
 import { StatusBadge, TypeBadge, BankBadge } from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
@@ -11,11 +11,18 @@ import ProjectForm from '@/components/forms/ProjectForm';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { useConfirm } from '@/hooks/useConfirm';
 
+type PeriodFilter = '' | 'this_month' | 'last_month' | 'last_30' | 'last_90' | 'this_year' | 'last_year' | `m:${string}`;
+type CompletedSort = 'date_desc' | 'date_asc' | 'budget_desc' | 'budget_asc' | 'income_desc' | 'days_asc' | 'days_desc';
+
 export default function ProjectsPage() {
   const { refreshKey, triggerRefresh } = useApp();
   const [tab, setTab] = useState<'active' | 'completed'>('active');
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
+  const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('');
+  const [specFilter, setSpecFilter] = useState('');
+  const [clientFilter, setClientFilter] = useState('');
+  const [completedSort, setCompletedSort] = useState<CompletedSort>('date_desc');
   const [formOpen, setFormOpen] = useState(false);
   const [editProject, setEditProject] = useState<Project | null>(null);
   const { isOpen: confirmOpen, title: confirmTitle, text: confirmText, confirm, handleConfirm, cancel } = useConfirm();
@@ -42,10 +49,109 @@ export default function ProjectsPage() {
     return filtered.sort((a, b) => (order[a.type] || 99) - (order[b.type] || 99));
   }, [mounted, refreshKey, filterList]);
 
+  // Дата, за якою фільтруємо завершені: фактичне завершення, інакше старт
+  const completionDate = useCallback((p: Project) => {
+    const d = projectEndDate(p);
+    if (d) return d;
+    if (p.completedAt) return new Date(p.completedAt).toISOString().split('T')[0];
+    return projectStartDate(p);
+  }, []);
+
+  const allCompleted = useMemo(() => mounted ? getCompleted() : [], [mounted, refreshKey]);
+
+  // Місяці, у яких реально є завершені проєкти — для селекта
+  const monthOptions = useMemo(() => {
+    const keys = new Set<string>();
+    allCompleted.forEach(p => { const k = getMonthKey(completionDate(p)); if (k) keys.add(k); });
+    return [...keys].sort().reverse();
+  }, [allCompleted, completionDate]);
+
+  const inPeriod = useCallback((p: Project) => {
+    if (!periodFilter) return true;
+    const dateStr = completionDate(p);
+    if (!dateStr) return false;
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return false;
+    const now = new Date();
+
+    if (periodFilter.startsWith('m:')) return getMonthKey(dateStr) === periodFilter.slice(2);
+
+    switch (periodFilter) {
+      case 'this_month':
+        return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+      case 'last_month': {
+        const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        return d.getFullYear() === prev.getFullYear() && d.getMonth() === prev.getMonth();
+      }
+      case 'last_30':
+        return daysBetween(dateStr, today()) <= 30 && d.getTime() <= now.getTime();
+      case 'last_90':
+        return daysBetween(dateStr, today()) <= 90 && d.getTime() <= now.getTime();
+      case 'this_year':
+        return d.getFullYear() === now.getFullYear();
+      case 'last_year':
+        return d.getFullYear() === now.getFullYear() - 1;
+      default:
+        return true;
+    }
+  }, [periodFilter, completionDate]);
+
   const completed = useMemo(() => {
     if (!mounted) return [];
-    return filterList(getCompleted()).sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
-  }, [mounted, refreshKey, filterList]);
+    const list = filterList(allCompleted).filter(p =>
+      inPeriod(p) &&
+      (!specFilter || (specFilter === 'none' ? !p.developerId : p.developerId === specFilter)) &&
+      (!clientFilter || p.clientId === clientFilter)
+    );
+    return [...list].sort((a, b) => {
+      switch (completedSort) {
+        case 'budget_desc': return (Number(b.budget) || 0) - (Number(a.budget) || 0);
+        case 'budget_asc': return (Number(a.budget) || 0) - (Number(b.budget) || 0);
+        case 'income_desc': return calcProject(b).myIncome - calcProject(a).myIncome;
+        case 'days_asc': return (Number(a.days) || 0) - (Number(b.days) || 0);
+        case 'days_desc': return (Number(b.days) || 0) - (Number(a.days) || 0);
+        case 'date_asc': return (a.completedAt || 0) - (b.completedAt || 0);
+        case 'date_desc':
+        default: return (b.completedAt || 0) - (a.completedAt || 0);
+      }
+    });
+  }, [mounted, allCompleted, filterList, inPeriod, specFilter, clientFilter, completedSort]);
+
+  // Підсумки по відфільтрованих завершених
+  const completedSummary = useMemo(() => {
+    let totalBudget = 0, totalIncome = 0, biggest: Project | null = null, biggestBudget = 0;
+    completed.forEach(p => {
+      const c = calcProject(p);
+      totalBudget += c.budget;
+      totalIncome += c.myIncome;
+      if (c.budget > biggestBudget) { biggestBudget = c.budget; biggest = p; }
+    });
+    return {
+      count: completed.length,
+      totalBudget,
+      totalIncome,
+      avgCheck: completed.length ? Math.round(totalBudget / completed.length) : 0,
+      biggest: biggest as Project | null,
+      biggestBudget,
+    };
+  }, [completed]);
+
+  const resetCompletedFilters = () => {
+    setPeriodFilter(''); setSpecFilter(''); setClientFilter(''); setCompletedSort('date_desc'); setTypeFilter(''); setSearch('');
+  };
+
+  const hasCompletedFilters = !!(periodFilter || specFilter || clientFilter || typeFilter || search || completedSort !== 'date_desc');
+
+  // Тільки ті фахівці/клієнти, які реально є в завершених
+  const completedSpecialists = useMemo(() => {
+    const ids = new Set(allCompleted.map(p => p.developerId).filter(Boolean));
+    return specialists.filter(s => ids.has(s.id));
+  }, [allCompleted, specialists]);
+
+  const completedClients = useMemo(() => {
+    const ids = new Set(allCompleted.map(p => p.clientId).filter(Boolean));
+    return clients.filter(c => ids.has(c.id));
+  }, [allCompleted, clients]);
 
   function deadlineInfo(p: Project) {
     const dd = Number(p.deadlineDays) || 0;
@@ -114,11 +220,18 @@ export default function ProjectsPage() {
 
     const id = editProject?.id;
     if (id) {
-      const list = getProjects();
-      const idx = list.findIndex(p => p.id === id);
-      if (idx >= 0) {
-        list[idx] = { ...list[idx], ...projectData, ...resolveDeadlineTracking(projectData, list[idx]) };
-        saveProjects(list);
+      const activeList = getProjects();
+      const activeIdx = activeList.findIndex(p => p.id === id);
+      if (activeIdx >= 0) {
+        activeList[activeIdx] = { ...activeList[activeIdx], ...projectData, ...resolveDeadlineTracking(projectData, activeList[activeIdx]) };
+        saveProjects(activeList);
+      } else {
+        const completedList = getCompleted();
+        const completedIdx = completedList.findIndex(p => p.id === id);
+        if (completedIdx >= 0) {
+          completedList[completedIdx] = { ...completedList[completedIdx], ...projectData };
+          saveCompleted(completedList);
+        }
       }
     } else {
       const list = getProjects();
@@ -184,6 +297,45 @@ export default function ProjectsPage() {
           <option value="Design">Design</option>
           <option value="Video">Video</option>
         </select>
+        {tab === 'completed' && (
+          <>
+            <select className="filter-select" value={periodFilter} onChange={e => setPeriodFilter(e.target.value as PeriodFilter)}>
+              <option value="">Увесь час</option>
+              <option value="this_month">Цього місяця</option>
+              <option value="last_month">Минулого місяця</option>
+              <option value="last_30">Останні 30 днів</option>
+              <option value="last_90">Останні 90 днів</option>
+              <option value="this_year">Цього року</option>
+              <option value="last_year">Минулого року</option>
+              {monthOptions.length > 0 && (
+                <optgroup label="Конкретний місяць">
+                  {monthOptions.map(k => <option key={k} value={`m:${k}`}>{getMonthLabel(k)}</option>)}
+                </optgroup>
+              )}
+            </select>
+            <select className="filter-select" value={specFilter} onChange={e => setSpecFilter(e.target.value)}>
+              <option value="">Усі фахівці</option>
+              {completedSpecialists.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              <option value="none">Без фахівця</option>
+            </select>
+            <select className="filter-select" value={clientFilter} onChange={e => setClientFilter(e.target.value)}>
+              <option value="">Усі клієнти</option>
+              {completedClients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <select className="filter-select" value={completedSort} onChange={e => setCompletedSort(e.target.value as CompletedSort)}>
+              <option value="date_desc">Спочатку нові</option>
+              <option value="date_asc">Спочатку старі</option>
+              <option value="budget_desc">Найбільший бюджет ↓</option>
+              <option value="budget_asc">Найменший бюджет ↑</option>
+              <option value="income_desc">Мій дохід ↓</option>
+              <option value="days_desc">Найдовші ↓</option>
+              <option value="days_asc">Найшвидші ↑</option>
+            </select>
+            {hasCompletedFilters && (
+              <button className="btn btn-ghost" onClick={resetCompletedFilters}>Скинути</button>
+            )}
+          </>
+        )}
       </div>
 
       {tab === 'active' && (
@@ -199,7 +351,7 @@ export default function ProjectsPage() {
                 const dl = deadlineInfo(p);
                 return (
                   <tr key={p.id}>
-                    <td><strong>{p.name}</strong></td>
+                    <td className="cell-name"><strong>{p.name}</strong></td>
                     <td><TypeBadge type={p.type} /></td>
                     <td>{client?.name || p.clientName || '—'}</td>
                     <td>{formatDate(projectStartDate(p))}</td>
@@ -207,7 +359,7 @@ export default function ProjectsPage() {
                     <td>{formatMoney(c.budget)}</td>
                     <td>{p.bank ? <BankBadge bankId={p.bank} /> : <span style={{ color: 'var(--text-secondary)' }}>—</span>}</td>
                     <td style={{ color: 'var(--accent-orange)' }}>{formatMoney(c.clientDebt)}</td>
-                    <td>{spec?.name || '—'}</td>
+                    <td className="cell-nowrap">{spec?.name || '—'}</td>
                     <td style={{ color: 'var(--accent-orange)' }}>{formatMoney(c.specialistDebt)}</td>
                     <td style={{ color: 'var(--accent-green)' }}>{formatMoney(c.projectProfit)}</td>
                     <td style={{ color: 'var(--accent-orange)' }}>{formatMoney(c.fopAmount)}</td>
@@ -230,39 +382,50 @@ export default function ProjectsPage() {
       )}
 
       {tab === 'completed' && (
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead><tr><th>Назва</th><th>Тип</th><th>Клієнт</th><th>Старт</th><th>Завершено</th><th>Днів</th><th>Бюджет</th><th>ФОП</th><th>Фахівець</th><th>Мій дохід</th><th>Дії</th></tr></thead>
-            <tbody>
-              {!completed.length ? <tr className="empty-row"><td colSpan={11}><EmptyState message="Немає завершених проєктів" /></td></tr> :
-              completed.map(p => {
-                const client = clients.find(c => c.id === p.clientId);
-                const spec = specialists.find(s => s.id === p.developerId);
-                const c = calcProject(p);
-                return (
-                  <tr key={p.id}>
-                    <td><strong>{p.name}</strong></td>
-                    <td><TypeBadge type={p.type} /></td>
-                    <td><div>{client?.name || p.clientName || '—'}</div>{p.clientTelegram && <div style={{ marginTop: 2, color: 'var(--text-secondary)', fontSize: '0.85em' }}>{p.clientTelegram}</div>}</td>
-                    <td>{formatDate(projectStartDate(p))}</td>
-                    <td>{formatDate(projectEndDate(p))}</td>
-                    <td>{(p as any).days ?? '—'} дн.</td>
-                    <td>{formatMoney(c.budget)}</td>
-                    <td>{formatMoney(c.fopAmount)}</td>
-                    <td><div>{spec?.name || '—'}</div><div style={{ marginTop: 2, color: 'var(--text-secondary)' }}>{formatMoney(c.specialistCost)}</div></td>
-                    <td style={{ color: 'var(--accent-green)' }}>{formatMoney(c.myIncome)}</td>
-                    <td>
-                      <div className="actions-cell">
-                        <button className="btn-icon" title="Редагувати" onClick={() => { setEditProject(p); setFormOpen(true); }}><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" strokeWidth="2"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" strokeWidth="2"/></svg></button>
-                        <button className="btn-icon btn-icon--danger" title="Видалити" onClick={() => handleDelete(p.id, true)}><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="2"/><path d="M19 6l-1 14H6L5 6" stroke="currentColor" strokeWidth="2"/><path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="2"/><path d="M9 6V4h6v2" stroke="currentColor" strokeWidth="2"/></svg></button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <>
+          <div className="stats-grid stats-grid--wide" style={{ marginBottom: 18 }}>
+            <div className="stat-card"><div className="stat-info"><span className="stat-label">Проєктів</span><span className="stat-value">{completedSummary.count}</span></div></div>
+            <div className="stat-card"><div className="stat-info"><span className="stat-label">Оборот</span><span className="stat-value">{formatMoney(completedSummary.totalBudget)}</span></div></div>
+            <div className="stat-card"><div className="stat-info"><span className="stat-label">Мій дохід</span><span className="stat-value" style={{ color: 'var(--accent-green)' }}>{formatMoney(completedSummary.totalIncome)}</span></div></div>
+            <div className="stat-card"><div className="stat-info"><span className="stat-label">Середній чек</span><span className="stat-value">{formatMoney(completedSummary.avgCheck)}</span></div></div>
+            <div className="stat-card stat-card--highlight"><div className="stat-info"><span className="stat-label">Найбільший проєкт</span>{completedSummary.biggest && <span className="stat-sublabel">{completedSummary.biggest.name}</span>}<span className="stat-value">{completedSummary.biggest ? formatMoney(completedSummary.biggestBudget) : '—'}</span></div></div>
+          </div>
+
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead><tr><th>Назва</th><th>Тип</th><th>Клієнт</th><th>Старт</th><th>Завершено</th><th>Днів</th><th>Бюджет</th><th>ФОП</th><th>Фахівець</th><th>Мій дохід</th><th>Дії</th></tr></thead>
+              <tbody>
+                {!completed.length ? <tr className="empty-row"><td colSpan={11}><EmptyState message="Немає завершених проєктів" hint={hasCompletedFilters ? 'Спробуйте змінити фільтри' : undefined} /></td></tr> :
+                completed.map(p => {
+                  const client = clients.find(c => c.id === p.clientId);
+                  const spec = specialists.find(s => s.id === p.developerId);
+                  const c = calcProject(p);
+                  const isBiggest = completedSummary.biggest?.id === p.id && completed.length > 1;
+                  return (
+                    <tr key={p.id}>
+                      <td><div className="cell-name-wrap"><strong>{p.name}</strong>{isBiggest && <span className="badge badge--gold" style={{ marginLeft: 6, fontSize: '0.7em', flexShrink: 0 }}>ТОП</span>}</div></td>
+                      <td><TypeBadge type={p.type} /></td>
+                      <td><div>{client?.name || p.clientName || '—'}</div>{p.clientTelegram && <div className="cell-secondary">{p.clientTelegram}</div>}</td>
+                      <td className="cell-nowrap">{formatDate(projectStartDate(p))}</td>
+                      <td className="cell-nowrap">{formatDate(projectEndDate(p))}</td>
+                      <td className="cell-nowrap">{(p as any).days ?? '—'} дн.</td>
+                      <td className="cell-money">{formatMoney(c.budget)}</td>
+                      <td className="cell-money">{formatMoney(c.fopAmount)}</td>
+                      <td><div className="cell-nowrap">{spec?.name || '—'}</div><div className="cell-secondary cell-nowrap">{formatMoney(c.specialistCost)}</div></td>
+                      <td className="cell-money" style={{ color: 'var(--accent-green)' }}>{formatMoney(c.myIncome)}</td>
+                      <td>
+                        <div className="actions-cell">
+                          <button className="btn-icon" title="Редагувати" onClick={() => { setEditProject(p); setFormOpen(true); }}><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" strokeWidth="2"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" strokeWidth="2"/></svg></button>
+                          <button className="btn-icon btn-icon--danger" title="Видалити" onClick={() => handleDelete(p.id, true)}><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="2"/><path d="M19 6l-1 14H6L5 6" stroke="currentColor" strokeWidth="2"/><path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="2"/><path d="M9 6V4h6v2" stroke="currentColor" strokeWidth="2"/></svg></button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
 
       <ProjectForm isOpen={formOpen} project={editProject} specialists={specialists} partners={partners} onSave={handleSave} onCancel={() => { setFormOpen(false); setEditProject(null); }} />

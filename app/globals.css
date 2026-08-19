@@ -457,6 +457,8 @@ body {
 .stat-card--highlight {
   background: linear-gradient(135deg, rgba(250, 204, 21, 0.10), rgba(45, 212, 191, 0.04));
   border-color: rgba(250, 204, 21, 0.24);
+  flex-direction: column;
+  gap: 4px;
 }
 
 .stat-icon {
@@ -486,6 +488,19 @@ body {
   min-height: 1.8em;
 }
 
+.stat-sublabel {
+  font-size: 0.72rem;
+  color: var(--accent-gold);
+  line-height: 1.25;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  max-width: 100%;
+}
+
 .stat-value {
   font-family: var(--font-display);
   font-size: 1.28rem;
@@ -493,6 +508,7 @@ body {
   color: var(--text-primary);
   letter-spacing: 0;
   margin-top: 2px;
+  font-variant-numeric: tabular-nums;
 }
 
 .finance-converter {
@@ -722,6 +738,53 @@ body {
   color: var(--text-primary);
   border-bottom: 1px solid rgba(148, 163, 184, 0.10);
   vertical-align: middle;
+}
+
+.data-table td align-right,
+.data-table th.align-right {
+  text-align: right;
+}
+
+.data-table .cell-nowrap {
+  white-space: nowrap;
+}
+
+.data-table .cell-top {
+  vertical-align: top;
+}
+
+.data-table .cell-secondary {
+  color: var(--text-secondary);
+  font-size: 0.8em;
+  margin-top: 2px;
+}
+
+.data-table .cell-money {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.data-table .cell-name {
+  white-space: nowrap;
+}
+
+.data-table .cell-name strong {
+  font-weight: 700;
+}
+
+.data-table .cell-name-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+.data-table .cell-name-wrap strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .data-table tbody tr:last-child td { border-bottom: none; }
