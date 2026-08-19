@@ -1,4 +1,4 @@
-import type { Project, Client, Specialist, Partner, Transaction, PersonalDebt, Saving, Lead, LeadFilters, FinanceSettings, BackupInfo, ExportPayload } from '@/types';
+import type { Project, Client, Specialist, Partner, Transaction, PersonalDebt, Saving, FinanceSettings, BackupInfo, ExportPayload } from '@/types';
 
 const KEYS = {
   projectsActive: 'projects_active',
@@ -9,8 +9,6 @@ const KEYS = {
   transactions: 'transactions',
   personalDebts: 'personal_debts',
   savings: 'savings',
-  leads: 'leadgen_leads',
-  leadFilters: 'leadgen_filters',
 };
 
 const META_KEYS = {
@@ -43,12 +41,6 @@ export function getPartners(): Partner[] { return get<Partner>(KEYS.partners); }
 export function getTransactions(): Transaction[] { return get<Transaction>(KEYS.transactions); }
 export function getPersonalDebts(): PersonalDebt[] { return get<PersonalDebt>(KEYS.personalDebts); }
 export function getSavings(): Saving[] { return get<Saving>(KEYS.savings); }
-export function getLeads(): Lead[] { return get<Lead>(KEYS.leads); }
-
-export function getLeadFilters(): LeadFilters {
-  const data = get<LeadFilters>(KEYS.leadFilters);
-  return { onlyNoWebsite: false, hideNotInteresting: true, showHidden: false, ...(data || {}) };
-}
 
 export function getAllProjects(): Project[] {
   return [...getProjects(), ...getCompleted()];
@@ -62,8 +54,6 @@ export function savePartners(d: Partner[]): void { set(KEYS.partners, d); }
 export function saveTransactions(d: Transaction[]): void { set(KEYS.transactions, d); }
 export function savePersonalDebts(d: PersonalDebt[]): void { set(KEYS.personalDebts, d); }
 export function saveSavings(d: Saving[]): void { set(KEYS.savings, d); }
-export function saveLeads(d: Lead[]): void { set(KEYS.leads, d); }
-export function saveLeadFilters(d: LeadFilters): void { set(KEYS.leadFilters, d); }
 
 export function getFinanceSettings(): FinanceSettings {
   try {
@@ -112,8 +102,6 @@ export function exportData(includeMeta: boolean = true): ExportPayload {
     transactions: getTransactions(),
     personalDebts: getPersonalDebts(),
     savings: getSavings(),
-    leads: getLeads(),
-    leadFilters: getLeadFilters(),
   };
   const payload: ExportPayload = {
     app: 'WebAgency CRM',
@@ -139,9 +127,40 @@ export function importData(payload: ExportPayload): void {
   _suppressBackups = true;
   Object.entries(nextData).forEach(([lsKey, value]) => set(lsKey, value));
   if (payload.financeSettings) saveFinanceSettings(payload.financeSettings);
-  ['crm_migrated_v11', 'crm_migrated_v12', 'crm_migrated_v13', 'crm_migrated_v14', 'crm_migrated_v15', 'crm_migrated_v16'].forEach(key => localStorage.removeItem(key));
+  ['crm_migrated_v11', 'crm_migrated_v12', 'crm_migrated_v13', 'crm_migrated_v14', 'crm_migrated_v15', 'crm_migrated_v16', 'crm_migrated_v17', 'crm_migrated_v18', 'crm_migrated_v19'].forEach(key => localStorage.removeItem(key));
   _suppressBackups = false;
+
+  // Backfill clients from projects immediately after import
+  backfillClientsFromProjects();
+
   afterSave();
+}
+
+function backfillClientsFromProjects(): void {
+  const clients = get<Client>(KEYS.clients);
+  let changed = false;
+  const activeProjects = get<Project>(KEYS.projectsActive);
+  const completedProjects = get<Project>(KEYS.projectsCompleted);
+
+  const linkProject = (p: Project): Project => {
+    if (p.clientId || !p.clientName) return p;
+    const nameLower = p.clientName.toLowerCase().trim();
+    const existing = clients.find(c => c.name.toLowerCase().trim() === nameLower);
+    if (existing) {
+      return { ...p, clientId: existing.id };
+    }
+    const newId = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+    const newClient: Client = { id: newId, name: p.clientName, telegram: p.clientTelegram || '', source: p.clientSource || 'Інше' };
+    clients.push(newClient);
+    changed = true;
+    return { ...p, clientId: newId };
+  };
+
+  const updatedActive = activeProjects.map(linkProject);
+  const updatedCompleted = completedProjects.map(linkProject);
+  if (changed) set(KEYS.clients, clients);
+  set(KEYS.projectsActive, updatedActive);
+  set(KEYS.projectsCompleted, updatedCompleted);
 }
 
 export function markManualBackup(): string {

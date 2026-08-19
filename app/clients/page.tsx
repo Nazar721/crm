@@ -1,5 +1,5 @@
 'use client';
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
 import { getClients, saveClients } from '@/lib/storage';
 import { clientStats } from '@/lib/calc';
@@ -11,24 +11,70 @@ import ClientForm from '@/components/forms/ClientForm';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { useConfirm } from '@/hooks/useConfirm';
 
+type SortKey = '' | 'budget_desc' | 'profit_desc' | 'projects_desc' | 'debt_desc';
+type TypeFilter = '' | 'regular' | 'new';
+
 export default function ClientsPage() {
   const { refreshKey, triggerRefresh } = useApp();
   const [search, setSearch] = useState('');
   const [sourceFilter, setSourceFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>('');
+  const [sortBy, setSortBy] = useState<SortKey>('');
   const [formOpen, setFormOpen] = useState(false);
   const [editClient, setEditClient] = useState<Client | null>(null);
   const { isOpen: confirmOpen, title: confirmTitle, text: confirmText, confirm, handleConfirm, cancel } = useConfirm();
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
 
-  const filtered = useMemo(() => {
+  const clientsWithStats = useMemo(() => {
     if (!mounted) return [];
-    return getClients().filter(c => {
-      const ms = c.name.toLowerCase().includes(search.toLowerCase()) || (c.telegram || '').toLowerCase().includes(search.toLowerCase());
-      const mf = !sourceFilter || c.source === sourceFilter;
-      return ms && mf;
-    });
-  }, [mounted, refreshKey, search, sourceFilter]);
+    return getClients().map(c => ({ client: c, stats: clientStats(c.id) }));
+  }, [mounted, refreshKey]);
+
+  const filtered = useMemo(() => {
+    let result = clientsWithStats;
+
+    if (search) {
+      const q = search.toLowerCase();
+      result = result.filter(({ client: c }) =>
+        c.name.toLowerCase().includes(q) || (c.telegram || '').toLowerCase().includes(q)
+      );
+    }
+
+    if (sourceFilter) {
+      result = result.filter(({ client: c }) => c.source === sourceFilter);
+    }
+
+    if (typeFilter === 'regular') {
+      result = result.filter(({ client: c }) => !!c.isRegular);
+    } else if (typeFilter === 'new') {
+      result = result.filter(({ client: c }) => !c.isRegular);
+    }
+
+    if (sortBy) {
+      result = [...result].sort((a, b) => {
+        switch (sortBy) {
+          case 'budget_desc': return b.stats.totalBudget - a.stats.totalBudget;
+          case 'profit_desc': return b.stats.totalProfit - a.stats.totalProfit;
+          case 'projects_desc': return b.stats.count - a.stats.count;
+          case 'debt_desc': return b.stats.clientDebt - a.stats.clientDebt;
+          default: return 0;
+        }
+      });
+    }
+
+    return result;
+  }, [clientsWithStats, search, sourceFilter, typeFilter, sortBy]);
+
+  const toggleRegular = (id: string) => {
+    const clients = getClients();
+    const idx = clients.findIndex(c => c.id === id);
+    if (idx >= 0) {
+      clients[idx].isRegular = !clients[idx].isRegular;
+      saveClients(clients);
+      triggerRefresh();
+    }
+  };
 
   const handleSave = (data: Partial<Client>) => {
     if (!editClient) return;
@@ -52,10 +98,22 @@ export default function ClientsPage() {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="2"/><line x1="21" y1="21" x2="16.65" y2="16.65" stroke="currentColor" strokeWidth="2"/></svg>
           <input type="text" className="search-input" value={search} onChange={e => setSearch(e.target.value)} placeholder="Пошук клієнтів..." />
         </div>
+        <select className="filter-select" value={typeFilter} onChange={e => setTypeFilter(e.target.value as TypeFilter)}>
+          <option value="">Усі клієнти</option>
+          <option value="regular">Постійні</option>
+          <option value="new">Нові</option>
+        </select>
         <select className="filter-select" value={sourceFilter} onChange={e => setSourceFilter(e.target.value)}>
           <option value="">Усі джерела</option>
           <option value="Telegram">Telegram</option><option value="Instagram">Instagram</option><option value="YouTube">YouTube</option>
           <option value="Реклама">Реклама</option><option value="Сайт">Сайт</option><option value="Сарафанне радіо">Сарафанне радіо</option><option value="Інше">Інше</option>
+        </select>
+        <select className="filter-select" value={sortBy} onChange={e => setSortBy(e.target.value as SortKey)}>
+          <option value="">Сортування: за ім'ям</option>
+          <option value="budget_desc">Оборот ↓</option>
+          <option value="profit_desc">Прибуток ↓</option>
+          <option value="projects_desc">Проєкти ↓</option>
+          <option value="debt_desc">Борг ↓</option>
         </select>
       </div>
       <div className="table-wrap">
@@ -63,11 +121,21 @@ export default function ClientsPage() {
           <thead><tr><th>Ім'я</th><th>Telegram</th><th>Джерело</th><th>Проєктів</th><th>Оборот</th><th>Прибуток</th><th>Передоплати</th><th>Борг</th><th>Дії</th></tr></thead>
           <tbody>
             {!filtered.length ? <tr className="empty-row"><td colSpan={9}><EmptyState message="Немає клієнтів" hint="Клієнти додаються автоматично при створенні проєкту" /></td></tr> :
-            filtered.map((c, i) => {
-              const s = clientStats(c.id);
-              return (
+            filtered.map(({ client: c, stats: s }) => (
                 <tr key={c.id}>
-                  <td><strong>{c.name}</strong>{c.isRegular ? <span className="badge badge--green" style={{ fontSize: '0.7em', marginLeft: 4 }}>Постійний</span> : null}</td>
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <strong>{c.name}</strong>
+                      <button
+                        onClick={() => toggleRegular(c.id)}
+                        className={`badge${c.isRegular ? ' badge--green' : ' badge--gray'}`}
+                        style={{ fontSize: '0.7em', cursor: 'pointer', border: 'none', padding: '2px 8px' }}
+                        title={c.isRegular ? 'Зняти позначку «Постійний»' : 'Позначити як постійного'}
+                      >
+                        {c.isRegular ? 'Постійний' : 'Не постійний'}
+                      </button>
+                    </div>
+                  </td>
                   <td>{c.telegram ? <a href={`https://t.me/${c.telegram.replace('@', '')}`} target="_blank" rel="noopener noreferrer" className="link">{c.telegram}</a> : '—'}</td>
                   <td><SourceBadge source={c.source || 'Інше'} /></td>
                   <td>{s.count}</td>
@@ -82,8 +150,7 @@ export default function ClientsPage() {
                     </div>
                   </td>
                 </tr>
-              );
-            })}
+            ))}
           </tbody>
         </table>
       </div>

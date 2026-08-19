@@ -1,5 +1,6 @@
 import { normalizeBank } from '@/lib/banks';
-import { getProjects, saveProjects, getCompleted, saveCompleted, getPartners, savePartners, getSpecialists, saveSpecialists, getTransactions, saveTransactions, getSavings, saveSavings } from '@/lib/storage';
+import { generateId } from '@/lib/utils';
+import { getProjects, saveProjects, getCompleted, saveCompleted, getClients, saveClients, getPartners, savePartners, getSpecialists, saveSpecialists, getTransactions, saveTransactions, getSavings, saveSavings } from '@/lib/storage';
 
 function stripProject(p: Record<string, unknown>): Record<string, unknown> {
   const raw = { ...p };
@@ -123,5 +124,57 @@ export function migrate(): void {
     saveProjects(getProjects().map(migrateCommission) as any);
     saveCompleted(getCompleted().map(migrateCommission) as any);
     localStorage.setItem('crm_migrated_v16', '1');
+  }
+
+  // v17 migration - backfill clients from projects
+  if (!localStorage.getItem('crm_migrated_v17')) {
+    const clients = getClients();
+    let changed = false;
+
+    const linkProject = (p: any) => {
+      if (p.clientId || !p.clientName) return p;
+      const nameLower = String(p.clientName).toLowerCase().trim();
+      const existing = clients.find(c => c.name.toLowerCase().trim() === nameLower);
+      if (existing) {
+        p.clientId = existing.id;
+      } else {
+        const newClient = { id: generateId(), name: p.clientName, telegram: p.clientTelegram || '', source: p.clientSource || 'Інше' };
+        clients.push(newClient);
+        p.clientId = newClient.id;
+        changed = true;
+      }
+      return p;
+    };
+
+    saveProjects(getProjects().map(linkProject));
+    saveCompleted(getCompleted().map(linkProject));
+    if (changed) saveClients(clients);
+    localStorage.setItem('crm_migrated_v17', '1');
+  }
+
+  // v18 migration - workStartDate/workedDays: відлік дедлайну лише в статусі «В роботі»
+  if (!localStorage.getItem('crm_migrated_v18')) {
+    const migrateWorkStart = (p: any) => {
+      const raw = { ...p };
+      if (raw.workedDays == null) raw.workedDays = 0;
+      if (raw.status === 'В роботі') {
+        if (!raw.workStartDate) {
+          raw.workStartDate = raw.startDate || (raw.createdAt ? String(raw.createdAt).split('T')[0] : '');
+        }
+      } else {
+        delete raw.workStartDate;
+      }
+      return raw;
+    };
+    saveProjects(getProjects().map(migrateWorkStart) as any);
+    saveCompleted(getCompleted().map(migrateWorkStart) as any);
+    localStorage.setItem('crm_migrated_v18', '1');
+  }
+
+  // v19 migration - прибрано модуль лідогенерації
+  if (!localStorage.getItem('crm_migrated_v19')) {
+    localStorage.removeItem('leadgen_leads');
+    localStorage.removeItem('leadgen_filters');
+    localStorage.setItem('crm_migrated_v19', '1');
   }
 }

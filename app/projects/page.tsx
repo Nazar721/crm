@@ -1,8 +1,8 @@
 'use client';
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
-import { getProjects, getCompleted, getClients, getSpecialists, getPartners, getTransactions, saveProjects, saveCompleted, saveTransactions } from '@/lib/storage';
-import { project as calcProject, projectStartDate, projectEndDate } from '@/lib/calc';
+import { getProjects, getCompleted, getClients, getSpecialists, getPartners, getTransactions, saveProjects, saveCompleted, saveTransactions, saveClients } from '@/lib/storage';
+import { project as calcProject, projectStartDate, projectEndDate, projectDaysUsed } from '@/lib/calc';
 import { formatMoney, formatDate, today, daysBetween, generateId } from '@/lib/utils';
 import type { Project } from '@/types';
 import { StatusBadge, TypeBadge, BankBadge } from '@/components/ui/Badge';
@@ -48,26 +48,81 @@ export default function ProjectsPage() {
   }, [mounted, refreshKey, filterList]);
 
   function deadlineInfo(p: Project) {
-    if (p.status === 'Очікування оплати') return { text: '—', color: 'var(--text-secondary)' };
     const dd = Number(p.deadlineDays) || 0;
-    const sd = projectStartDate(p);
-    if (!dd || !sd) return { text: '—', color: 'var(--text-secondary)' };
-    const left = dd - daysBetween(sd, today());
+    if (!dd) return { text: '—', color: 'var(--text-secondary)' };
+    const used = projectDaysUsed(p, today());
+    const left = dd - used;
+    // Не «В роботі» — відлік стоїть, показуємо залишок приглушено
+    if (p.status !== 'В роботі') {
+      if (!p.workedDays) return { text: '—', color: 'var(--text-secondary)' };
+      return { text: `${left < 0 ? `${Math.abs(left)} дн. простр.` : `${left} дн.`} (пауза)`, color: 'var(--text-secondary)' };
+    }
     if (left === 0) return { text: '0 дн.', color: 'var(--danger)' };
     if (left < 0) return { text: `${Math.abs(left)} дн. простр.`, color: 'var(--danger)' };
     return { text: `${left} дн.`, color: 'var(--accent-green)' };
   }
 
+  // Відлік дедлайну йде ТІЛЬКИ поки статус «В роботі».
+  // Вхід у «В роботі» — ставимо workStartDate; вихід — накопичуємо відпрацьовані дні.
+  function resolveDeadlineTracking(next: Partial<Project>, prev?: Project): Pick<Project, 'workStartDate' | 'workedDays'> {
+    const wasWorking = prev?.status === 'В роботі';
+    const isWorking = next.status === 'В роботі';
+    const accumulated = Number(prev?.workedDays) || 0;
+
+    if (isWorking) {
+      // Уже був у роботі — не зсуваємо початок поточного відрізка
+      if (wasWorking) return { workStartDate: prev?.workStartDate || today(), workedDays: accumulated };
+      // Заходимо в роботу — новий відрізок з сьогодні
+      return { workStartDate: today(), workedDays: accumulated };
+    }
+
+    // Виходимо з роботи — фіксуємо накопичене, зупиняємо відлік
+    if (wasWorking) {
+      const from = (prev?.workStartDate || '').split('T')[0] || projectStartDate(prev!);
+      const segment = from ? Math.max(0, daysBetween(from, today())) : 0;
+      return { workStartDate: undefined, workedDays: accumulated + segment };
+    }
+
+    return { workStartDate: undefined, workedDays: accumulated };
+  }
+
   const handleSave = (data: Partial<Project>) => {
     if (!data.name) return;
+
+    let clientId = editProject?.clientId || '';
+    if (data.clientName) {
+      const clients = getClients();
+      const nameLower = data.clientName.toLowerCase().trim();
+      let existing = clients.find(c => c.name.toLowerCase().trim() === nameLower);
+      if (existing) {
+        clientId = existing.id;
+        const idx = clients.findIndex(c => c.id === existing!.id);
+        if (idx >= 0) {
+          if (data.clientTelegram && data.clientTelegram !== existing.telegram) clients[idx].telegram = data.clientTelegram;
+          if (data.clientSource && data.clientSource !== existing.source) clients[idx].source = data.clientSource;
+          saveClients(clients);
+        }
+      } else {
+        const newClient = { id: generateId(), name: data.clientName, telegram: data.clientTelegram || '', source: data.clientSource || 'Інше' };
+        clients.push(newClient);
+        saveClients(clients);
+        clientId = newClient.id;
+      }
+    }
+
+    const projectData = { ...data, clientId };
+
     const id = editProject?.id;
     if (id) {
       const list = getProjects();
       const idx = list.findIndex(p => p.id === id);
-      if (idx >= 0) { list[idx] = { ...list[idx], ...data }; saveProjects(list); }
+      if (idx >= 0) {
+        list[idx] = { ...list[idx], ...projectData, ...resolveDeadlineTracking(projectData, list[idx]) };
+        saveProjects(list);
+      }
     } else {
       const list = getProjects();
-      list.push({ id: generateId(), createdAt: new Date().toISOString(), ...data } as Project);
+      list.push({ id: generateId(), createdAt: new Date().toISOString(), ...projectData, ...resolveDeadlineTracking(projectData) } as Project);
       saveProjects(list);
     }
     setFormOpen(false);
@@ -84,8 +139,10 @@ export default function ProjectsPage() {
       const finishDate = (p as any).endDate || today();
       const start = projectStartDate(p);
       const days = daysBetween(start, finishDate);
+      // Заморожуємо відлік дедлайну на момент завершення
+      const frozen = resolveDeadlineTracking({ status: 'Завершено' }, p);
       const completedList = getCompleted();
-      completedList.push({ ...p, endDate: finishDate, finishDate, days, completedAt: Date.now() });
+      completedList.push({ ...p, ...frozen, endDate: finishDate, finishDate, days, completedAt: Date.now() });
       saveCompleted(completedList);
       activeList.splice(idx, 1);
       saveProjects(activeList);

@@ -6,6 +6,8 @@ export interface Project {
   type: 'IT' | 'Design' | 'Video' | string;
   status: 'Очікування оплати' | 'В роботі' | 'На паузі' | string;
   startDate: string;
+  workStartDate?: string;
+  workedDays?: number;
   deadlineDays?: number;
   endDate?: string;
   finishDate?: string;
@@ -99,31 +101,6 @@ export interface Saving {
   date?: string;
 }
 
-// Lead type
-export interface Lead {
-  id: string;
-  osmType?: string;
-  osmId?: number;
-  name: string;
-  address?: string;
-  phone?: string;
-  telegram?: string;
-  website?: string;
-  lat?: string;
-  lon?: string;
-  status: string;
-  note?: string;
-  lastContactAt?: string;
-  createdAt?: string;
-}
-
-// Lead filters
-export interface LeadFilters {
-  onlyNoWebsite: boolean;
-  hideNotInteresting: boolean;
-  showHidden: boolean;
-}
-
 // Finance settings
 export interface FinanceSettings {
   usdRate: number;
@@ -151,8 +128,6 @@ export interface ExportPayload {
     transactions: Transaction[];
     personalDebts: PersonalDebt[];
     savings: Saving[];
-    leads: Lead[];
-    leadFilters: LeadFilters;
   };
   financeSettings: FinanceSettings;
   meta?: BackupInfo;

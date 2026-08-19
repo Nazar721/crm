@@ -15,19 +15,17 @@ export default function ClientForm({ isOpen, client, onSave, onCancel }: ClientF
   const [name, setName] = useState('');
   const [telegram, setTelegram] = useState('');
   const [source, setSource] = useState('Інше');
-  const [isRegular, setIsRegular] = useState(false);
 
   useEffect(() => {
     if (client) {
       setName(client.name || '');
       setTelegram(client.telegram || '');
       setSource(client.source || 'Інше');
-      setIsRegular(!!client.isRegular);
     }
   }, [client, isOpen]);
 
   const handleSave = () => {
-    onSave({ name, telegram, source, isRegular });
+    onSave({ name, telegram, source });
   };
 
   return (
@@ -52,12 +50,6 @@ export default function ClientForm({ isOpen, client, onSave, onCancel }: ClientF
             <option value="Сайт">Сайт</option>
             <option value="Сарафанне радіо">Сарафанне радіо</option>
           </select>
-        </div>
-        <div className="form-group form-group--full">
-          <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <input type="checkbox" checked={isRegular} onChange={e => setIsRegular(e.target.checked)} style={{ width: 18, height: 18 }} />
-            Постійний клієнт
-          </label>
         </div>
       </div>
       <ModalFooter onCancel={onCancel} onSave={handleSave} />

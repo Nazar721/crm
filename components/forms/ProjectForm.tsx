@@ -1,9 +1,11 @@
 'use client';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import type { Project, Specialist, Partner } from '@/types';
 import { project as calcProject } from '@/lib/calc';
 import { formatMoney } from '@/lib/utils';
 import { today } from '@/lib/utils';
+import { getClients } from '@/lib/storage';
+import type { Client } from '@/types';
 
 import Modal from '@/components/ui/Modal';
 import ModalFooter from '@/components/ui/ModalFooter';
@@ -38,6 +40,9 @@ export default function ProjectForm({ isOpen, project, specialists, partners, on
   const [fop, setFop] = useState('');
   const [partnerCommission, setPartnerCommission] = useState('');
   const [description, setDescription] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [selectedClientId, setSelectedClientId] = useState('');
+  const wrapperRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (project) {
@@ -61,14 +66,16 @@ export default function ProjectForm({ isOpen, project, specialists, partners, on
       setFop(String(project.fop || ''));
       setPartnerCommission(String(project.partnerCommission || ''));
       setDescription(project.description || '');
+      setSelectedClientId(project.clientId || '');
     } else {
       setName(''); setType(''); setStatus('Очікування оплати'); setStartDate(today());
       setDeadlineDays(''); setEndDate(''); setDeveloperId(''); setPartnerId('');
       setClientName(''); setClientTelegram(''); setClientSource('Інше');
       setBudget(''); setBank(''); setPrepayment(''); setPaidToSpecialist('');
       setMyPercent(''); setProfitTaken(''); setFop(''); setPartnerCommission('');
-      setDescription('');
+      setDescription(''); setSelectedClientId('');
     }
+    setShowSuggestions(false);
   }, [project, isOpen]);
 
   useEffect(() => {
@@ -76,6 +83,39 @@ export default function ProjectForm({ isOpen, project, specialists, partners, on
       setStatus('В роботі');
     }
   }, [prepayment]);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setShowSuggestions(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const clientSuggestions = useMemo(() => {
+    if (clientName.length < 2 || selectedClientId) return [];
+    const q = clientName.toLowerCase().trim();
+    const clients = getClients();
+    return clients
+      .filter(c => c.name.toLowerCase().includes(q) || (c.telegram || '').toLowerCase().includes(q))
+      .slice(0, 8);
+  }, [clientName, selectedClientId]);
+
+  const selectClient = (c: Client) => {
+    setClientName(c.name);
+    setClientTelegram(c.telegram || '');
+    setClientSource(c.source || 'Інше');
+    setSelectedClientId(c.id);
+    setShowSuggestions(false);
+  };
+
+  const handleClientNameChange = (val: string) => {
+    setClientName(val);
+    setSelectedClientId('');
+    setShowSuggestions(val.length >= 2);
+  };
 
   const calc = useMemo(() => {
     return calcProject({
@@ -165,9 +205,30 @@ export default function ProjectForm({ isOpen, project, specialists, partners, on
             {partners.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </div>
-        <div className="form-group">
+        <div className="form-group client-autocomplete" ref={wrapperRef}>
           <label className="form-label">Ім&apos;я клієнта *</label>
-          <input type="text" className="form-input" value={clientName} onChange={e => setClientName(e.target.value)} placeholder="Ім&apos;я або компанія" />
+          <input
+            type="text"
+            className="form-input"
+            value={clientName}
+            onChange={e => handleClientNameChange(e.target.value)}
+            onFocus={() => { if (clientName.length >= 2 && !selectedClientId) setShowSuggestions(true); }}
+            placeholder="Почніть вводити ім'я..."
+            autoComplete="off"
+          />
+          {showSuggestions && clientSuggestions.length > 0 && (
+            <div className="client-suggestions">
+              {clientSuggestions.map(c => (
+                  <div key={c.id} className="client-suggestion-item" onMouseDown={() => selectClient(c)}>
+                    <div>
+                      <span className="client-suggestion-name">{c.name}</span>
+                      {c.telegram && <span className="client-suggestion-tg"> {c.telegram}</span>}
+                    </div>
+                    {c.isRegular && <span className="client-suggestion-badge badge badge--green">Постійний</span>}
+                  </div>
+              ))}
+            </div>
+          )}
         </div>
         <div className="form-group">
           <label className="form-label">Telegram клієнта</label>

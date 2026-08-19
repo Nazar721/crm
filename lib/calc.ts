@@ -1,6 +1,6 @@
 import type { Project, ProjectCalc, ClientStats, SpecialistStats, PartnerStats, DashboardStats, Transaction, PersonalDebt, Saving } from '@/types';
 import * as Storage from '@/lib/storage';
-import { getMonthKey } from '@/lib/utils';
+import { getMonthKey, daysBetween } from '@/lib/utils';
 import { normalizeBank, bankCurrency as bankCurrencyFn } from '@/lib/banks';
 
 export function project(p: Project): ProjectCalc {
@@ -37,6 +37,21 @@ export function project(p: Project): ProjectCalc {
 
 export function projectStartDate(p: Project): string {
   return p.startDate || p.createdAt?.split('T')[0] || '';
+}
+
+// Дата, з якої триває поточний відрізок роботи.
+// Заповнена лише коли статус === 'В роботі'.
+export function projectWorkStartDate(p: Project): string {
+  if (p.status !== 'В роботі') return '';
+  return (p.workStartDate || '').split('T')[0] || projectStartDate(p);
+}
+
+// Скільки днів дедлайну вже з'їдено: накопичені дні + поточний відрізок «В роботі».
+export function projectDaysUsed(p: Project, todayDate: string): number {
+  const accumulated = Number(p.workedDays) || 0;
+  const from = projectWorkStartDate(p);
+  if (!from) return accumulated;
+  return accumulated + Math.max(0, daysBetween(from, todayDate));
 }
 
 export function projectEndDate(p: Project): string {

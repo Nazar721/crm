@@ -1,7 +1,7 @@
 'use client';
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import type { ReactNode } from 'react';
-import { getProjects, getCompleted, getClients, getSpecialists, getPartners, getLeads } from '@/lib/storage';
+import { getProjects, getCompleted, getClients, getSpecialists, getPartners } from '@/lib/storage';
 import { migrate } from '@/lib/migrations';
 
 interface BadgeCounts {
@@ -9,7 +9,6 @@ interface BadgeCounts {
   clients: number;
   specialists: number;
   partners: number;
-  leads: number;
 }
 
 interface AppContextType {
@@ -30,7 +29,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     clients: 0,
     specialists: 0,
     partners: 0,
-    leads: 0,
   });
   const [refreshKey, setRefreshKey] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -50,7 +48,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       clients: getClients().length,
       specialists: getSpecialists().length,
       partners: getPartners().length,
-      leads: getLeads().length,
     });
   }, []);
 
