@@ -457,8 +457,6 @@ body {
 .stat-card--highlight {
   background: linear-gradient(135deg, rgba(250, 204, 21, 0.10), rgba(45, 212, 191, 0.04));
   border-color: rgba(250, 204, 21, 0.24);
-  flex-direction: column;
-  gap: 4px;
 }
 
 .stat-icon {
