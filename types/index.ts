@@ -39,6 +39,7 @@ export interface Client {
   telegram?: string;
   source?: string;
   isRegular?: boolean;
+  createdAt?: string;
 }
 
 // Specialist type

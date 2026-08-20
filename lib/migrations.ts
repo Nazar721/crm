@@ -177,4 +177,24 @@ export function migrate(): void {
     localStorage.removeItem('leadgen_filters');
     localStorage.setItem('crm_migrated_v19', '1');
   }
+
+  // v20 migration - backfill createdAt for existing clients
+  if (!localStorage.getItem('crm_migrated_v20')) {
+    const clients = getClients();
+    const allProjects = [...getProjects(), ...getCompleted()];
+    let changed = false;
+    clients.forEach(c => {
+      if (!c.createdAt) {
+        const clientProjects = allProjects.filter(p => p.clientId === c.id);
+        const earliest = clientProjects
+          .map(p => p.createdAt)
+          .filter(Boolean)
+          .sort()[0];
+        c.createdAt = earliest || new Date().toISOString();
+        changed = true;
+      }
+    });
+    if (changed) saveClients(clients);
+    localStorage.setItem('crm_migrated_v20', '1');
+  }
 }

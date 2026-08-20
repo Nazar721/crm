@@ -1,7 +1,8 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import type { Transaction } from '@/types';
 import { BANKS } from '@/lib/banks';
+import { getTransactions } from '@/lib/storage';
 import { today } from '@/lib/utils';
 import Modal from '@/components/ui/Modal';
 import ModalFooter from '@/components/ui/ModalFooter';
@@ -22,6 +23,13 @@ export default function TransactionForm({ isOpen, transaction, initialType = 'in
   const [description, setDescription] = useState('');
   const [date, setDate] = useState('');
   const [incomeStatus, setIncomeStatus] = useState('earned');
+
+  const categories = useMemo(() => {
+    const txs = getTransactions();
+    const freq = new Map<string, number>();
+    txs.forEach(t => { if (t.category) freq.set(t.category, (freq.get(t.category) || 0) + 1); });
+    return [...freq.entries()].sort((a, b) => b[1] - a[1]).map(([c]) => c);
+  }, [isOpen]);
 
   useEffect(() => {
     if (transaction) {
@@ -84,7 +92,10 @@ export default function TransactionForm({ isOpen, transaction, initialType = 'in
         </div>
         <div className="form-group">
           <label className="form-label">Категорія</label>
-          <input type="text" className="form-input" value={category} onChange={e => setCategory(e.target.value)} placeholder="Проєкт, офіс, реклама..." />
+          <input list="tx-category-list" type="text" className="form-input" value={category} onChange={e => setCategory(e.target.value)} placeholder="Проєкт, офіс, реклама..." />
+          <datalist id="tx-category-list">
+            {categories.map(c => <option key={c} value={c} />)}
+          </datalist>
         </div>
         <div className="form-group form-group--full">
           <label className="form-label">Опис</label>

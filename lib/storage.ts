@@ -150,7 +150,7 @@ function backfillClientsFromProjects(): void {
       return { ...p, clientId: existing.id };
     }
     const newId = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
-    const newClient: Client = { id: newId, name: p.clientName, telegram: p.clientTelegram || '', source: p.clientSource || 'Інше' };
+    const newClient: Client = { id: newId, name: p.clientName, telegram: p.clientTelegram || '', source: p.clientSource || 'Інше', createdAt: p.createdAt || new Date().toISOString() };
     clients.push(newClient);
     changed = true;
     return { ...p, clientId: newId };

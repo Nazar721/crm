@@ -48,7 +48,19 @@ export default function ClientsPage() {
     if (typeFilter === 'regular') {
       result = result.filter(({ client: c }) => !!c.isRegular);
     } else if (typeFilter === 'new') {
-      result = result.filter(({ client: c }) => !c.isRegular);
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      result = result.filter(({ client: c }) => {
+        if (!c.createdAt) return false;
+        return new Date(c.createdAt) >= thirtyDaysAgo;
+      });
+      if (!sortBy) {
+        result = [...result].sort((a, b) => {
+          const da = a.client.createdAt ? new Date(a.client.createdAt).getTime() : 0;
+          const db = b.client.createdAt ? new Date(b.client.createdAt).getTime() : 0;
+          return db - da;
+        });
+      }
     }
 
     if (sortBy) {

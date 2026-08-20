@@ -209,7 +209,7 @@ export default function ProjectsPage() {
           saveClients(clients);
         }
       } else {
-        const newClient = { id: generateId(), name: data.clientName, telegram: data.clientTelegram || '', source: data.clientSource || 'Інше' };
+        const newClient = { id: generateId(), name: data.clientName, telegram: data.clientTelegram || '', source: data.clientSource || 'Інше', createdAt: new Date().toISOString() };
         clients.push(newClient);
         saveClients(clients);
         clientId = newClient.id;
