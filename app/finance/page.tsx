@@ -10,7 +10,7 @@ import EmptyState from '@/components/ui/EmptyState';
 import TransactionForm from '@/components/forms/TransactionForm';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { useConfirm } from '@/hooks/useConfirm';
-import FinanceBarChart from '@/components/charts/FinanceBarChart';
+import IncomeChart from '@/components/charts/IncomeChart';
 import BankBalancesChart from '@/components/charts/BankBalancesChart';
 import type { Transaction } from '@/types';
 
@@ -60,23 +60,24 @@ export default function FinancePage() {
   const balance = useMemo(() => mounted ? financeBalance(getTransactions()) : 0, [mounted, refreshKey]);
 
   const chartData = useMemo(() => {
-    if (!mounted) return { labels: [], income: [], expense: [] };
-    const md: Record<string, { financeIn: number; financeOut: number }> = {};
+    if (!mounted) return { labels: [], income: [] };
+    const md: Record<string, number> = {};
     const now = new Date();
     for (let i = 11; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      md[key] = { financeIn: 0, financeOut: 0 };
+      md[key] = 0;
     }
     getTransactions().forEach(t => {
       if (t.source && String(t.source).startsWith('project_')) return;
+      if (t.type !== 'income') return;
+      if (t.incomeStatus === 'incoming') return;
       const key = getMonthKey(t.date || t.plannedDate);
-      if (key && md[key]) {
-        if (t.type === 'income') md[key].financeIn += bankAmountToUah(t.amount, t.bank);
-        else if (t.type === 'expense') md[key].financeOut += bankAmountToUah(t.amount, t.bank);
+      if (key && md[key] !== undefined) {
+        md[key] += bankAmountToUah(t.amount, t.bank);
       }
     });
-    return { labels: Object.keys(md).map(k => getMonthLabel(k)), income: Object.values(md).map(d => d.financeIn), expense: Object.values(md).map(d => d.financeOut) };
+    return { labels: Object.keys(md).map(k => getMonthLabel(k)), income: Object.values(md) };
   }, [mounted, refreshKey]);
 
   const weekClass = (dateStr?: string) => {
@@ -162,7 +163,7 @@ export default function FinancePage() {
       </div>
 
       <div className="charts-grid charts-grid--2">
-        <div className="chart-card anim-chart"><div className="chart-header"><h3 className="chart-title">Дохід по місяцях</h3></div><FinanceBarChart labels={chartData.labels} incomeData={chartData.income} expenseData={chartData.expense} /></div>
+        <div className="chart-card anim-chart"><div className="chart-header"><h3 className="chart-title">Дохід по місяцях</h3></div><IncomeChart labels={chartData.labels} data={chartData.income} /></div>
         <div className="chart-card anim-chart"><div className="chart-header"><h3 className="chart-title">Активи по банках</h3></div><BankBalancesChart balances={bankBalances()} /></div>
       </div>
 

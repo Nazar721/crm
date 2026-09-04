@@ -15,12 +15,12 @@ export default function IncomeChart({ labels, data }: IncomeChartProps) {
           labels,
           datasets: [{
             data,
-            borderColor: '#4f9cf9',
-            backgroundColor: 'rgba(79, 156, 249, 0.2)',
+            borderColor: '#34d399',
+            backgroundColor: 'rgba(52, 211, 153, 0.2)',
             borderWidth: 2,
             tension: 0.4,
             fill: true,
-            pointBackgroundColor: '#4f9cf9',
+            pointBackgroundColor: '#34d399',
             pointRadius: 3,
           }],
         }}
