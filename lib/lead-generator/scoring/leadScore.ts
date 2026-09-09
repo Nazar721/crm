@@ -1,4 +1,4 @@
-import { ScrapedWebsite, Lead, PipelineConfig, AISingleAnalysis, AIAnalysisResult } from '../types';
+import { ScrapedWebsite, Lead, PipelineConfig, AISingleAnalysis, AIAnalysisResult, CustomProvider } from '../types';
 import { aiRouter } from '../ai/AIRouter';
 
 export interface RuleBasedScores {
@@ -136,11 +136,25 @@ export function parseAIAnalysis(raw: string): AISingleAnalysis | null {
   }
 }
 
+export function describeAiError(err: unknown): string {
+  const status = typeof err === 'object' && err !== null && 'status' in err ? Number((err as { status: number }).status) : 0;
+  const raw = err instanceof Error ? err.message : String(err);
+
+  if (status === 401) return 'API-ключ недійсний або не активований (помилка 401). Перевірте ключ у вкладці «Налаштування».';
+  if (status === 402) return 'Недостатньо кредитів на балансі AI-провайдера (помилка 402). Поповніть баланс або оберіть іншого провайдера.';
+  if (status === 403) return 'Доступ заборонено провайдером (помилка 403). Ключ може не мати дозволу на цю модель.';
+  if (status === 404) return 'Модель не знайдена у провайдера (помилка 404). Оберіть іншу модель у «Налаштуваннях».';
+  if (status === 429) return 'Перевищено ліміт запитів (помилка 429). Зачекайте кілька хвилин або оберіть безкоштовну/іншу модель.';
+  if (status >= 500) return 'AI-провайдер тимчасово недоступний (помилка сервера). Спробуйте пізніше.';
+  return raw.slice(0, 300);
+}
+
 export async function analyzeWithAI(
   scraped: ScrapedWebsite,
   config: PipelineConfig,
   apiKey: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  customProviders?: CustomProvider[]
 ): Promise<AIAnalysisResult> {
   const unavailable: AIAnalysisResult = {
     aiScore: FALLBACK_AI_SCORE,
@@ -157,7 +171,7 @@ export async function analyzeWithAI(
 
     const { text, modelUsed } = await aiRouter.generateWithFallbacks(
       buildAnalysisPrompt(scraped, config),
-      { provider: config.provider, model: config.model, apiKey, signal }
+      { provider: config.provider, model: config.model, apiKey, signal, customProviders }
     );
 
     const analysis = parseAIAnalysis(text);
@@ -180,7 +194,7 @@ export async function analyzeWithAI(
     return {
       aiScore: FALLBACK_AI_SCORE,
       businessSummary: 'AI-аналіз не вдався',
-      aiAnalysis: JSON.stringify({ error: String(err) }),
+      aiAnalysis: JSON.stringify({ error: describeAiError(err) }),
       match: true,
       modelUsed: null,
     };

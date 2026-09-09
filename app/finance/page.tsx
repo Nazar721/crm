@@ -184,17 +184,17 @@ export default function FinancePage() {
             {!txs.length ? <tr className="empty-row"><td colSpan={7}><EmptyState message="Немає транзакцій" hint="Додайте дохід або витрату" /></td></tr> :
             txs.map(t => (
               <tr key={t.id} className={weekClass(t.date || t.plannedDate)}>
-                <td>{t.type === 'transfer' ? <span className="badge badge--blue">Конвертація</span> : <FinanceTypeBadge type={t.type} />}</td>
+                <td data-label="Тип">{t.type === 'transfer' ? <span className="badge badge--blue">Конвертація</span> : <FinanceTypeBadge type={t.type} />}</td>
                 {t.type === 'transfer' ? (
-                  <td style={{ color: 'var(--accent-blue)', fontWeight: 600 }}>{formatBankAmount(t.amount, t.bank)} → {formatBankAmount(t.targetAmount ?? t.amount, t.toBank || '')}</td>
+                  <td data-label="Сума" style={{ color: 'var(--accent-blue)', fontWeight: 600 }}>{formatBankAmount(t.amount, t.bank)} → {formatBankAmount(t.targetAmount ?? t.amount, t.toBank || '')}</td>
                 ) : (
-                  <td style={{ color: t.type === 'income' ? 'var(--accent-green)' : 'var(--accent-orange)', fontWeight: 600 }}>{t.type === 'income' ? '+' : '−'}{formatBankAmount(t.amount, t.bank)}</td>
+                  <td data-label="Сума" style={{ color: t.type === 'income' ? 'var(--accent-green)' : 'var(--accent-orange)', fontWeight: 600 }}>{t.type === 'income' ? '+' : '−'}{formatBankAmount(t.amount, t.bank)}</td>
                 )}
-                <td>{t.type === 'transfer' ? <><span className={`badge badge--black`}>{bankLabel(normalizeBank(t.bank) || t.bank)}</span> → <span className={`badge badge--green`}>{bankLabel(normalizeBank(t.toBank || ''))}</span></> : <span className={`badge badge--${normalizeBank(t.bank) === 'mono' ? 'black' : 'green'}`}>{bankLabel(normalizeBank(t.bank) || t.bank)}</span>}</td>
-                <td>{t.type === 'transfer' ? 'Конвертація' : (t.category || '—')}</td>
-                <td>{t.description || '—'}</td>
-                <td><span className="week-date"><span className="week-dot"></span>{formatDate(t.date || t.plannedDate)}</span></td>
-                <td>
+                <td data-label="Банк">{t.type === 'transfer' ? <><span className={`badge badge--black`}>{bankLabel(normalizeBank(t.bank) || t.bank)}</span> → <span className={`badge badge--green`}>{bankLabel(normalizeBank(t.toBank || ''))}</span></> : <span className={`badge badge--${normalizeBank(t.bank) === 'mono' ? 'black' : 'green'}`}>{bankLabel(normalizeBank(t.bank) || t.bank)}</span>}</td>
+                <td data-label="Категорія">{t.type === 'transfer' ? 'Конвертація' : (t.category || '—')}</td>
+                <td data-label="Опис">{t.description || '—'}</td>
+                <td data-label="Дата"><span className="week-date"><span className="week-dot"></span>{formatDate(t.date || t.plannedDate)}</span></td>
+                <td data-label="Дії">
                   <div className="actions-cell">
                     {t.type !== 'transfer' && <button className="btn-icon btn-icon--edit" title="Редагувати" onClick={() => { setEditTx(t); setFormOpen(true); }}><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" strokeWidth="2"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" strokeWidth="2"/></svg></button>}
                     <button className="btn-icon btn-icon--danger" title="Видалити" onClick={() => handleDelete(t.id)}><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="2"/><path d="M19 6l-1 14H6L5 6" stroke="currentColor" strokeWidth="2"/><path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="2"/><path d="M9 6V4h6v2" stroke="currentColor" strokeWidth="2"/></svg></button>

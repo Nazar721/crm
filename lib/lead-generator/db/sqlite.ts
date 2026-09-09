@@ -1,10 +1,9 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
-import type { Lead, LeadStatus, Run, RunStats, LGSettings, ProviderId } from '../types';
-import { PROVIDER_IDS } from '../types';
+import type { Lead, LeadStatus, Run, RunStats, LGSettings, ProviderId, CustomProvider } from '../types';
+import { PROVIDER_IDS, isCustomProviderId, customProviderSettingId } from '../types';
 import { resolveProviderDef, envKeyFor } from '../ai/AIRouter';
-import { DEFAULT_PROVIDERS } from '../ai/providers';
 
 const DATA_DIR = path.join(process.cwd(), 'data', 'lead-generator');
 const DB_PATH = path.join(DATA_DIR, 'leads.db');
@@ -420,11 +419,54 @@ function migrateLegacyOpenRouterKey(): void {
   }
 }
 
+export function getCustomProviders(): CustomProvider[] {
+  try {
+    const raw = getSetting('custom_providers');
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((c) => c && typeof c.id === 'string' && typeof c.baseUrl === 'string')
+      .map((c) => ({
+        id: String(c.id),
+        label: String(c.label || 'Custom'),
+        baseUrl: String(c.baseUrl),
+        apiKey: String(c.apiKey || ''),
+        defaultModel: String(c.defaultModel || ''),
+      }));
+  } catch {
+    return [];
+  }
+}
+
+function saveCustomProviders(list: CustomProvider[]): void {
+  setSetting('custom_providers', JSON.stringify(list));
+}
+
+export function upsertCustomProvider(cp: CustomProvider): CustomProvider[] {
+  const list = getCustomProviders();
+  const idx = list.findIndex((c) => c.id === cp.id);
+  if (idx >= 0) {
+    // keep existing key if new one empty
+    list[idx] = { ...cp, apiKey: cp.apiKey || list[idx].apiKey };
+  } else {
+    list.push(cp);
+  }
+  saveCustomProviders(list);
+  return getCustomProviders();
+}
+
+export function deleteCustomProvider(id: string): CustomProvider[] {
+  saveCustomProviders(getCustomProviders().filter((c) => c.id !== id));
+  return getCustomProviders();
+}
+
 export function getLGSettings(): LGSettings {
   migrateLegacyOpenRouterKey();
   const providerRaw = getSetting('provider');
-  const provider: ProviderId =
-    providerRaw && PROVIDER_IDS.includes(providerRaw as ProviderId) ? (providerRaw as ProviderId) : 'openrouter';
+  const provider =
+    providerRaw && (PROVIDER_IDS.includes(providerRaw as ProviderId) || isCustomProviderId(providerRaw))
+      ? providerRaw
+      : 'openrouter';
 
   const keys = {} as Record<ProviderId, string>;
   for (const id of PROVIDER_IDS) {
@@ -432,10 +474,16 @@ export function getLGSettings(): LGSettings {
     keys[id] = stored || envKeyFor(resolveProviderDef(id)) || '';
   }
 
+  const customProviders = getCustomProviders();
+  const activeCustom = isCustomProviderId(provider)
+    ? customProviders.find((c) => customProviderSettingId(c.id) === provider)
+    : undefined;
+
   return {
     provider,
-    model: getSetting('model') || DEFAULT_PROVIDERS[provider],
+    model: getSetting('model') || activeCustom?.defaultModel || 'meta-llama/llama-4-maverick:free',
     keys,
+    customProviders,
   };
 }
 

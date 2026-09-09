@@ -78,13 +78,13 @@ export default function SavingsPage() {
             {!filtered.length ? <tr className="empty-row"><td colSpan={7}><EmptyState message="Немає відкладень" hint="Додайте ціль і суму на рахунку" /></td></tr> :
             filtered.map(s => (
               <tr key={s.id}>
-                <td>{s.name || '—'}</td>
-                <td><BankBadge bankId={s.bank} /></td>
-                <td style={{ color: 'var(--accent-green)', fontWeight: 600 }}>{formatMoney(s.amount)}</td>
-                <td>{formatMoney(s.goal)}</td>
-                <td><ProgressBar value={savingsProgress(s.amount, s.goal)} /></td>
-                <td>{formatDate(s.date)}</td>
-                <td>
+                <td data-label="Ціль">{s.name || '—'}</td>
+                <td data-label="Банк"><BankBadge bankId={s.bank} /></td>
+                <td data-label="Наразі" style={{ color: 'var(--accent-green)', fontWeight: 600 }}>{formatMoney(s.amount)}</td>
+                <td data-label="Ціль сума">{formatMoney(s.goal)}</td>
+                <td data-label="Прогрес"><ProgressBar value={savingsProgress(s.amount, s.goal)} /></td>
+                <td data-label="Дата">{formatDate(s.date)}</td>
+                <td data-label="Дії">
                   <div className="actions-cell">
                     <button className="btn-icon btn-icon--edit" title="Редагувати" onClick={() => { setEditSaving(s); setFormOpen(true); }}><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" strokeWidth="2"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" strokeWidth="2"/></svg></button>
                     <button className="btn-icon btn-icon--danger" title="Видалити" onClick={() => handleDelete(s.id)}><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="2"/><path d="M19 6l-1 14H6L5 6" stroke="currentColor" strokeWidth="2"/><path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="2"/><path d="M9 6V4h6v2" stroke="currentColor" strokeWidth="2"/></svg></button>

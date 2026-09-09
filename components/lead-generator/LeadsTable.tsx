@@ -64,16 +64,16 @@ export default function LeadsTable({
           <tbody>
             {leads.map((lead) => (
               <tr key={lead.id} onClick={() => onSelect(lead)}>
-                <td className="lg-company" title={lead.companyName}>
+                <td className="lg-company" title={lead.companyName} data-label="Компанія">
                   {lead.companyName}
                 </td>
-                <td>{lead.domain}</td>
-                <td>{lead.emails[0] || '—'}</td>
-                <td>{lead.phones[0] || '—'}</td>
-                <td>
+                <td data-label="Домен">{lead.domain}</td>
+                <td data-label="Email">{lead.emails[0] || '—'}</td>
+                <td data-label="Телефон">{lead.phones[0] || '—'}</td>
+                <td data-label="Скор">
                   <ScorePill score={lead.leadScore} />
                 </td>
-                <td onClick={stopPropagation}>
+                <td data-label="Статус" onClick={stopPropagation}>
                   <select
                     className={`lg-select lg-status-select lg-badge lg-badge--${lead.status}`}
                     value={lead.status}

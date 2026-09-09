@@ -351,22 +351,22 @@ export default function ProjectsPage() {
                 const dl = deadlineInfo(p);
                 return (
                   <tr key={p.id}>
-                    <td className="cell-name"><strong>{p.name}</strong></td>
-                    <td><TypeBadge type={p.type} /></td>
-                    <td>{client?.name || p.clientName || '—'}</td>
-                    <td>{formatDate(projectStartDate(p))}</td>
-                    <td style={{ color: dl.color }}>{dl.text}</td>
-                    <td>{formatMoney(c.budget)}</td>
-                    <td>{p.bank ? <BankBadge bankId={p.bank} /> : <span style={{ color: 'var(--text-secondary)' }}>—</span>}</td>
-                    <td style={{ color: 'var(--accent-orange)' }}>{formatMoney(c.clientDebt)}</td>
-                    <td className="cell-nowrap">{spec?.name || '—'}</td>
-                    <td style={{ color: 'var(--accent-orange)' }}>{formatMoney(c.specialistDebt)}</td>
-                    <td style={{ color: 'var(--accent-green)' }}>{formatMoney(c.projectProfit)}</td>
-                    <td style={{ color: 'var(--accent-orange)' }}>{formatMoney(c.fopAmount)}</td>
-                    <td style={{ color: 'var(--accent-blue)' }}>{formatMoney(c.profitTaken)}</td>
-                    <td style={{ color: 'var(--accent-orange)' }}>{formatMoney(c.profitLeft)}</td>
-                    <td><StatusBadge status={p.status} /></td>
-                    <td>
+                    <td className="cell-name" data-label="Проєкт"><strong>{p.name}</strong></td>
+                    <td data-label="Тип"><TypeBadge type={p.type} /></td>
+                    <td data-label="Клієнт">{client?.name || p.clientName || '—'}</td>
+                    <td data-label="Старт">{formatDate(projectStartDate(p))}</td>
+                    <td data-label="Дедлайн" style={{ color: dl.color }}>{dl.text}</td>
+                    <td data-label="Бюджет">{formatMoney(c.budget)}</td>
+                    <td data-label="Банк">{p.bank ? <BankBadge bankId={p.bank} /> : <span style={{ color: 'var(--text-secondary)' }}>—</span>}</td>
+                    <td data-label="Борг клієнта" style={{ color: 'var(--accent-orange)' }}>{formatMoney(c.clientDebt)}</td>
+                    <td data-label="Фахівець" className="cell-nowrap">{spec?.name || '—'}</td>
+                    <td data-label="Борг фахівцю" style={{ color: 'var(--accent-orange)' }}>{formatMoney(c.specialistDebt)}</td>
+                    <td data-label="Прибуток" style={{ color: 'var(--accent-green)' }}>{formatMoney(c.projectProfit)}</td>
+                    <td data-label="ФОП" style={{ color: 'var(--accent-orange)' }}>{formatMoney(c.fopAmount)}</td>
+                    <td data-label="Забрав собі" style={{ color: 'var(--accent-blue)' }}>{formatMoney(c.profitTaken)}</td>
+                    <td data-label="Лишилось" style={{ color: 'var(--accent-orange)' }}>{formatMoney(c.profitLeft)}</td>
+                    <td data-label="Статус"><StatusBadge status={p.status} /></td>
+                    <td data-label="Дії">
                       <div className="actions-cell">
                         <button className="btn-icon btn-icon--green" title="Завершити" onClick={() => handleComplete(p.id)}><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><polyline points="20 6 9 17 4 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg></button>
                         <button className="btn-icon" title="Редагувати" onClick={() => { setEditProject(p); setFormOpen(true); }}><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" strokeWidth="2"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" strokeWidth="2"/></svg></button>
@@ -403,17 +403,17 @@ export default function ProjectsPage() {
                   const isBiggest = completedSummary.biggest?.id === p.id && completed.length > 1;
                   return (
                     <tr key={p.id}>
-                      <td><div className="cell-name-wrap"><strong>{p.name}</strong>{isBiggest && <span className="badge badge--gold" style={{ marginLeft: 6, fontSize: '0.7em', flexShrink: 0 }}>ТОП</span>}</div></td>
-                      <td><TypeBadge type={p.type} /></td>
-                      <td><div>{client?.name || p.clientName || '—'}</div>{p.clientTelegram && <div className="cell-secondary">{p.clientTelegram}</div>}</td>
-                      <td className="cell-nowrap">{formatDate(projectStartDate(p))}</td>
-                      <td className="cell-nowrap">{formatDate(projectEndDate(p))}</td>
-                      <td className="cell-nowrap">{(p as any).days ?? '—'} дн.</td>
-                      <td className="cell-money">{formatMoney(c.budget)}</td>
-                      <td className="cell-money">{formatMoney(c.fopAmount)}</td>
-                      <td><div className="cell-nowrap">{spec?.name || '—'}</div><div className="cell-secondary cell-nowrap">{formatMoney(c.specialistCost)}</div></td>
-                      <td className="cell-money" style={{ color: 'var(--accent-green)' }}>{formatMoney(c.myIncome)}</td>
-                      <td>
+                      <td data-label="Проєкт"><div className="cell-name-wrap"><strong>{p.name}</strong>{isBiggest && <span className="badge badge--gold" style={{ marginLeft: 6, fontSize: '0.7em', flexShrink: 0 }}>ТОП</span>}</div></td>
+                      <td data-label="Тип"><TypeBadge type={p.type} /></td>
+                      <td data-label="Клієнт"><div>{client?.name || p.clientName || '—'}</div>{p.clientTelegram && <div className="cell-secondary">{p.clientTelegram}</div>}</td>
+                      <td data-label="Старт" className="cell-nowrap">{formatDate(projectStartDate(p))}</td>
+                      <td data-label="Завершено" className="cell-nowrap">{formatDate(projectEndDate(p))}</td>
+                      <td data-label="Днів" className="cell-nowrap">{(p as any).days ?? '—'} дн.</td>
+                      <td data-label="Бюджет" className="cell-money">{formatMoney(c.budget)}</td>
+                      <td data-label="ФОП" className="cell-money">{formatMoney(c.fopAmount)}</td>
+                      <td data-label="Фахівець"><div className="cell-nowrap">{spec?.name || '—'}</div><div className="cell-secondary cell-nowrap">{formatMoney(c.specialistCost)}</div></td>
+                      <td data-label="Мій дохід" className="cell-money" style={{ color: 'var(--accent-green)' }}>{formatMoney(c.myIncome)}</td>
+                      <td data-label="Дії">
                         <div className="actions-cell">
                           <button className="btn-icon" title="Редагувати" onClick={() => { setEditProject(p); setFormOpen(true); }}><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" strokeWidth="2"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" strokeWidth="2"/></svg></button>
                           <button className="btn-icon btn-icon--danger" title="Видалити" onClick={() => handleDelete(p.id, true)}><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="2"/><path d="M19 6l-1 14H6L5 6" stroke="currentColor" strokeWidth="2"/><path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="2"/><path d="M9 6V4h6v2" stroke="currentColor" strokeWidth="2"/></svg></button>

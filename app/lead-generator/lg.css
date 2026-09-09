@@ -114,6 +114,10 @@
   color: var(--accent-green);
 }
 
+.lg-custom-form {
+  margin-bottom: 4px;
+}
+
 .lg-stats-columns {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
@@ -182,6 +186,41 @@
 .lg-textarea:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+@media (max-width: 768px) {
+  .lg-input,
+  .lg-select,
+  .lg-textarea {
+    font-size: 16px;
+    min-height: 44px;
+  }
+
+  .lg-btn,
+  .lg-tab {
+    min-height: 44px;
+  }
+
+  .lg-modal-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .lg-modal {
+    max-width: 100%;
+    max-height: 92dvh;
+    border-radius: 22px 22px 0 0;
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+    animation: sheetUp 0.34s cubic-bezier(0.22, 1, 0.36, 1) both;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .lg-modal-header { padding: 14px 20px 0; }
+  .lg-modal-body { padding: 14px 20px calc(20px + env(safe-area-inset-bottom)); }
+  .lg-modal-close { font-size: 1.9rem; padding: 8px; margin: -8px; }
+  .lg-score-row-label { width: 108px; font-size: 0.78rem; }
 }
 
 .lg-hint {
@@ -454,6 +493,46 @@
 .lg-score-pill--mid { background: var(--accent-orange-dim); color: var(--accent-orange); }
 .lg-score-pill--low { background: var(--danger-dim); color: var(--danger); }
 
+/* ---------- leads table -> cards on mobile ---------- */
+@media (max-width: 640px) {
+  .lg-table-scroll { overflow: visible; max-height: none; }
+  .lg-table { display: block; }
+  .lg-table thead { display: none; }
+  .lg-table tbody { display: flex; flex-direction: column; gap: 12px; }
+  .lg-table tbody tr {
+    display: block;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 14px 14px 10px;
+  }
+  .lg-table tbody tr:active { background: var(--bg-card-hover); }
+  .lg-table tbody tr td {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    padding: 7px 0;
+    border-bottom: none;
+  }
+  .lg-table tbody tr td + td { border-top: 0.5px solid rgba(148, 163, 184, 0.08); }
+  .lg-table tbody tr td::before {
+    content: attr(data-label);
+    font-size: 0.64rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+    margin-bottom: 3px;
+  }
+  .lg-table tbody tr td:first-child {
+    font-size: 1.02rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    padding-bottom: 10px;
+  }
+  .lg-company { max-width: none; white-space: normal; overflow: visible; text-overflow: clip; }
+}
+
 /* ---------- modal ---------- */
 .lg-modal-overlay {
   position: fixed;
@@ -587,6 +666,29 @@
   background: rgba(148, 163, 184, 0.1);
   color: var(--text-secondary);
   border: 1px solid var(--border);
+}
+
+.lg-chip--clickable {
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.lg-chip--clickable:hover:not(:disabled) {
+  border-color: var(--border-focus);
+  color: var(--accent-blue);
+  background: var(--accent-blue-dim);
+}
+
+.lg-chip--clickable:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.lg-chip--active {
+  border-color: var(--border-focus);
+  color: var(--accent-blue);
+  background: var(--accent-blue-dim);
 }
 
 .lg-chip-row {

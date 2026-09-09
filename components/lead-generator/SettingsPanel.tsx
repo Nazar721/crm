@@ -1,13 +1,14 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { ProviderId } from '@/lib/lead-generator/types';
 
 interface ProviderMeta {
-  id: ProviderId;
+  id: string;
   label: string;
   keyHint: string;
   defaultModel: string;
+  isCustom?: boolean;
+  customId?: string | null;
 }
 
 interface KeyStatus {
@@ -16,15 +17,26 @@ interface KeyStatus {
   fromEnv: boolean;
 }
 
+interface CustomProviderInfo {
+  id: string;
+  label: string;
+  baseUrl: string;
+  defaultModel: string;
+  maskedKey: string;
+  hasKey: boolean;
+  settingId: string;
+}
+
 interface SettingsResponse {
-  provider: ProviderId;
+  provider: string;
   model: string;
   providers: ProviderMeta[];
-  keys: Record<ProviderId, KeyStatus>;
+  keys: Record<string, KeyStatus>;
+  customs: CustomProviderInfo[];
 }
 
 interface ModelsResponse {
-  provider: ProviderId;
+  provider: string;
   hasApiKey: boolean;
   models: { id: string; label?: string }[];
   defaultModel: string;
@@ -35,13 +47,15 @@ interface ModelsResponse {
 
 export default function SettingsPanel({ onSaved }: { onSaved?: () => void }) {
   const [settings, setSettings] = useState<SettingsResponse | null>(null);
-  const [selectedProvider, setSelectedProvider] = useState<ProviderId | null>(null);
+  const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [models, setModels] = useState<ModelsResponse | null>(null);
   const [loadingModels, setLoadingModels] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const [modelSearch, setModelSearch] = useState('');
+  const [customFormOpen, setCustomFormOpen] = useState(false);
+  const [customForm, setCustomForm] = useState({ label: '', baseUrl: '', apiKey: '', defaultModel: '' });
 
   const loadSettings = useCallback(async () => {
     try {
@@ -62,7 +76,10 @@ export default function SettingsPanel({ onSaved }: { onSaved?: () => void }) {
 
   const activeProvider = selectedProvider ?? settings?.provider ?? 'openrouter';
   const activeMeta = settings?.providers.find((p) => p.id === activeProvider);
-  const activeKey = settings?.keys[activeProvider];
+  const activeCustom = settings?.customs.find((c) => c.settingId === activeProvider);
+  const activeKey = activeCustom
+    ? { masked: activeCustom.maskedKey, hasKey: activeCustom.hasKey, fromEnv: false }
+    : settings?.keys[activeProvider];
 
   const filteredModels = useMemo(() => {
     const list = models?.models ?? [];
@@ -74,12 +91,12 @@ export default function SettingsPanel({ onSaved }: { onSaved?: () => void }) {
   }, [models, modelSearch]);
 
   const loadModels = useCallback(
-    async (provider: ProviderId, refresh = false) => {
+    async (provider: string, refresh = false) => {
       setLoadingModels(true);
       setModels(null);
       setModelSearch('');
       try {
-        const res = await fetch(`/api/lead-generator/models?provider=${provider}${refresh ? '&refresh=1' : ''}`);
+        const res = await fetch(`/api/lead-generator/models?provider=${encodeURIComponent(provider)}${refresh ? '&refresh=1' : ''}`);
         if (res.ok) setModels(await res.json());
       } catch {
         // ignore
@@ -128,11 +145,28 @@ export default function SettingsPanel({ onSaved }: { onSaved?: () => void }) {
     await save({ provider: activeProvider, model, keyProvider: activeProvider }, `Модель: ${model}`);
   };
 
-  const switchProvider = async (provider: ProviderId) => {
+  const switchProvider = async (provider: string) => {
     setSelectedProvider(provider);
     const meta = settings?.providers.find((p) => p.id === provider);
-    if (meta) await save({ provider, model: meta.defaultModel }, `Провайдер: ${meta.label}`);
+    if (meta) await save({ provider, model: meta.defaultModel || undefined }, `Провайдер: ${meta.label}`);
     loadModels(provider);
+  };
+
+  const saveCustomProvider = async () => {
+    if (!customForm.label.trim() || !customForm.baseUrl.trim()) {
+      setMessage({ kind: 'err', text: 'Заповніть назву та Base URL' });
+      return;
+    }
+    await save(
+      { customProvider: customForm },
+      `Провайдер «${customForm.label}» збережено`
+    );
+    setCustomForm({ label: '', baseUrl: '', apiKey: '', defaultModel: '' });
+    setCustomFormOpen(false);
+  };
+
+  const deleteCustom = async (customId: string) => {
+    await save({ deleteCustomId: customId }, 'Кастомного провайдера видалено');
   };
 
   if (!settings) return <div className="lg-hint">Завантаження налаштувань…</div>;
@@ -143,19 +177,98 @@ export default function SettingsPanel({ onSaved }: { onSaved?: () => void }) {
         <label className="lg-label">AI-провайдер</label>
         <div className="lg-chip-row">
           {settings.providers.map((p) => (
-            <button
-              key={p.id}
-              className={`lg-provider-chip${p.id === activeProvider ? ' lg-provider-chip--active' : ''}${settings.keys[p.id]?.hasKey ? ' lg-provider-chip--haskey' : ''}`}
-              onClick={() => switchProvider(p.id)}
-              disabled={saving}
-              title={settings.keys[p.id]?.hasKey ? 'Ключ налаштований' : 'Без ключа'}
-            >
-              {p.label}
-              {settings.keys[p.id]?.hasKey && <span className="lg-provider-dot" />}
-            </button>
+            <span key={p.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <button
+                className={`lg-provider-chip${p.id === activeProvider ? ' lg-provider-chip--active' : ''}${(p.isCustom ? settings.customs.find((c) => c.settingId === p.id)?.hasKey : settings.keys[p.id]?.hasKey) ? ' lg-provider-chip--haskey' : ''}`}
+                onClick={() => switchProvider(p.id)}
+                disabled={saving}
+                title={p.isCustom ? `Кастомний: ${p.id}` : settings.keys[p.id]?.hasKey ? 'Ключ налаштований' : 'Без ключа'}
+              >
+                {p.label}
+                {p.isCustom
+                  ? settings.customs.find((c) => c.settingId === p.id)?.hasKey && <span className="lg-provider-dot" />
+                  : settings.keys[p.id]?.hasKey && <span className="lg-provider-dot" />}
+              </button>
+              {p.isCustom && p.customId && (
+                <button
+                  className="lg-copy-btn"
+                  title="Видалити кастомного провайдера"
+                  onClick={() => deleteCustom(p.customId!)}
+                  disabled={saving}
+                >
+                  ✕
+                </button>
+              )}
+            </span>
           ))}
+          <button
+            className={`lg-provider-chip${customFormOpen ? ' lg-provider-chip--active' : ''}`}
+            onClick={() => setCustomFormOpen(!customFormOpen)}
+            disabled={saving}
+            title="Додати власний OpenAI-сумісний провайдер"
+          >
+            + Кастомний
+          </button>
         </div>
       </div>
+
+      {customFormOpen && (
+        <div className="lg-card lg-custom-form">
+          <h3 className="lg-section-title">Новий кастомний провайдер (OpenAI-сумісний API)</h3>
+          <div className="lg-settings-grid">
+            <div className="lg-field">
+              <label className="lg-label">Назва *</label>
+              <input
+                className="lg-input"
+                type="text"
+                value={customForm.label}
+                onChange={(e) => setCustomForm({ ...customForm, label: e.target.value })}
+                placeholder="напр. Ollama Local, Together AI, OpenAI-проксі"
+              />
+            </div>
+            <div className="lg-field">
+              <label className="lg-label">Base URL *</label>
+              <input
+                className="lg-input"
+                type="text"
+                value={customForm.baseUrl}
+                onChange={(e) => setCustomForm({ ...customForm, baseUrl: e.target.value })}
+                placeholder="напр. http://localhost:11434/v1"
+              />
+            </div>
+            <div className="lg-field">
+              <label className="lg-label">API-ключ (опційно)</label>
+              <input
+                className="lg-input"
+                type="password"
+                value={customForm.apiKey}
+                onChange={(e) => setCustomForm({ ...customForm, apiKey: e.target.value })}
+                placeholder="залиште порожнім для локальних серверів (Ollama)"
+                autoComplete="off"
+              />
+            </div>
+            <div className="lg-field">
+              <label className="lg-label">Модель за замовчуванням</label>
+              <input
+                className="lg-input"
+                type="text"
+                value={customForm.defaultModel}
+                onChange={(e) => setCustomForm({ ...customForm, defaultModel: e.target.value })}
+                placeholder="напр. llama3.1 — список моделей підтягнеться після збереження"
+              />
+            </div>
+          </div>
+          <div className="lg-actions" style={{ marginTop: 12 }}>
+            <button className="btn btn-primary" onClick={saveCustomProvider} disabled={saving}>
+              Зберегти провайдера
+            </button>
+            <button className="btn btn-ghost" onClick={() => setCustomFormOpen(false)} disabled={saving}>
+              Скасувати
+            </button>
+            <span className="lg-hint">Підходить будь-який API з /chat/completions: Ollama, LM Studio, vLLM, Together, DeepSeek…</span>
+          </div>
+        </div>
+      )}
 
       <div className="lg-settings-grid">
         <div className="lg-field">
@@ -195,8 +308,11 @@ export default function SettingsPanel({ onSaved }: { onSaved?: () => void }) {
             )}
           </div>
           <span className="lg-hint">
-            Ключі зберігаються локально в БД Lead Generator. Для {activeMeta?.label} можна також задати env-змінну{' '}
-            <code>{activeProvider.toUpperCase()}_API_KEY</code>.
+            Ключі зберігаються локально в БД Lead Generator.
+            {activeMeta && !activeMeta.isCustom && (
+              <> Для {activeMeta.label} можна також задати env-змінну <code>{String(activeMeta.id).toUpperCase()}_API_KEY</code>.</>
+            )}
+            {activeCustom && <> Кастомний провайдер: <code>{activeCustom.baseUrl}</code></>}
           </span>
         </div>
 

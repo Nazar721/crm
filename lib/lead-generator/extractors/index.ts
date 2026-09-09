@@ -2,8 +2,16 @@ import { findPhoneNumbersInText, parsePhoneNumberFromString, CountryCode } from 
 import { countryFromLocation } from '../phoneCountry';
 
 const EMAIL_REGEX = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+// NOTE: all quantifiers are tightly bounded — unbounded ones caused catastrophic
+// backtracking (RegExpStringIteratorPrototypeNext) that blocked the Node event loop
+// for minutes on large/minified pages.
 const OBFUSCATED_EMAIL_REGEX =
-  /([a-zA-Z0-9._%+-]+)\s*(?:\(|\[|\{)?\s*(?:at|@(?:собака)?)\s*(?:\)|\]|\})?\s*([a-zA-Z0-9.-]+)\s*(?:\(|\[|\{)?\s*(?:dot|\.|\(крапка\))\s*(?:\)|\]|\})?\s*([a-zA-Z]{2,})/gi;
+  /([a-zA-Z0-9._%+-]{1,64})\s*[(\[{]?\s*(?:at|@)\s*[)\]}]?\s*([a-zA-Z0-9-]{1,63}(?:\.[a-zA-Z0-9-]{1,63}){0,4})\s*[(\[{]?\s*(?:dot|\.)\s*[)\]}]?\s*([a-zA-Z]{2,12})/gi;
+
+// Hard caps: never run backtracking regexes over huge page payloads.
+const MAX_OBFUSCATED_SCAN_CHARS = 150_000;
+const MAX_PHONE_SCAN_CHARS = 60_000;
+const MAX_ADDRESS_SCAN_CHARS = 150_000;
 
 const EMAIL_BLACKLIST = [
   'example.com',
@@ -31,12 +39,16 @@ export function extractEmails(text: string): string[] {
     found.add(m.toLowerCase());
   }
 
-  const obfuscatedText = text.replace(EMAIL_REGEX, ' ');
-  for (const m of obfuscatedText.matchAll(OBFUSCATED_EMAIL_REGEX)) {
-    const [, user, host, tld] = m;
-    if (!user || !host || !tld) continue;
-    const rebuilt = `${user}@${host}.${tld}`.toLowerCase();
-    found.add(rebuilt);
+  const obfuscatedText = text.length > MAX_OBFUSCATED_SCAN_CHARS ? text.slice(0, MAX_OBFUSCATED_SCAN_CHARS) : text;
+  try {
+    for (const m of obfuscatedText.matchAll(OBFUSCATED_EMAIL_REGEX)) {
+      const [, user, host, tld] = m;
+      if (!user || !host || !tld) continue;
+      const rebuilt = `${user}@${host}.${tld}`.toLowerCase();
+      found.add(rebuilt);
+    }
+  } catch {
+    // regex safety net
   }
 
   const mailtoMatches = text.match(/mailto:([^"'?>\s]+)/gi) || [];
@@ -60,15 +72,23 @@ export function extractPhones(html: string, location = ''): string[] {
   if (!html) return [];
   const defaultCountry = (countryFromLocation(location) as CountryCode) || undefined;
 
+  // libphonenumber's regex engine can spin nearly forever on huge/minified HTML
+  // (observed: full event-loop block). Cap the analyzed text hard.
+  const text = html.length > MAX_PHONE_SCAN_CHARS ? html.slice(0, MAX_PHONE_SCAN_CHARS) : html;
+
   const phones = new Set<string>();
-  for (const found of findPhoneNumbersInText(html, defaultCountry ? { defaultCountry } : {})) {
-    if (found.number.isValid()) {
-      phones.add(found.number.format('E.164'));
+  try {
+    for (const found of findPhoneNumbersInText(text, defaultCountry ? { defaultCountry } : {})) {
+      if (found.number.isValid()) {
+        phones.add(found.number.format('E.164'));
+      }
     }
+  } catch {
+    // malformed input — fall through to tel: links below
   }
 
   // fallback: tel: protocol links that the finder may have missed
-  const telMatches = html.match(/tel:\+?[\d\s\-()]{7,}/gi) || [];
+  const telMatches = text.match(/tel:\+?[\d\s\-()]{7,}/gi) || [];
   for (const m of telMatches) {
     const raw = m.replace(/^tel:/i, '').replace(/(?!^\+)[^\d+]/g, '');
     const parsed = parsePhoneNumberFromString(raw, defaultCountry);
@@ -80,6 +100,7 @@ export function extractPhones(html: string, location = ''): string[] {
 
 export function extractAddresses(text: string): string[] {
   if (!text) return [];
+  const scan = text.length > MAX_ADDRESS_SCAN_CHARS ? text.slice(0, MAX_ADDRESS_SCAN_CHARS) : text;
   const addressPatterns = [
     /\d+\s+[A-Za-z\s]+(?:Street|St\.?|Avenue|Ave\.?|Boulevard|Blvd\.?|Road|Rd\.?|Drive|Dr\.?|Lane|Ln\.?|Way|Court|Ct\.?|Place|Pl\.?)[^,\n]*(?:,\s*[A-Za-z\s]+){0,2}/gi,
     /(?:street|st\.?|avenue|ave\.?|boulevard|blvd\.?|road|rd\.?|drive|dr\.?|lane|ln\.?|way|court|ct\.?|place|pl\.?)[\s,]+[^,.\n]+(?:,\s*[^,.\n]+){0,3}/gi,
@@ -88,7 +109,7 @@ export function extractAddresses(text: string): string[] {
 
   const addresses: string[] = [];
   for (const pattern of addressPatterns) {
-    const matches = text.match(pattern) || [];
+    const matches = scan.match(pattern) || [];
     addresses.push(...matches.map((a) => a.replace(/\s+/g, ' ').trim()));
   }
   return Array.from(new Set(addresses))

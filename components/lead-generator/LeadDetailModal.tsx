@@ -46,18 +46,13 @@ function ScoreRow({ label, value }: { label: string; value: number }) {
 export default function LeadDetailModal({ lead, onClose, onStatusChange, onNotesChange }: Props) {
   const [notes, setNotes] = useState(lead.notes || '');
 
-  let analysisPretty = lead.aiAnalysis;
-  try {
-    analysisPretty = JSON.stringify(JSON.parse(lead.aiAnalysis), null, 2);
-  } catch {
-    // raw
-  }
-
   const analysis: {
     problems?: string[];
     potentialValue?: string;
     recommendation?: string;
     reason?: string;
+    summary?: string;
+    error?: string;
   } = (() => {
     try {
       return JSON.parse(lead.aiAnalysis);
@@ -65,6 +60,8 @@ export default function LeadDetailModal({ lead, onClose, onStatusChange, onNotes
       return {};
     }
   })();
+
+  const aiError = analysis.error || (lead.businessSummary === 'AI-аналіз не вдався' ? 'Спробуйте запустити аналіз ще раз або обрати іншу модель у «Налаштуваннях».' : '');
 
   return (
     <div className="lg-modal-overlay" onClick={onClose}>
@@ -190,9 +187,9 @@ export default function LeadDetailModal({ lead, onClose, onStatusChange, onNotes
           <div className="lg-section">
             <h3 className="lg-section-title">Ознаки сайту</h3>
             <div className="lg-chip-row">
-              {lead.hasContactForm && <span className="lg-chip">Contact Form</span>}
-              {lead.hasBooking && <span className="lg-chip">Booking</span>}
-              {lead.hasCTA && <span className="lg-chip">CTA</span>}
+              {lead.hasContactForm && <span className="lg-chip">Форма зв'язку</span>}
+              {lead.hasBooking && <span className="lg-chip">Онлайн-запис</span>}
+              {lead.hasCTA && <span className="lg-chip">CTA-кнопка</span>}
               {lead.technologies.map((tech) => (
                 <span key={tech} className="lg-chip">
                   {tech}
@@ -205,10 +202,11 @@ export default function LeadDetailModal({ lead, onClose, onStatusChange, onNotes
             <div className="lg-section">
               <h3 className="lg-section-title">Опис бізнесу (AI)</h3>
               <div className="lg-summary-box">{lead.businessSummary}</div>
+              {aiError && <div className="lg-alert lg-alert--warn" style={{ marginTop: 8 }}>⚠ {aiError}</div>}
             </div>
           )}
 
-          {analysisPretty && analysisPretty !== '{}' && (
+          {lead.aiAnalysis && !aiError && (
             <div className="lg-section">
               <h3 className="lg-section-title">AI-аналіз</h3>
               {analysis.reason && <div className="lg-summary-box" style={{ marginBottom: 10 }}>{analysis.reason}</div>}
@@ -233,7 +231,7 @@ export default function LeadDetailModal({ lead, onClose, onStatusChange, onNotes
                 </div>
               )}
               {!analysis.reason && !analysis.problems && !analysis.potentialValue && !analysis.recommendation && (
-                <pre className="lg-pre">{analysisPretty}</pre>
+                <pre className="lg-pre">{lead.aiAnalysis}</pre>
               )}
             </div>
           )}

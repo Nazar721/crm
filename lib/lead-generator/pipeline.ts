@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { PipelineConfig, Lead, PipelineEvent, Run, ProviderId, PROVIDER_IDS } from './types';
+import { PipelineConfig, Lead, PipelineEvent, Run, ProviderId, PROVIDER_IDS, isCustomProviderId, customProviderSettingId } from './types';
 import { createRun, finishRun, updateRunProgress, getLGSettings, upsertLead, saveVerifiedEmails } from './db/sqlite';
 import { searchMultipleQueries } from './search';
 import { ScannerPool, scanMultipleWebsites } from './scanner/playwright';
@@ -70,16 +70,20 @@ export async function runPipeline(
   }
 
   const settings = getLGSettings();
-  const provider = parsed.data.provider && PROVIDER_IDS.includes(parsed.data.provider as ProviderId)
-    ? (parsed.data.provider as ProviderId)
-    : settings.provider;
-  const apiKey = settings.keys[provider] || '';
+  const provider =
+    parsed.data.provider &&
+    (PROVIDER_IDS.includes(parsed.data.provider as ProviderId) || isCustomProviderId(parsed.data.provider))
+      ? parsed.data.provider
+      : settings.provider;
+  const apiKey = isCustomProviderId(provider)
+    ? settings.customProviders.find((c) => customProviderSettingId(c.id) === provider)?.apiKey || ''
+    : settings.keys[provider as ProviderId] || '';
   const config: PipelineConfig = {
     ...parsed.data,
     provider,
     model: parsed.data.model || settings.model,
   };
-  const aiSettings = { provider, apiKey, model: config.model };
+  const aiSettings = { provider, apiKey, model: config.model, customProviders: settings.customProviders };
 
   const abortController = new AbortController();
   onAbortController?.(abortController);
@@ -194,7 +198,7 @@ export async function runPipeline(
       const scraped = availableWebsites[i];
       try {
         const ruleScores = calculateRuleBasedScore(scraped, config);
-        const aiData = await analyzeWithAI(scraped, config, aiSettings.apiKey, signal);
+        const aiData = await analyzeWithAI(scraped, config, aiSettings.apiKey, signal, aiSettings.customProviders);
         const scores = { ...ruleScores, aiScore: aiData.aiScore };
         const leadData = scrapedToLead(scraped, config, scores, aiData, queries);
         const savedLead = upsertLead({ ...leadData, runId: run.id });

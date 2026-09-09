@@ -135,7 +135,7 @@ export default function ClientsPage() {
             {!filtered.length ? <tr className="empty-row"><td colSpan={9}><EmptyState message="Немає клієнтів" hint="Клієнти додаються автоматично при створенні проєкту" /></td></tr> :
             filtered.map(({ client: c, stats: s }) => (
                 <tr key={c.id}>
-                  <td>
+                  <td data-label="Клієнт">
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <strong>{c.name}</strong>
                       <button
@@ -148,14 +148,14 @@ export default function ClientsPage() {
                       </button>
                     </div>
                   </td>
-                  <td>{c.telegram ? <a href={`https://t.me/${c.telegram.replace('@', '')}`} target="_blank" rel="noopener noreferrer" className="link">{c.telegram}</a> : '—'}</td>
-                  <td><SourceBadge source={c.source || 'Інше'} /></td>
-                  <td>{s.count}</td>
-                  <td>{formatMoney(s.totalBudget)}</td>
-                  <td style={{ color: 'var(--accent-green)' }}>{formatMoney(s.totalProfit)}</td>
-                  <td>{formatMoney(s.totalPrepayment)}</td>
-                  <td style={{ color: s.clientDebt > 0 ? 'var(--accent-orange)' : 'var(--text-secondary)' }}>{formatMoney(s.clientDebt)}</td>
-                  <td>
+                  <td data-label="Telegram">{c.telegram ? <a href={`https://t.me/${c.telegram.replace('@', '')}`} target="_blank" rel="noopener noreferrer" className="link">{c.telegram}</a> : '—'}</td>
+                  <td data-label="Джерело"><SourceBadge source={c.source || 'Інше'} /></td>
+                  <td data-label="Проєктів">{s.count}</td>
+                  <td data-label="Оборот">{formatMoney(s.totalBudget)}</td>
+                  <td data-label="Прибуток" style={{ color: 'var(--accent-green)' }}>{formatMoney(s.totalProfit)}</td>
+                  <td data-label="Передоплати">{formatMoney(s.totalPrepayment)}</td>
+                  <td data-label="Борг" style={{ color: s.clientDebt > 0 ? 'var(--accent-orange)' : 'var(--text-secondary)' }}>{formatMoney(s.clientDebt)}</td>
+                  <td data-label="Дії">
                     <div className="actions-cell">
                       <button className="btn-icon btn-icon--edit" title="Редагувати" onClick={() => { setEditClient(c); setFormOpen(true); }}><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" strokeWidth="2"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" strokeWidth="2"/></svg></button>
                       <button className="btn-icon btn-icon--danger" title="Видалити" onClick={() => handleDelete(c.id)}><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="2"/><path d="M19 6l-1 14H6L5 6" stroke="currentColor" strokeWidth="2"/><path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="2"/><path d="M9 6V4h6v2" stroke="currentColor" strokeWidth="2"/></svg></button>

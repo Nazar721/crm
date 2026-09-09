@@ -1,23 +1,12 @@
-import { AIProvider, GenerateOptions, ProviderModel } from './providers';
-import { PROVIDERS } from './providers';
-import { ProviderId } from '../types';
+import { AIProvider, GenerateOptions, ProviderModel, ProviderDefinition } from './providers';
+import { ProviderError } from './ProviderError';
 
 const TIMEOUT_MS = 60000;
 const MAX_RETRIES = 2;
 
-export class ProviderError extends Error {
-  status: number;
-  constructor(status: number, message: string) {
-    super(message);
-    this.status = status;
-    this.name = 'ProviderError';
-  }
-}
+type ChatStyle = ProviderDefinition['chatStyle'];
 
-type ChatStyle = 'openai' | 'anthropic' | 'gemini';
-
-function chatRequest(providerId: ProviderId, prompt: string, options: GenerateOptions) {
-  const def = PROVIDERS[providerId];
+function chatRequest(def: ProviderDefinition, prompt: string, options: GenerateOptions) {
   const model = options.model || '';
   const apiKey = options.apiKey!;
 
@@ -33,18 +22,19 @@ function chatRequest(providerId: ProviderId, prompt: string, options: GenerateOp
         model,
         max_tokens: 1024,
         temperature: 0.3,
-        ...(options.jsonMode ? {} : {}),
         messages: [{ role: 'user', content: prompt }],
       },
     };
   }
 
-  // OpenAI-compatible (openrouter, openai, gemini-openai-compat, groq, mistral)
+  // OpenAI-compatible (openrouter, openai, gemini-openai-compat, groq, mistral, custom)
   const headers: Record<string, string> = {
-    Authorization: `Bearer ${apiKey}`,
     'Content-Type': 'application/json',
   };
-  if (providerId === 'openrouter') {
+  if (apiKey) {
+    headers.Authorization = `Bearer ${apiKey}`;
+  }
+  if (def.id === 'openrouter') {
     headers['HTTP-Referer'] = 'http://localhost:3000';
     headers['X-Title'] = 'WebCRM Lead Generator';
   }
@@ -55,16 +45,15 @@ function chatRequest(providerId: ProviderId, prompt: string, options: GenerateOp
     temperature: 0.3,
     max_tokens: 1024,
   };
-  if (options.jsonMode && providerId !== 'gemini') {
-    // Gemini OpenAI-compat rejects response_format on some models
+  if (options.jsonMode && def.chatStyle === 'openai') {
     body.response_format = { type: 'json_object' };
   }
 
   return { url: `${def.baseUrl}/chat/completions`, headers, body };
 }
 
-function extractText(providerId: ProviderId, data: Record<string, unknown>): string {
-  if (PROVIDERS[providerId].chatStyle === 'anthropic') {
+function extractText(chatStyle: ChatStyle, data: Record<string, unknown>): string {
+  if (chatStyle === 'anthropic') {
     const content = data.content as Array<{ type: string; text?: string }> | undefined;
     return content?.map((c) => c.text || '').join('') || '';
   }
@@ -73,26 +62,38 @@ function extractText(providerId: ProviderId, data: Record<string, unknown>): str
 }
 
 export class MultiProvider implements AIProvider {
-  private providerId: ProviderId;
+  private def: ProviderDefinition;
 
-  constructor(providerId: ProviderId) {
-    this.providerId = providerId;
+  constructor(def: ProviderDefinition) {
+    this.def = def;
   }
 
   getName(): string {
-    return PROVIDERS[this.providerId].label;
+    return this.def.label;
   }
 
   async isAvailable(apiKey?: string): Promise<boolean> {
-    const key = apiKey || process.env[PROVIDERS[this.providerId].envKey] || '';
-    return Boolean(key);
+    if (this.def.envKey) {
+      const key = apiKey || process.env[this.def.envKey] || '';
+      return Boolean(key);
+    }
+    // custom providers: key optional (local servers like Ollama work keyless)
+    return Boolean(apiKey || this.def.baseUrl);
   }
 
   async listModels(apiKey: string, signal?: AbortSignal): Promise<ProviderModel[]> {
-    const def = PROVIDERS[this.providerId];
     const timeoutSignal = AbortSignal.timeout(15000);
-    const res = await fetch(`${def.baseUrl}${def.modelsPath}`, {
-      headers: this.listModelsHeaders(apiKey),
+    const headers: Record<string, string> = {};
+    if (apiKey) {
+      if (this.def.chatStyle === 'anthropic') {
+        headers['x-api-key'] = apiKey;
+        headers['anthropic-version'] = '2023-06-01';
+      } else {
+        headers.Authorization = `Bearer ${apiKey}`;
+      }
+    }
+    const res = await fetch(`${this.def.baseUrl}${this.def.modelsPath}`, {
+      headers,
       signal: signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal,
     });
     if (!res.ok) {
@@ -102,13 +103,6 @@ export class MultiProvider implements AIProvider {
     return this.parseModels(data);
   }
 
-  private listModelsHeaders(apiKey: string): Record<string, string> {
-    if (PROVIDERS[this.providerId].chatStyle === 'anthropic') {
-      return { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' };
-    }
-    return { Authorization: `Bearer ${apiKey}` };
-  }
-
   private parseModels(data: Record<string, unknown>): ProviderModel[] {
     const list =
       (data.data as Array<Record<string, unknown>> | undefined) ??
@@ -116,7 +110,9 @@ export class MultiProvider implements AIProvider {
       [];
     return list
       .map((m) => {
-        const id = String(m.id ?? m.name ?? '');
+        const rawId = String(m.id ?? m.name ?? '');
+        // Ollama-style entries carry "name" without base path; strip version suffix "@..."-style noise
+        const id = rawId.replace(/^models\//, '');
         return { id, label: (m.name as string | undefined) || undefined };
       })
       .filter((m) => m.id && !m.id.includes('embedding') && !m.id.includes('whisper') && !m.id.includes('tts') && !m.id.includes('image') && !m.id.includes('moderation'))
@@ -124,9 +120,9 @@ export class MultiProvider implements AIProvider {
   }
 
   async generate(prompt: string, options: GenerateOptions = {}): Promise<string> {
-    const apiKey = options.apiKey || process.env[PROVIDERS[this.providerId].envKey] || '';
+    const apiKey = options.apiKey || (this.def.envKey ? process.env[this.def.envKey] || '' : '');
     const model = options.model;
-    if (!apiKey) throw new ProviderError(401, `${this.getName()} API key not configured`);
+    if (!apiKey && this.def.envKey) throw new ProviderError(401, `${this.getName()} API key not configured`);
     if (!model) throw new ProviderError(400, 'Model is not specified');
 
     let lastError: unknown = null;
@@ -137,7 +133,7 @@ export class MultiProvider implements AIProvider {
         await this.sleep(delay, options.signal);
       }
       try {
-        const req = chatRequest(this.providerId, prompt, { ...options, model, apiKey });
+        const req = chatRequest(this.def, prompt, { ...options, model, apiKey });
         const timeoutSignal = AbortSignal.timeout(TIMEOUT_MS);
         const res = await fetch(req.url, {
           method: 'POST',
@@ -152,7 +148,7 @@ export class MultiProvider implements AIProvider {
         }
 
         const data = await res.json();
-        return extractText(this.providerId, data);
+        return extractText(this.def.chatStyle, data);
       } catch (err) {
         lastError = err;
         if (err instanceof DOMException && err.name === 'AbortError') throw err;

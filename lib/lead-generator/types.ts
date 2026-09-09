@@ -136,6 +136,24 @@ export type ProviderId = 'openrouter' | 'openai' | 'anthropic' | 'gemini' | 'gro
 
 export const PROVIDER_IDS: ProviderId[] = ['openrouter', 'openai', 'anthropic', 'gemini', 'groq', 'mistral'];
 
+export const CUSTOM_PROVIDER_PREFIX = 'custom-';
+
+export function customProviderSettingId(id: string): string {
+  return `${CUSTOM_PROVIDER_PREFIX}${id}`;
+}
+
+export function isCustomProviderId(provider: string | undefined): boolean {
+  return Boolean(provider && provider.startsWith(CUSTOM_PROVIDER_PREFIX));
+}
+
+export interface CustomProvider {
+  id: string;
+  label: string;
+  baseUrl: string;
+  apiKey: string;
+  defaultModel: string;
+}
+
 export interface ProviderInfo {
   id: ProviderId;
   label: string;
@@ -143,9 +161,10 @@ export interface ProviderInfo {
 }
 
 export interface LGSettings {
-  provider: ProviderId;
+  provider: string;
   model: string;
   keys: Record<ProviderId, string>;
+  customProviders: CustomProvider[];
 }
 
 export interface Run {

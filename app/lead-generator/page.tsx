@@ -4,7 +4,8 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import './lg.css';
 import { Lead, LeadStatus, PipelineConfig, Run, ProviderId } from '@/lib/lead-generator/types';
 import { usePipeline } from '@/hooks/lead-generator/usePipeline';
-import ConfigForm from '@/components/lead-generator/ConfigForm';
+import { useLocalStorage } from '@/hooks/useLocalStorage';
+import ConfigForm, { RecentConfig } from '@/components/lead-generator/ConfigForm';
 import ProgressPanel from '@/components/lead-generator/ProgressPanel';
 import RunsList from '@/components/lead-generator/RunsList';
 import LeadsTable from '@/components/lead-generator/LeadsTable';
@@ -20,6 +21,8 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'stats', label: 'Статистика' },
   { id: 'settings', label: 'Налаштування' },
 ];
+
+const RECENTS_LIMIT = 10;
 
 const DEFAULT_CONFIG: PipelineConfig = {
   niche: '',
@@ -59,8 +62,9 @@ function TabButton({
 }
 
 export default function LeadGeneratorPage() {
-  const [tab, setTab] = useState<Tab>('search');
+  const [tab, setTab] = useLocalStorage<Tab>('lg_active_tab', 'search');
   const [config, setConfig] = useState<PipelineConfig>(DEFAULT_CONFIG);
+  const [recents, setRecents] = useLocalStorage<RecentConfig[]>('lg_recent_configs', []);
   const [runs, setRuns] = useState<Run[]>([]);
   const [activeRunId, setActiveRunId] = useState<number | null>(null);
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -111,7 +115,26 @@ export default function LeadGeneratorPage() {
   const handleStart = () => {
     setLeads([]);
     setSelectedLead(null);
+    const { niche, location, keywords, additionalCriteria } = config;
+    if (niche.trim() && location.trim()) {
+      setRecents((prev) => {
+        const filtered = prev.filter(
+          (r) => !(r.niche.toLowerCase() === niche.trim().toLowerCase() && r.location.toLowerCase() === location.trim().toLowerCase())
+        );
+        return [{ niche: niche.trim(), location: location.trim(), keywords, additionalCriteria, usedAt: Date.now() }, ...filtered].slice(0, RECENTS_LIMIT);
+      });
+    }
     start(config);
+  };
+
+  const handleSelectRecent = (recent: RecentConfig) => {
+    setConfig((prev) => ({
+      ...prev,
+      niche: recent.niche,
+      location: recent.location,
+      keywords: recent.keywords || '',
+      additionalCriteria: recent.additionalCriteria || '',
+    }));
   };
 
   const handleStatusChange = async (lead: Lead, status: LeadStatus) => {
@@ -152,6 +175,7 @@ export default function LeadGeneratorPage() {
     setActiveRunId(runId);
     setSelectedLead(null);
     loadLeads(runId);
+    setTab('results');
   };
 
   const exportUrl = (format: 'csv' | 'json') =>
@@ -198,10 +222,10 @@ export default function LeadGeneratorPage() {
         </div>
         <div className="header-actions">
           <button className="btn btn-ghost" onClick={() => window.open(exportUrl('csv'), '_blank')} disabled={leads.length === 0}>
-            Export CSV
+            Експорт CSV
           </button>
           <button className="btn btn-ghost" onClick={() => window.open(exportUrl('json'), '_blank')} disabled={leads.length === 0}>
-            Export JSON
+            Експорт JSON
           </button>
         </div>
       </div>
@@ -228,6 +252,8 @@ export default function LeadGeneratorPage() {
               isRunning={state.isRunning}
               onStart={handleStart}
               onStop={stop}
+              recents={recents}
+              onSelectRecent={handleSelectRecent}
             />
 
             {state.error && <div className="lg-alert lg-alert--error">⚠ {state.error}</div>}
@@ -256,7 +282,10 @@ export default function LeadGeneratorPage() {
             {leads.length === 0 ? (
               <div className="lg-empty">
                 <div className="lg-empty-title">Результатів поки немає</div>
-                <p>Запустіть кампанію на вкладці «Пошук».</p>
+                <p>
+                  Запустіть кампанію на вкладці «Пошук» або оберіть попередню кампанію зі списку — її результати
+                  відкриються тут.
+                </p>
               </div>
             ) : (
               <>
@@ -264,6 +293,11 @@ export default function LeadGeneratorPage() {
                   <h3 className="lg-section-title" style={{ margin: 0 }}>
                     {activeRunId !== null ? `Кампанія #${activeRunId}` : 'Усі кампанії'} ({filteredLeads.length}/{leads.length})
                   </h3>
+                  {activeRunId !== null && (
+                    <button className="btn btn-ghost" style={{ padding: '4px 12px', fontSize: '0.8rem' }} onClick={() => handleSelectRun(null)}>
+                      Показати всі кампанії
+                    </button>
+                  )}
                   <label className="lg-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     Мін. скор:
                     <input

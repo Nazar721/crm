@@ -84,12 +84,12 @@ export default function DebtsPage() {
             {!filtered.length ? <tr className="empty-row"><td colSpan={6}><EmptyState message="Немає записів" hint="Додайте борг мені або свій борг" /></td></tr> :
             filtered.map(d => (
               <tr key={d.id}>
-                <td><DebtTypeBadge type={d.type} /></td>
-                <td>{d.person || '—'}</td>
-                <td style={{ color: d.type === 'owed_to_me' ? 'var(--accent-green)' : 'var(--accent-orange)', fontWeight: 600 }}>{formatMoney(d.amount)}</td>
-                <td>{d.note || '—'}</td>
-                <td>{formatDate(d.date)}</td>
-                <td>
+                <td data-label="Тип"><DebtTypeBadge type={d.type} /></td>
+                <td data-label="Хто / Кому">{d.person || '—'}</td>
+                <td data-label="Сума" style={{ color: d.type === 'owed_to_me' ? 'var(--accent-green)' : 'var(--accent-orange)', fontWeight: 600 }}>{formatMoney(d.amount)}</td>
+                <td data-label="Примітка">{d.note || '—'}</td>
+                <td data-label="Дата">{formatDate(d.date)}</td>
+                <td data-label="Дії">
                   <div className="actions-cell">
                     <button className="btn-icon btn-icon--edit" title="Редагувати" onClick={() => { setEditDebt(d); setFormOpen(true); }}><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" strokeWidth="2"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" strokeWidth="2"/></svg></button>
                     <button className="btn-icon btn-icon--danger" title="Видалити" onClick={() => handleDelete(d.id)}><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="2"/><path d="M19 6l-1 14H6L5 6" stroke="currentColor" strokeWidth="2"/><path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="2"/><path d="M9 6V4h6v2" stroke="currentColor" strokeWidth="2"/></svg></button>

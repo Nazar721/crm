@@ -43,6 +43,7 @@ export async function POST(request: NextRequest) {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
         } catch {
           closed = true;
+          runController.abort();
         }
       };
 
@@ -58,6 +59,12 @@ export async function POST(request: NextRequest) {
           // already closed
         }
       }
+    },
+    cancel() {
+      // client disconnected: stop all server-side work immediately
+      runController.abort();
+      unregisterRun(requestId);
+      request.signal.removeEventListener('abort', onClientDisconnect);
     },
   });
 
