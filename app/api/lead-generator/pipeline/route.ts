@@ -5,7 +5,7 @@ import { registerRun, unregisterRun } from '@/lib/lead-generator/runRegistry';
 import { PipelineEvent } from '@/lib/lead-generator/types';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 660;
+export const maxDuration = 300;
 
 const bodySchema = z.object({
   requestId: z.string().trim().min(4).max(64),
