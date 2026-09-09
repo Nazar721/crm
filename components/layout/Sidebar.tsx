@@ -28,12 +28,6 @@ const navSections = [
       { href: '/savings', label: 'Відкладення', icon: 'wallet', badge: null },
     ],
   },
-  {
-    title: 'Інструменти',
-    items: [
-      { href: '/lead-generator', label: 'Lead Generator', icon: 'target', badge: null },
-    ],
-  },
 ];
 
 function NavIcon({ icon }: { icon: string }) {

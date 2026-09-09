@@ -7,31 +7,21 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "better-sqlite3": "^13.0.3",
     "chart.js": "^4.4.7",
-    "libphonenumber-js": "^1.13.12",
     "next": "^15.3.4",
-    "playwright": "^1.63.0",
     "react": "^19.1.0",
     "react-chartjs-2": "^5.2.0",
-    "react-dom": "^19.1.0",
-    "zod": "^4.5.4"
+    "react-dom": "^19.1.0"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^22.15.3",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
     "eslint": "^9.25.1",
     "eslint-config-next": "^15.3.4",
-    "typescript": "^5.8.3",
-    "vitest": "^5.0.0"
-  },
-  "allowScripts": {
-    "better-sqlite3@13.0.3": true
+    "typescript": "^5.8.3"
   }
 }
