@@ -28,6 +28,12 @@ const navSections = [
       { href: '/savings', label: 'Відкладення', icon: 'wallet', badge: null },
     ],
   },
+  {
+    title: 'Інструменти',
+    items: [
+      { href: '/lead-generator', label: 'Lead Generator', icon: 'target', badge: null },
+    ],
+  },
 ];
 
 function NavIcon({ icon }: { icon: string }) {
@@ -40,6 +46,7 @@ function NavIcon({ icon }: { icon: string }) {
     card: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="2" y="5" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="2"/><line x1="2" y1="10" x2="22" y2="10" stroke="currentColor" strokeWidth="2"/></svg>,
     dollar: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>,
     wallet: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M19 5H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z" stroke="currentColor" strokeWidth="2"/><path d="M12 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" stroke="currentColor" strokeWidth="2"/></svg>,
+    target: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2"/><circle cx="12" cy="12" r="5" stroke="currentColor" strokeWidth="2"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/></svg>,
   };
   return icons[icon] || null;
 }
