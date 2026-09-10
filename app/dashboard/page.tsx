@@ -4,13 +4,14 @@ import { useApp } from '@/context/AppContext';
 import { dashboardStats, project as calcProject, savingsSummary, bankBalances, bankAmountToUah } from '@/lib/calc';
 import { getCompleted, getTransactions, getSavings, getClients } from '@/lib/storage';
 import { formatMoney, getMonthKey, getMonthLabel, today } from '@/lib/utils';
-import IncomeChart from '@/components/charts/IncomeChart';
-import ProjectsBarChart from '@/components/charts/ProjectsBarChart';
-import SourcesChart from '@/components/charts/SourcesChart';
-import FinanceBarChart from '@/components/charts/FinanceBarChart';
-import BankBalancesChart from '@/components/charts/BankBalancesChart';
-import SavingsChart from '@/components/charts/SavingsChart';
-import AgencyIncomeChart from '@/components/charts/AgencyIncomeChart';
+import dynamic from 'next/dynamic';
+const IncomeChart = dynamic(() => import('@/components/charts/IncomeChart'), { ssr: false });
+const ProjectsBarChart = dynamic(() => import('@/components/charts/ProjectsBarChart'), { ssr: false });
+const SourcesChart = dynamic(() => import('@/components/charts/SourcesChart'), { ssr: false });
+const FinanceBarChart = dynamic(() => import('@/components/charts/FinanceBarChart'), { ssr: false });
+const BankBalancesChart = dynamic(() => import('@/components/charts/BankBalancesChart'), { ssr: false });
+const SavingsChart = dynamic(() => import('@/components/charts/SavingsChart'), { ssr: false });
+const AgencyIncomeChart = dynamic(() => import('@/components/charts/AgencyIncomeChart'), { ssr: false });
 import Modal from '@/components/ui/Modal';
 
 interface MonthData { income: number; count: number; financeIn: number; financeOut: number; }

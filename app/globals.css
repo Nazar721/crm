@@ -1706,7 +1706,7 @@ select.form-input option {
   .chart-body { height: 150px; }
   .btn { padding: 11px 14px; font-size: 0.9rem; }
   .header-actions { flex-wrap: wrap; gap: 8px; width: 100%; }
-  .header-actions .btn { flex: 1; min-width: 0; }
+  .header-actions .btn { flex: 1 1 calc(50% - 4px); min-width: 0; font-size: 0.82rem; padding: 10px 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .tabbar-sheet-grid { grid-template-columns: repeat(2, 1fr); }
   .modal-body { padding: 14px 16px; }
   .modal-header { padding: 12px 16px 10px; }
@@ -1804,4 +1804,190 @@ tr.week-b .week-dot {
   padding: 2px 8px;
   border-radius: 10px;
   white-space: nowrap;
+}
+
+/* =============================================
+   iPhone 15 Pro & small mobile optimizations
+   ============================================= */
+@media (max-width: 430px) {
+  /* Project card name - prevent overflow */
+  .data-table tbody tr td:first-child {
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+  .data-table tbody tr td:first-child strong {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+  .cell-name {
+    max-width: 100%;
+    overflow: hidden;
+  }
+  .cell-name strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  .cell-name-wrap {
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  /* Settings page - fix button overlap */
+  .settings-card .header-actions {
+    flex-direction: column;
+    gap: 10px;
+  }
+  .settings-card .header-actions .btn {
+    flex: 1 1 100%;
+    width: 100%;
+    justify-content: center;
+    text-align: center;
+  }
+  .settings-card {
+    padding: 16px;
+  }
+  .settings-title {
+    font-size: 0.95rem;
+  }
+  .settings-text {
+    font-size: 0.82rem;
+    line-height: 1.5;
+  }
+  .settings-info-row {
+    flex-direction: column;
+    gap: 4px;
+    align-items: flex-start;
+  }
+  .settings-info-row strong {
+    font-size: 0.88rem;
+  }
+
+  /* Backup warning - prevent text overflow */
+  .backup-warning {
+    padding: 12px;
+  }
+  .backup-warning strong {
+    font-size: 0.88rem;
+    line-height: 1.4;
+  }
+  .backup-warning span {
+    font-size: 0.8rem;
+    line-height: 1.4;
+  }
+  .backup-warning .header-actions {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .backup-warning .header-actions .btn {
+    flex: 1 1 100%;
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Project form - bottom buttons */
+  .modal-footer {
+    flex-direction: row;
+    gap: 10px;
+  }
+  .modal-footer .btn {
+    flex: 1;
+    justify-content: center;
+    min-height: 48px;
+    font-size: 0.95rem;
+  }
+
+  /* Form fields - optimize spacing */
+  .form-grid {
+    gap: 12px;
+  }
+  .form-group {
+    gap: 5px;
+  }
+  .form-label {
+    font-size: 0.72rem;
+  }
+
+  /* Finance summary - single column on small screens */
+  .finance-summary {
+    gap: 10px;
+  }
+
+  /* Tabs - full width */
+  .tabs {
+    width: 100%;
+  }
+  .tab {
+    flex: 1;
+    justify-content: center;
+    font-size: 0.82rem;
+    padding: 8px 10px;
+  }
+
+  /* Table toolbar - stack on mobile */
+  .table-toolbar {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .search-wrap {
+    min-width: 0;
+    width: 100%;
+  }
+  .filter-select {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  /* Stat cards - tighter on small phones */
+  .stat-card {
+    padding: 12px;
+    gap: 8px;
+  }
+  .stat-value {
+    font-size: 0.95rem;
+  }
+  .stat-label {
+    font-size: 0.6rem;
+  }
+
+  /* Page header - handle long titles */
+  .page-header {
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .page-header .btn {
+    font-size: 0.82rem;
+    padding: 8px 12px;
+    min-height: 40px;
+  }
+
+  /* Converter flow - stack on small screens */
+  .converter-flow {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .converter-flow select,
+  .converter-flow input {
+    flex: 1 1 calc(50% - 6px);
+    min-width: 0;
+    font-size: 14px;
+  }
+  .converter-flow .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Charts - smaller on phones */
+  .chart-card {
+    padding: 12px;
+  }
+  .chart-body {
+    height: 140px;
+  }
 }

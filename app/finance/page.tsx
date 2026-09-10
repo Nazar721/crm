@@ -10,8 +10,9 @@ import EmptyState from '@/components/ui/EmptyState';
 import TransactionForm from '@/components/forms/TransactionForm';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { useConfirm } from '@/hooks/useConfirm';
-import IncomeChart from '@/components/charts/IncomeChart';
-import BankBalancesChart from '@/components/charts/BankBalancesChart';
+import dynamic from 'next/dynamic';
+const IncomeChart = dynamic(() => import('@/components/charts/IncomeChart'), { ssr: false });
+const BankBalancesChart = dynamic(() => import('@/components/charts/BankBalancesChart'), { ssr: false });
 import type { Transaction } from '@/types';
 
 function getMonthKey(d?: string): string | null {
