@@ -1,21 +1,12 @@
-const CACHE_NAME = 'webagency-crm-v1';
-const STATIC_CACHE = 'webagency-crm-static-v1';
-const DYNAMIC_CACHE = 'webagency-crm-dynamic-v1';
+const CACHE_NAME = 'webagency-crm-v2';
+const STATIC_CACHE = 'webagency-crm-static-v2';
+const DYNAMIC_CACHE = 'webagency-crm-dynamic-v2';
 
 const STATIC_ASSETS = [
-  '/',
-  '/dashboard',
-  '/projects',
-  '/clients',
-  '/finance',
-  '/debts',
-  '/savings',
-  '/partners',
-  '/specialists',
-  '/settings',
   '/icon-192x192.png',
   '/icon-512x512.png',
   '/favicon.png',
+  '/apple-touch-icon.png',
 ];
 
 self.addEventListener('install', (event) => {
@@ -47,6 +38,8 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
 
   if (request.method !== 'GET') return;
+
+  if (url.origin !== self.location.origin) return;
 
   if (url.pathname.startsWith('/api/')) {
     event.respondWith(
@@ -80,6 +73,26 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response.ok) {
+            const cache = caches.open(DYNAMIC_CACHE);
+            cache.then((c) => c.put(request, response.clone()));
+          }
+          return response;
+        })
+        .catch(() => {
+          return caches.match(request).then((cached) => {
+            if (cached) return cached;
+            return caches.match('/dashboard');
+          });
+        })
+    );
+    return;
+  }
+
   event.respondWith(
     caches.open(DYNAMIC_CACHE).then((cache) => {
       return fetch(request)
@@ -92,9 +105,6 @@ self.addEventListener('fetch', (event) => {
         .catch(() => {
           return cache.match(request).then((cached) => {
             if (cached) return cached;
-            if (request.mode === 'navigate') {
-              return caches.match('/dashboard');
-            }
             return new Response('Offline', { status: 503 });
           });
         });
