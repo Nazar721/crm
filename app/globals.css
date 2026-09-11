@@ -1095,7 +1095,9 @@ body {
 }
 
 .data-table .cell-name {
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-width: 200px;
 }
 
 .data-table .cell-name strong {
@@ -1105,15 +1107,14 @@ body {
 .data-table .cell-name-wrap {
   display: flex;
   align-items: center;
-  gap: 0;
-  flex-wrap: nowrap;
+  gap: 6px;
+  flex-wrap: wrap;
   min-width: 0;
 }
 
 .data-table .cell-name-wrap strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   min-width: 0;
 }
 
@@ -1838,7 +1839,7 @@ select.form-input option {
   /* --- Modals -> bottom sheet --- */
   .modal-overlay {
     align-items: flex-end;
-    padding: 0;
+    padding-bottom: 100px;
   }
   .modal {
     max-width: 100%;
@@ -1953,6 +1954,9 @@ select.form-input option {
     font-size: 1.02rem;
     color: var(--text-primary);
     padding-bottom: 10px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
   .data-table tbody tr td:first-child::before { color: var(--accent-blue); }
 }

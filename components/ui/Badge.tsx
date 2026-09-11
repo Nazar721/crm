@@ -1,3 +1,5 @@
+import { normalizeBank, BANKS } from '@/lib/banks';
+
 interface BadgeProps {
   children: React.ReactNode;
   variant: 'blue' | 'green' | 'purple' | 'orange' | 'teal' | 'pink' | 'gray' | 'gold' | 'black' | 'paper';
@@ -19,7 +21,6 @@ export function StatusBadge({ status }: { status: string }) {
 }
 
 export function BankBadge({ bankId }: { bankId: string }) {
-  const { normalizeBank, BANKS } = require('@/lib/banks');
   const id = normalizeBank(bankId) || bankId;
   const bank = BANKS.find((b: any) => b.id === id);
   if (!bank) return <Badge variant="gray">{bankId || '—'}</Badge>;

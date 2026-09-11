@@ -9,6 +9,7 @@ import { FinanceTypeBadge } from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
 import TransactionForm from '@/components/forms/TransactionForm';
 import ConfirmModal from '@/components/ui/ConfirmModal';
+import ErrorBoundary from '@/components/ui/ErrorBoundary';
 import { useConfirm } from '@/hooks/useConfirm';
 import dynamic from 'next/dynamic';
 const IncomeChart = dynamic(() => import('@/components/charts/IncomeChart'), { ssr: false });
@@ -81,6 +82,8 @@ export default function FinancePage() {
     return { labels: Object.keys(md).map(k => getMonthLabel(k)), income: Object.values(md) };
   }, [mounted, refreshKey]);
 
+  const balances = useMemo(() => mounted ? bankBalances() : { mono: 0, privat: 0, cash: 0, cash_usd: 0, cash_eur: 0 }, [mounted, refreshKey]);
+
   const weekClass = (dateStr?: string) => {
     const d = new Date(dateStr || today());
     const day = (d.getDay() + 6) % 7;
@@ -137,6 +140,7 @@ export default function FinancePage() {
   };
 
   return (
+    <ErrorBoundary>
     <section className="page active">
       <div className="page-header">
         <div><h1 className="page-title">Фінанси</h1><p className="page-subtitle">My Money / Cashflow</p></div>
@@ -165,7 +169,7 @@ export default function FinancePage() {
 
       <div className="charts-grid charts-grid--2">
         <div className="chart-card anim-chart"><div className="chart-header"><h3 className="chart-title">Дохід по місяцях</h3></div><IncomeChart labels={chartData.labels} data={chartData.income} /></div>
-        <div className="chart-card anim-chart"><div className="chart-header"><h3 className="chart-title">Активи по банках</h3></div><BankBalancesChart balances={bankBalances()} /></div>
+        <div className="chart-card anim-chart"><div className="chart-header"><h3 className="chart-title">Активи по банках</h3></div><BankBalancesChart balances={balances} /></div>
       </div>
 
       <div className="table-toolbar">
@@ -209,5 +213,6 @@ export default function FinancePage() {
       <TransactionForm isOpen={formOpen} transaction={editTx} initialType={initialType} onSave={handleSave} onCancel={() => { setFormOpen(false); setEditTx(null); }} />
       <ConfirmModal isOpen={confirmOpen} title={confirmTitle} text={confirmText} onConfirm={handleConfirm} onCancel={cancel} />
     </section>
+    </ErrorBoundary>
   );
 }
