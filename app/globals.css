@@ -1118,6 +1118,17 @@ body {
   min-width: 0;
 }
 
+/* Ноут/десктоп: назва проєкту — в один рядок, без переносів (на мобільному ≤430px перенос лишається) */
+@media (min-width: 769px) {
+  .data-table .cell-name,
+  .data-table .cell-name-wrap strong {
+    white-space: nowrap;
+    overflow-wrap: normal;
+    word-break: normal;
+    max-width: none;
+  }
+}
+
 .data-table tbody tr:last-child td { border-bottom: none; }
 
 .data-table tbody tr {
