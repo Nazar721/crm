@@ -15,7 +15,7 @@ export default function SavingsChart({ labels, saved, remaining }: SavingsChartP
         data={{
           labels,
           datasets: [
-            { label: 'Наразі', data: saved, backgroundColor: 'rgba(52, 211, 153, 0.6)', borderColor: '#34d399', borderWidth: 1, borderRadius: 4 },
+            { label: 'Наразі', data: saved, backgroundColor: 'rgba(48, 209, 88, 0.6)', borderColor: '#30D158', borderWidth: 1, borderRadius: 4 },
             { label: 'Залишилось', data: remaining, backgroundColor: 'rgba(85, 90, 112, 0.4)', borderColor: '#555a70', borderWidth: 1, borderRadius: 4 },
           ],
         }}

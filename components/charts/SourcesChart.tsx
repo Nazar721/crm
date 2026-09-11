@@ -21,7 +21,7 @@ export default function SourcesChart({ labels, data, colors }: SourcesChartProps
           datasets: [{
             data: srcData,
             backgroundColor: srcColors,
-            borderColor: '#10131f',
+            borderColor: '#000000',
             borderWidth: 2,
           }],
         }}

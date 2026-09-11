@@ -54,9 +54,7 @@ export default function Sidebar() {
       <aside className={`sidebar${sidebarOpen ? ' open' : ''}`}>
         <div className="sidebar-logo">
           <div className="logo-icon">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
+            <img src="/logo.webp" alt="WebCRM" width="38" height="38" style={{ borderRadius: 'var(--radius-sm)', objectFit: 'cover' }} />
           </div>
           <span className="logo-text">WebCRM</span>
         </div>

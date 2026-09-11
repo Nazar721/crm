@@ -127,7 +127,7 @@ export default function InstallBanner() {
           width: 44px;
           height: 44px;
           border-radius: 12px;
-          background: linear-gradient(135deg, #2563eb, #14b8a6);
+          background: linear-gradient(135deg, #0A84FF, #5E5CE6);
           color: white;
           flex-shrink: 0;
         }
@@ -163,6 +163,7 @@ export default function InstallBanner() {
 
         .install-banner__btn {
           border: none;
+          border-radius: 999px;
           cursor: pointer;
           font-family: inherit;
           transition: all 0.2s;
@@ -170,17 +171,16 @@ export default function InstallBanner() {
 
         .install-banner__btn--primary {
           padding: 8px 16px;
-          border-radius: 10px;
           font-size: 13px;
           font-weight: 600;
           color: white;
-          background: linear-gradient(135deg, #2563eb, #14b8a6);
-          box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+          background: linear-gradient(135deg, #0A84FF, #5E5CE6);
+          box-shadow: 0 4px 12px rgba(10, 132, 255, 0.3);
         }
 
         .install-banner__btn--primary:hover {
           transform: translateY(-1px);
-          box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4);
+          box-shadow: 0 6px 20px rgba(10, 132, 255, 0.4);
         }
 
         .install-banner__btn--primary:disabled {

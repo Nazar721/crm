@@ -18,16 +18,6 @@ export default function SettingsPage() {
     }
   }, []);
 
-  const doExport = () => {
-    const payload = exportData();
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url;
-    const d = new Date();
-    a.download = `webcrm-export-${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}-${String(d.getHours()).padStart(2,'0')}-${String(d.getMinutes()).padStart(2,'0')}.json`;
-    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-  };
-
   const doBackup = () => {
     markManualBackup();
     const payload = exportData();
@@ -67,19 +57,11 @@ export default function SettingsPage() {
       </div>
       <div className="settings-grid">
         <div className="settings-card">
-          <h3 className="settings-title">Дані CRM</h3>
+          <h3 className="settings-title">Резервна копія</h3>
           <p className="settings-text">Експорт та імпорт усіх локальних даних CRM у JSON-файл.</p>
           <div className="header-actions">
-            <button className="btn btn-primary" onClick={doExport}>Експорт усіх даних</button>
-            <button className="btn btn-ghost" onClick={() => { const i = document.createElement('input'); i.type = 'file'; i.accept = 'application/json,.json'; i.onchange = (e) => doImport((e.target as HTMLInputElement).files?.[0]); i.click(); }}>Імпорт усіх даних</button>
-          </div>
-        </div>
-        <div className="settings-card">
-          <h3 className="settings-title">Резервна копія</h3>
-          <p className="settings-text">Завантаження ручної копії та відновлення з JSON-файлу.</p>
-          <div className="header-actions">
             <button className="btn btn-primary" onClick={doBackup}>Завантажити резервну копію</button>
-            <button className="btn btn-ghost" onClick={() => { const i = document.createElement('input'); i.type = 'file'; i.accept = 'application/json,.json'; i.onchange = (e) => doImport((e.target as HTMLInputElement).files?.[0]); i.click(); }}>Імпорт резервної копії</button>
+            <button className="btn btn-ghost" onClick={() => { const i = document.createElement('input'); i.type = 'file'; i.accept = 'application/json,.json'; i.onchange = (e) => doImport((e.target as HTMLInputElement).files?.[0]); i.click(); }}>Імпорт даних</button>
           </div>
         </div>
         <div className="settings-card" style={{ gridColumn: '1 / -1' }}>

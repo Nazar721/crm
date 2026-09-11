@@ -96,7 +96,7 @@ export default function DashboardPage() {
 
     const srcMap: Record<string, number> = {};
     clients.forEach(c => { const s = c.source || 'Інше'; srcMap[s] = (srcMap[s] || 0) + 1; });
-    const srcColors: Record<string, string> = { Telegram: '#4f9cf9', Instagram: '#f472b6', YouTube: '#fb923c', 'Реклама': '#a78bfa', 'Сайт': '#2dd4bf', 'Сарафанне радіо': '#34d399', 'Інше': '#555a70' };
+    const srcColors: Record<string, string> = { Telegram: '#0A84FF', Instagram: '#FF375F', YouTube: '#FF9F0A', 'Реклама': '#BF5AF2', 'Сайт': '#64D2FF', 'Сарафанне радіо': '#30D158', 'Інше': '#555a70' };
 
     const amd = last12Months() as Record<string, { income: number }>;
     completed.forEach(p => {

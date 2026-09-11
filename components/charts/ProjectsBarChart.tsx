@@ -16,7 +16,7 @@ export default function ProjectsBarChart({ labels, data }: ProjectsBarChartProps
           datasets: [{
             data,
             backgroundColor: 'rgba(167, 139, 250, 0.5)',
-            borderColor: '#a78bfa',
+            borderColor: '#BF5AF2',
             borderWidth: 1,
             borderRadius: 4,
           }],

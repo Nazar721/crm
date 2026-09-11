@@ -15,7 +15,7 @@ const mainTabs: TabItem[] = [
   { href: '/dashboard', label: 'Дашборд', icon: 'grid' },
   { href: '/projects', label: 'Проєкти', icon: 'list', badge: 'projects' },
   { href: '/finance', label: 'Фінанси', icon: 'card' },
-  { href: '/clients', label: 'Клієнти', icon: 'users', badge: 'clients' },
+  { href: '/settings', label: 'Налаштування', icon: 'settings' },
 ];
 
 const moreItems: TabItem[] = [
@@ -23,7 +23,7 @@ const moreItems: TabItem[] = [
   { href: '/partners', label: 'Партнери', icon: 'users2', badge: 'partners' },
   { href: '/debts', label: 'Борги', icon: 'dollar' },
   { href: '/savings', label: 'Відкладення', icon: 'wallet' },
-  { href: '/settings', label: 'Налаштування', icon: 'settings' },
+  { href: '/clients', label: 'Клієнти', icon: 'users', badge: 'clients' },
 ];
 
 function TabIcon({ icon }: { icon: string }) {

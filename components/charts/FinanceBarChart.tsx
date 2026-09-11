@@ -15,8 +15,8 @@ export default function FinanceBarChart({ labels, incomeData, expenseData }: Fin
         data={{
           labels,
           datasets: [
-            { label: 'Доходи', data: incomeData, backgroundColor: 'rgba(52, 211, 153, 0.5)', borderColor: '#34d399', borderWidth: 1, borderRadius: 4 },
-            { label: 'Витрати', data: expenseData, backgroundColor: 'rgba(251, 146, 60, 0.5)', borderColor: '#fb923c', borderWidth: 1, borderRadius: 4 },
+            { label: 'Доходи', data: incomeData, backgroundColor: 'rgba(48, 209, 88, 0.5)', borderColor: '#30D158', borderWidth: 1, borderRadius: 4 },
+            { label: 'Витрати', data: expenseData, backgroundColor: 'rgba(255, 159, 10, 0.5)', borderColor: '#FF9F0A', borderWidth: 1, borderRadius: 4 },
           ],
         }}
         options={{

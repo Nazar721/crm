@@ -15,12 +15,12 @@ export default function AgencyIncomeChart({ labels, data }: AgencyIncomeChartPro
           labels,
           datasets: [{
             data,
-            borderColor: '#facc15',
+            borderColor: '#FFD60A',
             backgroundColor: 'rgba(250, 204, 21, 0.2)',
             borderWidth: 2,
             tension: 0.35,
             fill: true,
-            pointBackgroundColor: '#facc15',
+            pointBackgroundColor: '#FFD60A',
             pointRadius: 3,
           }],
         }}

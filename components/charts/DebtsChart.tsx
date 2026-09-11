@@ -16,7 +16,7 @@ export default function DebtsChart({ owedToMe, myDebts }: DebtsChartProps) {
           datasets: [{
             data: [owedToMe, myDebts],
             backgroundColor: ['rgba(52, 211, 153, 0.6)', 'rgba(251, 146, 60, 0.6)'],
-            borderColor: ['#34d399', '#fb923c'],
+            borderColor: ['#30D158', '#FF9F0A'],
             borderWidth: 1,
             borderRadius: 4,
           }],
