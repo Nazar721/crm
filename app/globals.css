@@ -1409,8 +1409,8 @@ body {
   align-items: center;
   justify-content: center;
   transition: all var(--transition);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
+  /* Без backdrop-filter: кнопок дій по дві на кожен рядок таблиці,
+     після імпорту їх сотні — розмиття вичерпує пам'ять iOS. */
 }
 
 .btn-icon:hover { background: rgba(255, 255, 255, 0.10); color: var(--text-primary); border-color: rgba(255, 255, 255, 0.16); }
