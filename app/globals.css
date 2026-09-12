@@ -1235,6 +1235,14 @@ body {
   min-height: 54px;
 }
 
+.dev-chart-btn {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 2;
+  color: var(--text-secondary);
+}
+
 .dev-card-header > div:last-child {
   min-width: 0;
 }
@@ -1984,7 +1992,9 @@ select.form-input option {
   .stat-info { min-width: 0; }
   .page-title { font-size: 1.25rem; }
   .dev-card-header { align-items: flex-start; }
+  .developer-card .dev-card-header { padding-right: 46px; }
   .dev-stats { gap: 10px; }
+  .dev-chart-btn { top: 10px; right: 10px; }
   .chart-card { padding: 14px; }
   .chart-title { font-size: 0.82rem; }
   .chart-body { height: 150px; }

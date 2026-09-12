@@ -8,6 +8,7 @@ import type { Specialist } from '@/types';
 import EmptyStateCard from '@/components/ui/EmptyStateCard';
 import SpecialistForm from '@/components/forms/SpecialistForm';
 import ConfirmModal from '@/components/ui/ConfirmModal';
+import SpecialistStatsModal from '@/components/charts/SpecialistStatsModal';
 import { useConfirm } from '@/hooks/useConfirm';
 
 export default function SpecialistsPage() {
@@ -15,6 +16,7 @@ export default function SpecialistsPage() {
   const [search, setSearch] = useState('');
   const [formOpen, setFormOpen] = useState(false);
   const [editSpec, setEditSpec] = useState<Specialist | null>(null);
+  const [chartSpec, setChartSpec] = useState<Specialist | null>(null);
   const { isOpen: confirmOpen, title: confirmTitle, text: confirmText, confirm, handleConfirm, cancel } = useConfirm();
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
@@ -64,6 +66,9 @@ export default function SpecialistsPage() {
           const initials = d.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
           return (
             <div key={d.id} className="developer-card anim-stagger">
+              <button className="btn-icon dev-chart-btn" title="Графік заробітків" onClick={() => setChartSpec(d)}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><line x1="4" y1="20" x2="4" y2="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><line x1="10" y1="20" x2="10" y2="4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><line x1="16" y1="20" x2="16" y2="9" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><line x1="22" y1="20" x2="22" y2="15" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+              </button>
               <div className="dev-card-header">
                 <div className="dev-avatar">{initials}</div>
                 <div><div className="dev-name">{d.name}</div><div className="dev-spec">{d.specialization || '—'}</div></div>
@@ -84,6 +89,7 @@ export default function SpecialistsPage() {
         })}
       </div>
       <SpecialistForm isOpen={formOpen} specialist={editSpec} onSave={handleSave} onCancel={() => { setFormOpen(false); setEditSpec(null); }} />
+      <SpecialistStatsModal isOpen={chartSpec !== null} specialist={chartSpec} onClose={() => setChartSpec(null)} />
       <ConfirmModal isOpen={confirmOpen} title={confirmTitle} text={confirmText} onConfirm={handleConfirm} onCancel={cancel} />
     </section>
   );
