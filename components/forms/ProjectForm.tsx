@@ -4,8 +4,8 @@ import type { Project, Specialist, Partner } from '@/types';
 import { project as calcProject } from '@/lib/calc';
 import { formatMoney } from '@/lib/utils';
 import { today } from '@/lib/utils';
-import { getClients } from '@/lib/storage';
-import { BANKS } from '@/lib/banks';
+import { getClients, getAllProjects } from '@/lib/storage';
+import { normalizeBank, bankLabel } from '@/lib/banks';
 import type { Client } from '@/types';
 
 import Modal from '@/components/ui/Modal';
@@ -90,6 +90,19 @@ export default function ProjectForm({ isOpen, project, specialists, partners, on
       badge: c.isRegular ? 'Постійний' : undefined,
       data: c,
     }));
+  }, [isOpen]);
+
+  const bankOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const p of getAllProjects()) {
+      const raw = String(p.bank || '').trim();
+      if (!raw) continue;
+      const key = normalizeBank(raw);
+      counts.set(key, (counts.get(key) || 0) + 1);
+    }
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([value, count]) => ({ value: bankLabel(value), hint: count > 1 ? `×${count}` : undefined }));
   }, [isOpen]);
 
   const handleClientNameChange = (val: string) => {
@@ -230,7 +243,7 @@ export default function ProjectForm({ isOpen, project, specialists, partners, on
           <AutocompleteInput
             value={bank}
             onChange={setBank}
-            options={BANKS.map(b => ({ value: b.label }))}
+            options={bankOptions}
             placeholder="Назва банку"
           />
         </div>
