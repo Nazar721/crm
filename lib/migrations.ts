@@ -21,24 +21,11 @@ function stripProject(p: Record<string, unknown>): Record<string, unknown> {
 export function migrate(): void {
   if (typeof window === 'undefined') return;
 
-  // v12 migration
-  if (!localStorage.getItem('crm_migrated_v12')) {
-    const migratePercent = (p: any) => {
-      const raw = stripProject(p);
-      const budget = Number(raw.budget) || 0;
-      if (budget > 0) {
-        const storedCost = Number(raw.specialistCost) || 0;
-        raw.myPercent = Math.round((budget - storedCost) / budget * 100);
-      }
-      return raw;
-    };
-    saveProjects(getProjects().map(migratePercent) as any);
-    saveCompleted(getCompleted().map(migratePercent) as any);
-    localStorage.setItem('crm_migrated_v12', '1');
-  } else {
-    saveProjects(getProjects().map(stripProject as any));
-    saveCompleted(getCompleted().map(stripProject as any));
-  }
+  // myPercent тепер зберігається в проєкті й ніколи не перераховується автоматично:
+  // v12-міграція, що виводила його з specialistCost, зіпсовувала дані (у нових
+  // проєктах specialistCost немає → myPercent ставав 100), тому прибрана.
+  saveProjects(getProjects().map(stripProject as any));
+  saveCompleted(getCompleted().map(stripProject as any));
 
   // Partners migration
   const partners = getPartners();
