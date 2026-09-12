@@ -2046,15 +2046,13 @@ tr.week-b .week-dot {
   left: 0;
   right: 0;
   z-index: 100;
-  background: rgba(30, 30, 32, 0.90);
+  background: rgba(30, 30, 32, 0.98);
   border: 0.5px solid rgba(255, 255, 255, 0.12);
   border-radius: var(--radius-sm);
   max-height: 200px;
   overflow-y: auto;
   box-shadow: var(--shadow-glass), 0 8px 24px rgba(0, 0, 0, 0.50);
   margin-top: 2px;
-  -webkit-backdrop-filter: saturate(200%) blur(var(--glass-blur-strong));
-  backdrop-filter: saturate(200%) blur(var(--glass-blur-strong));
 }
 
 .client-suggestion-item {

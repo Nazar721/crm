@@ -5,6 +5,7 @@ import { BANKS } from '@/lib/banks';
 import { today } from '@/lib/utils';
 import Modal from '@/components/ui/Modal';
 import ModalFooter from '@/components/ui/ModalFooter';
+import AutocompleteInput from '@/components/ui/AutocompleteInput';
 
 interface SavingFormProps {
   isOpen: boolean;
@@ -45,10 +46,12 @@ export default function SavingForm({ isOpen, saving, onSave, onCancel }: SavingF
         </div>
         <div className="form-group">
           <label className="form-label">Банк *</label>
-          <input list="saving-bank-list" type="text" className="form-input" value={bank} onChange={e => setBank(e.target.value)} placeholder="Назва банку" />
-          <datalist id="saving-bank-list">
-            {BANKS.map(b => <option key={b.id} value={b.label} />)}
-          </datalist>
+          <AutocompleteInput
+            value={bank}
+            onChange={setBank}
+            options={BANKS.map(b => ({ value: b.label }))}
+            placeholder="Назва банку"
+          />
         </div>
         <div className="form-group">
           <label className="form-label">Дата</label>

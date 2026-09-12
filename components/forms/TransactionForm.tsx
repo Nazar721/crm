@@ -6,6 +6,7 @@ import { getTransactions } from '@/lib/storage';
 import { today } from '@/lib/utils';
 import Modal from '@/components/ui/Modal';
 import ModalFooter from '@/components/ui/ModalFooter';
+import AutocompleteInput from '@/components/ui/AutocompleteInput';
 
 interface TransactionFormProps {
   isOpen: boolean;
@@ -85,17 +86,21 @@ export default function TransactionForm({ isOpen, transaction, initialType = 'in
         </div>
         <div className="form-group">
           <label className="form-label">Банк *</label>
-          <input list="tx-bank-list" type="text" className="form-input" value={bank} onChange={e => setBank(e.target.value)} placeholder="Назва банку" />
-          <datalist id="tx-bank-list">
-            {BANKS.map(b => <option key={b.id} value={b.label} />)}
-          </datalist>
+          <AutocompleteInput
+            value={bank}
+            onChange={setBank}
+            options={BANKS.map(b => ({ value: b.label }))}
+            placeholder="Назва банку"
+          />
         </div>
         <div className="form-group">
           <label className="form-label">Категорія</label>
-          <input list="tx-category-list" type="text" className="form-input" value={category} onChange={e => setCategory(e.target.value)} placeholder="Проєкт, офіс, реклама..." />
-          <datalist id="tx-category-list">
-            {categories.map(c => <option key={c} value={c} />)}
-          </datalist>
+          <AutocompleteInput
+            value={category}
+            onChange={setCategory}
+            options={categories.map(c => ({ value: c }))}
+            placeholder="Проєкт, офіс, реклама..."
+          />
         </div>
         <div className="form-group form-group--full">
           <label className="form-label">Опис</label>
