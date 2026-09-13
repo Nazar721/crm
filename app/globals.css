@@ -100,15 +100,27 @@
 }
 
 .anim-stagger {
-  animation: cardIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: cardIn 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+/* Каскадна поява карток спеціалістів */
+.developers-grid .anim-stagger:nth-child(1)  { animation-delay: 0.03s; }
+.developers-grid .anim-stagger:nth-child(2)  { animation-delay: 0.08s; }
+.developers-grid .anim-stagger:nth-child(3)  { animation-delay: 0.13s; }
+.developers-grid .anim-stagger:nth-child(4)  { animation-delay: 0.18s; }
+.developers-grid .anim-stagger:nth-child(5)  { animation-delay: 0.23s; }
+.developers-grid .anim-stagger:nth-child(6)  { animation-delay: 0.28s; }
+.developers-grid .anim-stagger:nth-child(7)  { animation-delay: 0.33s; }
+.developers-grid .anim-stagger:nth-child(8)  { animation-delay: 0.38s; }
+.developers-grid .anim-stagger:nth-child(9)  { animation-delay: 0.43s; }
+.developers-grid .anim-stagger:nth-child(n+10) { animation-delay: 0.48s; }
+
 .anim-row {
-  animation: rowIn 0.32s ease both;
+  animation: rowIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .anim-chart {
-  animation: chartReveal 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: chartReveal 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 /* =============================================
@@ -173,14 +185,14 @@
   --shadow-glass: inset 0 1px 0 rgba(255, 255, 255, 0.08), inset 0 -1px 0 rgba(255, 255, 255, 0.02), 0 0 0 1px rgba(255, 255, 255, 0.05);
   --shadow-glass-hover: inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 -1px 0 rgba(255, 255, 255, 0.03), 0 0 0 1px rgba(255, 255, 255, 0.08);
 
-  --transition: 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition: 0.28s cubic-bezier(0.32, 0.72, 0, 1);
   --font-main: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', system-ui, sans-serif;
   --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 
-html { font-size: 15px; }
+html { font-size: 15px; scroll-behavior: smooth; }
 
 body {
   font-family: var(--font-main);
@@ -536,7 +548,7 @@ body {
   background: rgba(0, 0, 0, 0.55);
   -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
-  animation: fadeIn 0.2s ease;
+  animation: fadeIn 0.3s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .tabbar-sheet {
@@ -549,9 +561,10 @@ body {
   border-radius: 24px 24px 0 0;
   padding: 10px 16px calc(18px + env(safe-area-inset-bottom));
   box-shadow: 0 -18px 70px rgba(0, 0, 0, 0.60);
-  animation: sheetUp 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: sheetUp 0.42s cubic-bezier(0.32, 0.72, 0, 1);
   -webkit-backdrop-filter: saturate(200%) blur(var(--glass-blur-strong));
   backdrop-filter: saturate(200%) blur(var(--glass-blur-strong));
+  will-change: transform;
 }
 
 .tabbar-sheet-handle {
@@ -633,7 +646,7 @@ body {
    PAGES
    ============================================= */
 .page { display: none; }
-.page.active { display: block; animation: fadeIn 0.25s ease; }
+.page.active { display: block; animation: fadeIn 0.4s cubic-bezier(0.22, 1, 0.36, 1); }
 
 .page-header {
   display: flex;
@@ -1458,11 +1471,11 @@ body {
 
 .modal-overlay.open {
   display: flex;
-  animation: fadeIn 0.2s ease;
+  animation: fadeIn 0.3s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .modal-overlay.closing {
-  animation: fadeIn 0.2s ease reverse forwards;
+  animation: fadeIn 0.3s cubic-bezier(0.22, 1, 0.36, 1) reverse forwards;
 }
 
 .modal {
@@ -1474,10 +1487,11 @@ body {
   max-height: 90vh;
   overflow-y: auto;
   box-shadow: 0 28px 90px rgba(0, 0, 0, 0.60), var(--shadow-glass);
-  animation: modalBounce 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: modalBounce 0.5s cubic-bezier(0.22, 1, 0.36, 1);
   -webkit-backdrop-filter: saturate(200%) blur(var(--glass-blur-strong));
   backdrop-filter: saturate(200%) blur(var(--glass-blur-strong));
   position: relative;
+  will-change: transform, opacity;
 }
 
 .modal::before {
@@ -1499,7 +1513,7 @@ body {
 }
 
 .modal-overlay.closing .modal {
-  animation: modalOut 0.22s ease forwards;
+  animation: modalOut 0.25s cubic-bezier(0.32, 0.72, 0, 1) forwards;
 }
 
 .modal--sm { max-width: 420px; }
@@ -1706,8 +1720,8 @@ body {
   height: 100%;
   background: linear-gradient(90deg, var(--accent-green), var(--accent-teal));
   border-radius: 999px;
-  transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1);
-  animation: progressFill 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+  transition: width 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: progressFill 1s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .progress-label {
@@ -1763,7 +1777,7 @@ select.form-input option {
   align-items: center;
   gap: 10px;
   min-width: 260px;
-  animation: toastSpring 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: toastSpring 0.55s cubic-bezier(0.22, 1, 0.36, 1);
   box-shadow: var(--shadow-glass), var(--shadow-md);
   -webkit-backdrop-filter: saturate(200%) blur(var(--glass-blur));
   backdrop-filter: saturate(200%) blur(var(--glass-blur));
@@ -1858,34 +1872,37 @@ select.form-input option {
   /* --- Modals -> bottom sheet --- */
   .modal-overlay {
     align-items: flex-end;
-    padding-bottom: 100px;
+    padding-bottom: calc(96px + env(safe-area-inset-bottom));
   }
   .modal {
     max-width: 100%;
-    max-height: 92dvh;
+    /* Екран мінус відступ під таббар: інакше шапка з хрестиком їде під статус-бар */
+    max-height: calc(100dvh - 112px - env(safe-area-inset-bottom));
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     border-radius: 24px 24px 0 0;
     border-left: none;
     border-right: none;
     border-bottom: none;
-    animation: sheetUp 0.34s cubic-bezier(0.22, 1, 0.36, 1);
-    padding-bottom: env(safe-area-inset-bottom);
+    animation: sheetUp 0.45s cubic-bezier(0.32, 0.72, 0, 1);
   }
-  .modal-overlay.closing .modal { animation: sheetDown 0.24s ease forwards; }
+  .modal-overlay.closing .modal { animation: sheetDown 0.3s cubic-bezier(0.32, 0.72, 0, 1) forwards; }
   .modal::before {
     content: "";
     display: block;
+    flex-shrink: 0;
     width: 38px; height: 5px;
     background: rgba(255, 255, 255, 0.20);
     border-radius: 999px;
     margin: 8px auto 0;
   }
-  .modal-header { padding: 14px 20px 12px; }
+  .modal-header { flex-shrink: 0; padding: 14px 20px 12px; }
   .modal-title { font-size: 1.05rem; }
-  .modal-body { padding: 16px 20px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  .modal-body { flex: 1 1 auto; min-height: 0; padding: 16px 20px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
   .modal-footer {
-    position: sticky;
-    bottom: 0;
-    padding: 12px 20px calc(12px + env(safe-area-inset-bottom));
+    flex-shrink: 0;
+    padding: 12px 20px 12px;
     background: rgba(30, 30, 32, 0.80);
     -webkit-backdrop-filter: saturate(200%) blur(var(--glass-blur));
     backdrop-filter: saturate(200%) blur(var(--glass-blur));
@@ -1897,7 +1914,7 @@ select.form-input option {
     left: 14px; right: 14px; bottom: calc(100px + env(safe-area-inset-bottom));
     align-items: stretch;
   }
-  .toast { min-width: 0; width: 100%; animation: toastSpring 0.45s cubic-bezier(0.22, 1, 0.36, 1); }
+  .toast { min-width: 0; width: 100%; animation: toastSpring 0.55s cubic-bezier(0.22, 1, 0.36, 1); }
 
   /* --- Buttons: 44pt tap targets --- */
   .btn { min-height: 44px; }
