@@ -1,6 +1,6 @@
-const CACHE_NAME = 'webagency-crm-v2';
-const STATIC_CACHE = 'webagency-crm-static-v2';
-const DYNAMIC_CACHE = 'webagency-crm-dynamic-v2';
+const CACHE_NAME = 'webagency-crm-v3';
+const STATIC_CACHE = 'webagency-crm-static-v3';
+const DYNAMIC_CACHE = 'webagency-crm-dynamic-v3';
 
 const STATIC_ASSETS = [
   '/icon-192x192.png',

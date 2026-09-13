@@ -6,13 +6,13 @@ ChartJS.register(
   Title, Tooltip, Legend, Filler
 );
 
-// Плавні анімації графіків за замовчуванням
-ChartJS.defaults.animation = {
-  duration: 1100,
-  easing: 'easeOutQuart',
-};
+// Плавніші анімації графіків: мутуємо поля дефолтів, а не замінюємо об'єкти —
+// Chart.js тримає в конфігах внутрішні функції, заміна ламає анімації і тултіпи
+if (ChartJS.defaults.animation) {
+  ChartJS.defaults.animation.duration = 1100;
+  ChartJS.defaults.animation.easing = 'easeOutQuart';
+}
 
-// Колекційні анімації (числа/кольори) успадковують тривалість лише якщо їх не перевизначено
 const numbersAnim = ChartJS.defaults.animations?.numbers;
 if (numbersAnim) {
   numbersAnim.duration = 1100;
@@ -20,7 +20,8 @@ if (numbersAnim) {
 }
 
 // Плавна поява секторів і масштабу донат-діаграм
-const doughnutOverride = ChartJS.overrides.doughnut as unknown as { animation?: Record<string, boolean> } | undefined;
-if (doughnutOverride) {
-  doughnutOverride.animation = { animateRotate: true, animateScale: true };
+const doughnutAnim = ChartJS.overrides.doughnut?.animation as unknown as Record<string, boolean> | undefined;
+if (doughnutAnim) {
+  doughnutAnim.animateRotate = true;
+  doughnutAnim.animateScale = true;
 }
