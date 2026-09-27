@@ -49,7 +49,7 @@ export default function BankBalancesChart({ balances, usdtRate = 41 }: BankBalan
                   const raw = Number(ctx.parsed.y) || 0;
                   if (id === 'crypto_usdt') {
                     const usdt = raw / (usdtRate || 41);
-                    return `Баланс: ${usdt.toLocaleString('uk-UA', { maximumFractionDigits: 2 })} USDT (≈ $${usdt.toLocaleString('uk-UA', { maximumFractionDigits: 0 })})`;
+                    return `Баланс: $${usdt.toLocaleString('uk-UA', { maximumFractionDigits: 0 })} = ${raw.toLocaleString('uk-UA', { maximumFractionDigits: 0 })} грн`;
                   }
                   return `Баланс: ₴${raw.toLocaleString('uk-UA', { maximumFractionDigits: 0 })}`;
                 },
