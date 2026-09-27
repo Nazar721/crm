@@ -27,6 +27,7 @@ export default function IncomeChart({ labels, data }: IncomeChartProps) {
         options={{
           responsive: true,
           maintainAspectRatio: false,
+          animation: { duration: 0 },
           plugins: { legend: { display: false } },
           scales: {
             x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#555a70', font: { size: 10 } } },

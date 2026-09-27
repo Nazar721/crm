@@ -5,11 +5,13 @@ import { BANKS, bankLabel } from '@/lib/banks';
 
 interface BankBalancesChartProps {
   balances: Record<string, number>;
+  usdtRate?: number;
 }
 
-export default function BankBalancesChart({ balances }: BankBalancesChartProps) {
+export default function BankBalancesChart({ balances, usdtRate = 41 }: BankBalancesChartProps) {
   const entries = Object.entries(balances).filter(([_, v]) => v !== 0);
   const labels = entries.map(([id]) => bankLabel(id));
+  // Висота всіх стовпчиків — в гривні (єдина шкала). Тільки крипта покаже $ в тултіпі.
   const data = entries.map(([_, v]) => v);
   const colors = entries.map(([id]) => {
     const bank = BANKS.find(b => b.id === id);
@@ -37,7 +39,23 @@ export default function BankBalancesChart({ balances }: BankBalancesChartProps) 
         options={{
           responsive: true,
           maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
+          animation: { duration: 0 },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: (ctx) => {
+                  const id = entries[ctx.dataIndex]?.[0] || '';
+                  const raw = Number(ctx.parsed.y) || 0;
+                  if (id === 'crypto_usdt') {
+                    const usdt = raw / (usdtRate || 41);
+                    return `Баланс: ${usdt.toLocaleString('uk-UA', { maximumFractionDigits: 2 })} USDT (≈ $${usdt.toLocaleString('uk-UA', { maximumFractionDigits: 0 })})`;
+                  }
+                  return `Баланс: ₴${raw.toLocaleString('uk-UA', { maximumFractionDigits: 0 })}`;
+                },
+              },
+            },
+          },
           scales: {
             x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#555a70', font: { size: 10 } } },
             y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#555a70', font: { size: 10 } } },

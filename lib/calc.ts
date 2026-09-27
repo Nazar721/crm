@@ -140,6 +140,7 @@ export function bankCurrencyLocal(bankId: string): string {
   const bank = normalizeBank(bankId);
   if (bank === 'cash_usd') return 'USD';
   if (bank === 'cash_eur') return 'EUR';
+  if (bank === 'crypto_usdt') return 'USDT';
   return 'UAH';
 }
 
@@ -147,6 +148,7 @@ export function rateForCurrency(currency: string): number {
   const settings = Storage.getFinanceSettings();
   if (currency === 'USD') return Number(settings.usdRate) || 41;
   if (currency === 'EUR') return Number(settings.eurRate) || 44;
+  if (currency === 'USDT') return Number((settings as any).usdtRate) || Number(settings.usdRate) || 41;
   return 1;
 }
 
@@ -161,7 +163,7 @@ export function financeBalance(transactions?: Transaction[]): number {
 
 export function bankBalances(transactions?: Transaction[]): Record<string, number> {
   const txns = transactions || Storage.getTransactions();
-  const balances: Record<string, number> = { mono: 0, privat: 0, cash: 0, cash_usd: 0, cash_eur: 0 };
+  const balances: Record<string, number> = { mono: 0, privat: 0, cash: 0, cash_usd: 0, cash_eur: 0, crypto_usdt: 0 };
   txns.forEach(t => {
     if (t.hidden) return;
     const bank = normalizeBank(t.bank);

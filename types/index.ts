@@ -106,6 +106,7 @@ export interface Saving {
 export interface FinanceSettings {
   usdRate: number;
   eurRate: number;
+  usdtRate?: number;
 }
 
 // Backup info

@@ -36,8 +36,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (typeof window !== 'undefined' && !initialized) {
-      migrate();
-      setInitialized(true);
+      // Defer heavy localStorage migration off the critical navigation path
+      const run = () => {
+        try { migrate(); } finally { setInitialized(true); }
+      };
+      if ('requestIdleCallback' in window) {
+        (window as any).requestIdleCallback(run, { timeout: 1500 });
+      } else {
+        setTimeout(run, 0);
+      }
     }
   }, [initialized]);
 

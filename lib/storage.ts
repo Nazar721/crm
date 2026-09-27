@@ -57,9 +57,9 @@ export function saveSavings(d: Saving[]): void { set(KEYS.savings, d); }
 
 export function getFinanceSettings(): FinanceSettings {
   try {
-    return { usdRate: 41, eurRate: 44, ...(JSON.parse(localStorage.getItem(META_KEYS.financeSettings) || '{}') || {}) };
+    return { usdRate: 41, eurRate: 44, usdtRate: 41, ...(JSON.parse(localStorage.getItem(META_KEYS.financeSettings) || '{}') || {}) };
   } catch {
-    return { usdRate: 41, eurRate: 44 };
+    return { usdRate: 41, eurRate: 44, usdtRate: 41 };
   }
 }
 
@@ -67,17 +67,25 @@ export function saveFinanceSettings(settings: FinanceSettings): void {
   localStorage.setItem(META_KEYS.financeSettings, JSON.stringify({
     usdRate: Number(settings.usdRate) || 41,
     eurRate: Number(settings.eurRate) || 44,
+    usdtRate: Number((settings as any).usdtRate) || Number(settings.usdRate) || 41,
   }));
   afterSave();
 }
 
 let _suppressBackups = false;
 
+let _lastBackupAt = 0;
+
 function afterSave(): void {
   if (_suppressBackups) return;
   const now = new Date().toISOString();
-  localStorage.setItem(META_KEYS.lastSavedAt, now);
-  rotateInternalBackups(now);
+  try { localStorage.setItem(META_KEYS.lastSavedAt, now); } catch {}
+  // Throttle heavy full-DB snapshots: max 1 per 30s, otherwise navigation/saves feel laggy.
+  // Rotating 5 full copies on every keystroke/save serializes megabytes synchronously.
+  const nowMs = Date.now();
+  if (nowMs - _lastBackupAt < 30000) return;
+  _lastBackupAt = nowMs;
+  try { rotateInternalBackups(now); } catch {}
 }
 
 function rotateInternalBackups(now: string = new Date().toISOString()): void {

@@ -46,12 +46,10 @@ export default function SavingForm({ isOpen, saving, onSave, onCancel }: SavingF
         </div>
         <div className="form-group">
           <label className="form-label">Банк *</label>
-          <AutocompleteInput
-            value={bank}
-            onChange={setBank}
-            options={BANKS.map(b => ({ value: b.label }))}
-            placeholder="Назва банку"
-          />
+          <select className="form-input" value={bank} onChange={e => setBank(e.target.value)}>
+            <option value="">Оберіть банк / гаманець</option>
+            {BANKS.map(b => <option key={b.id} value={b.id}>{b.label}</option>)}
+          </select>
         </div>
         <div className="form-group">
           <label className="form-label">Дата</label>

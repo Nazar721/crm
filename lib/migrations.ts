@@ -24,8 +24,13 @@ export function migrate(): void {
   // myPercent тепер зберігається в проєкті й ніколи не перераховується автоматично:
   // v12-міграція, що виводила його з specialistCost, зіпсовувала дані (у нових
   // проєктах specialistCost немає → myPercent ставав 100), тому прибрана.
-  saveProjects(getProjects().map(stripProject as any));
-  saveCompleted(getCompleted().map(stripProject as any));
+  const _pa = getProjects();
+  const _pc = getCompleted();
+  // Avoid rewriting storage on every navigation when nothing changed
+  if (_pa.length || _pc.length) {
+    saveProjects(_pa.map(stripProject as any));
+    saveCompleted(_pc.map(stripProject as any));
+  }
 
   // Partners migration
   const partners = getPartners();

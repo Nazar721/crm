@@ -120,7 +120,7 @@
 }
 
 .anim-chart {
-  animation: chartReveal 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: none;
 }
 
 /* =============================================
@@ -223,43 +223,45 @@ body {
   position: absolute;
   border-radius: 50%;
   filter: blur(100px);
-  opacity: 0.5;
-  will-change: transform;
+  opacity: 0.35;
+  will-change: auto;
+  animation: none !important;
+  transform: translateZ(0);
 }
 
 .orb--blue {
   width: 500px; height: 500px;
   background: radial-gradient(circle, rgba(10, 132, 255, 0.35) 0%, transparent 70%);
   top: -10%; left: 15%;
-  animation: orbDrift1 25s ease-in-out infinite;
+  animation: none !important;
 }
 
 .orb--purple {
   width: 450px; height: 450px;
   background: radial-gradient(circle, rgba(191, 90, 242, 0.30) 0%, transparent 70%);
   bottom: -5%; right: 10%;
-  animation: orbDrift2 30s ease-in-out infinite;
+  animation: none !important;
 }
 
 .orb--teal {
   width: 400px; height: 400px;
   background: radial-gradient(circle, rgba(100, 210, 255, 0.25) 0%, transparent 70%);
   top: 40%; left: 50%;
-  animation: orbDrift3 28s ease-in-out infinite;
+  animation: none !important;
 }
 
 .orb--green {
   width: 350px; height: 350px;
   background: radial-gradient(circle, rgba(48, 209, 88, 0.20) 0%, transparent 70%);
   top: 20%; right: 25%;
-  animation: orbDrift1 32s ease-in-out infinite reverse;
+  animation: none !important;
 }
 
 .orb--pink {
   width: 300px; height: 300px;
   background: radial-gradient(circle, rgba(255, 55, 95, 0.18) 0%, transparent 70%);
   bottom: 30%; left: 5%;
-  animation: orbDrift2 22s ease-in-out infinite reverse;
+  animation: none !important;
 }
 
 /* =============================================
@@ -809,6 +811,12 @@ body {
   max-width: 100%;
 }
 
+.stat-sub {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
 .stat-value {
   font-family: var(--font-display);
   font-size: 1.28rem;
@@ -821,7 +829,7 @@ body {
 
 .finance-converter {
   flex: 1;
-  min-width: 320px;
+  min-width: 0;
   background: rgba(28, 28, 30, 0.50);
   border: 0.5px solid rgba(255, 255, 255, 0.10);
   border-radius: var(--radius-lg);
@@ -838,6 +846,8 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .converter-rates label {
@@ -848,9 +858,12 @@ body {
   font-weight: 700;
 }
 
-.converter-rates input { width: 92px; }
-.converter-flow select { min-width: 132px; }
-.converter-flow input { width: 110px; }
+.converter-rates { row-gap: 8px; }
+.converter-rates label { flex: 0 1 auto; min-width: 0; }
+.converter-rates input { width: 84px; max-width: 100%; flex: 0 1 auto; }
+.converter-flow select { flex: 1 1 150px; min-width: 0; max-width: 100%; }
+.converter-flow input { flex: 0 1 110px; width: 110px; max-width: 100%; min-width: 0; }
+.converter-flow .btn { flex: 0 0 auto; white-space: nowrap; }
 
 .converter-arrow {
   color: var(--accent-teal);
@@ -1624,9 +1637,10 @@ body {
 
 .finance-summary {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
   gap: 16px;
   margin-bottom: 24px;
+  align-items: stretch;
 }
 
 .settings-grid {
@@ -2303,4 +2317,11 @@ tr.week-b .week-dot {
   .chart-body {
     height: 140px;
   }
+}
+
+/* Perf: stop heavy orb animations for users/devices that prefer less motion */
+@media (prefers-reduced-motion: reduce) {
+  .orb { animation: none !important; }
+  .anim-chart { animation: none !important; }
+  .anim-stagger { animation-duration: 0.01ms !important; }
 }

@@ -12,8 +12,8 @@ import ConfirmModal from '@/components/ui/ConfirmModal';
 import ErrorBoundary from '@/components/ui/ErrorBoundary';
 import { useConfirm } from '@/hooks/useConfirm';
 import dynamic from 'next/dynamic';
-const IncomeChart = dynamic(() => import('@/components/charts/IncomeChart'), { ssr: false });
-const BankBalancesChart = dynamic(() => import('@/components/charts/BankBalancesChart'), { ssr: false });
+const IncomeChart = dynamic(() => import('@/components/charts/IncomeChart'), { ssr: false, loading: () => null });
+const BankBalancesChart = dynamic(() => import('@/components/charts/BankBalancesChart'), { ssr: false, loading: () => null });
 import type { Transaction } from '@/types';
 
 function getMonthKey(d?: string): string | null {
@@ -38,6 +38,7 @@ export default function FinancePage() {
   const [mounted, setMounted] = useState(false);
   const [usdRate, setUsdRate] = useState('');
   const [eurRate, setEurRate] = useState('');
+  const [usdtRate, setUsdtRate] = useState('');
   const [convFrom, setConvFrom] = useState('mono');
   const [convTo, setConvTo] = useState('cash');
   const [convAmount, setConvAmount] = useState('');
@@ -46,11 +47,14 @@ export default function FinancePage() {
     const s = getFinanceSettings();
     setUsdRate(String(s.usdRate));
     setEurRate(String(s.eurRate));
+    setUsdtRate(String((s as any).usdtRate ?? s.usdRate));
   }, []);
+
+  const allTxs = useMemo(() => (mounted ? getTransactions() : []), [mounted, refreshKey]);
 
   const txs = useMemo(() => {
     if (!mounted) return [];
-    return getTransactions().filter(t => {
+    return allTxs.filter(t => {
       if (t.hidden) return false;
       const bankL = bankLabel(normalizeBank(t.bank) || t.bank).toLowerCase();
       const ms = (t.description || '').toLowerCase().includes(search.toLowerCase()) || (t.category || '').toLowerCase().includes(search.toLowerCase()) || bankL.includes(search.toLowerCase());
@@ -59,7 +63,7 @@ export default function FinancePage() {
     }).sort((a, b) => new Date(b.date || b.plannedDate || '').getTime() - new Date(a.date || a.plannedDate || '').getTime());
   }, [mounted, refreshKey, search, typeFilter]);
 
-  const balance = useMemo(() => mounted ? financeBalance(getTransactions()) : 0, [mounted, refreshKey]);
+  const balance = useMemo(() => mounted ? financeBalance(allTxs) : 0, [mounted, allTxs]);
 
   const chartData = useMemo(() => {
     if (!mounted) return { labels: [], income: [] };
@@ -70,7 +74,7 @@ export default function FinancePage() {
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       md[key] = 0;
     }
-    getTransactions().forEach(t => {
+    allTxs.forEach(t => {
       if (t.source && String(t.source).startsWith('project_')) return;
       if (t.type !== 'income') return;
       if (t.incomeStatus === 'incoming') return;
@@ -80,9 +84,9 @@ export default function FinancePage() {
       }
     });
     return { labels: Object.keys(md).map(k => getMonthLabel(k)), income: Object.values(md) };
-  }, [mounted, refreshKey]);
+  }, [mounted, allTxs]);
 
-  const balances = useMemo(() => mounted ? bankBalances() : { mono: 0, privat: 0, cash: 0, cash_usd: 0, cash_eur: 0 }, [mounted, refreshKey]);
+  const balances = useMemo(() => mounted ? bankBalances(allTxs) : { mono: 0, privat: 0, cash: 0, cash_usd: 0, cash_eur: 0, crypto_usdt: 0 }, [mounted, allTxs]);
 
   const weekClass = (dateStr?: string) => {
     const d = new Date(dateStr || today());
@@ -97,8 +101,10 @@ export default function FinancePage() {
     const v = Number(amount) || 0;
     if (cur === 'USD') return '$' + v.toLocaleString('uk-UA', { maximumFractionDigits: 2 });
     if (cur === 'EUR') return '€' + v.toLocaleString('uk-UA', { maximumFractionDigits: 2 });
+    if (cur === 'USDT') return v.toLocaleString('uk-UA', { maximumFractionDigits: 2 }) + ' USDT';
     return formatMoney(v);
   };
+
 
   const handleSave = (data: Partial<Transaction>) => {
     const transactions = getTransactions();
@@ -118,7 +124,7 @@ export default function FinancePage() {
   };
 
   const saveRates = () => {
-    saveFinanceSettings({ usdRate: Number(usdRate) || 41, eurRate: Number(eurRate) || 44 });
+    saveFinanceSettings({ usdRate: Number(usdRate) || 41, eurRate: Number(eurRate) || 44, usdtRate: Number(usdtRate) || Number(usdRate) || 41 });
   };
 
   const doConversion = () => {
@@ -154,22 +160,23 @@ export default function FinancePage() {
         <div className="stat-card"><div className="stat-info"><span className="stat-label">Баланс</span><span className="stat-value">{formatMoney(balance)}</span></div></div>
         <div className="finance-converter">
           <div className="converter-rates">
-            <label><span>$</span><input type="number" className="form-input" value={usdRate} onChange={e => setUsdRate(e.target.value)} onBlur={saveRates} min="0" step="0.01" style={{ width: 92 }} /></label>
-            <label><span>€</span><input type="number" className="form-input" value={eurRate} onChange={e => setEurRate(e.target.value)} onBlur={saveRates} min="0" step="0.01" style={{ width: 92 }} /></label>
+            <label><span>$</span><input type="number" className="form-input" value={usdRate} onChange={e => setUsdRate(e.target.value)} onBlur={saveRates} min="0" step="0.01" /></label>
+            <label><span>€</span><input type="number" className="form-input" value={eurRate} onChange={e => setEurRate(e.target.value)} onBlur={saveRates} min="0" step="0.01" /></label>
+            <label><span>USDT</span><input type="number" className="form-input" value={usdtRate} onChange={e => setUsdtRate(e.target.value)} onBlur={saveRates} min="0" step="0.01" /></label>
           </div>
           <div className="converter-flow">
-            <select className="form-input" value={convFrom} onChange={e => setConvFrom(e.target.value)} style={{ minWidth: 132 }}>{BANKS.map(b => <option key={b.id} value={b.id}>{b.label}</option>)}</select>
+            <select className="form-input" value={convFrom} onChange={e => setConvFrom(e.target.value)}>{BANKS.map(b => <option key={b.id} value={b.id}>{b.label}</option>)}</select>
             <span className="converter-arrow">→</span>
-            <select className="form-input" value={convTo} onChange={e => setConvTo(e.target.value)} style={{ minWidth: 132 }}>{BANKS.map(b => <option key={b.id} value={b.id}>{b.label}</option>)}</select>
-            <input type="number" className="form-input" value={convAmount} onChange={e => setConvAmount(e.target.value)} min="0" step="0.01" placeholder="Сума" style={{ width: 110 }} />
+            <select className="form-input" value={convTo} onChange={e => setConvTo(e.target.value)}>{BANKS.map(b => <option key={b.id} value={b.id}>{b.label}</option>)}</select>
+            <input type="number" className="form-input" value={convAmount} onChange={e => setConvAmount(e.target.value)} min="0" step="0.01" placeholder="Сума" />
             <button className="btn btn-ghost" onClick={doConversion}>Конвертація</button>
           </div>
         </div>
       </div>
 
       <div className="charts-grid charts-grid--2">
-        <div className="chart-card anim-chart"><div className="chart-header"><h3 className="chart-title">Дохід по місяцях</h3></div><IncomeChart labels={chartData.labels} data={chartData.income} /></div>
-        <div className="chart-card anim-chart"><div className="chart-header"><h3 className="chart-title">Активи по банках</h3></div><BankBalancesChart balances={balances} /></div>
+        <div className="chart-card"><div className="chart-header"><h3 className="chart-title">Дохід по місяцях</h3></div><IncomeChart labels={chartData.labels} data={chartData.income} /></div>
+        <div className="chart-card"><div className="chart-header"><h3 className="chart-title">Активи по банках</h3></div><BankBalancesChart balances={balances} usdtRate={Number(usdtRate) || Number(usdRate) || 41} /></div>
       </div>
 
       <div className="table-toolbar">

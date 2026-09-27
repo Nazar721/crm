@@ -9,13 +9,13 @@ ChartJS.register(
 // Плавніші анімації графіків: мутуємо поля дефолтів, а не замінюємо об'єкти —
 // Chart.js тримає в конфігах внутрішні функції, заміна ламає анімації і тултіпи
 if (ChartJS.defaults.animation) {
-  ChartJS.defaults.animation.duration = 1100;
+  ChartJS.defaults.animation.duration = 400;
   ChartJS.defaults.animation.easing = 'easeOutQuart';
 }
 
 const numbersAnim = ChartJS.defaults.animations?.numbers;
 if (numbersAnim) {
-  numbersAnim.duration = 1100;
+  numbersAnim.duration = 400;
   numbersAnim.easing = 'easeOutQuart';
 }
 
