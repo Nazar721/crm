@@ -2,8 +2,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import type { Project, Specialist, Partner } from '@/types';
 import { project as calcProject } from '@/lib/calc';
-import { formatMoney } from '@/lib/utils';
-import { today } from '@/lib/utils';
+import { formatMoney, today, displayCurrency, currencySymbol } from '@/lib/utils';
+import { rateForCurrency } from '@/lib/calc';
 import { getClients, getAllProjects } from '@/lib/storage';
 import { normalizeBank, bankLabel } from '@/lib/banks';
 import type { Client } from '@/types';
@@ -34,6 +34,7 @@ export default function ProjectForm({ isOpen, project, specialists, partners, on
   const [clientTelegram, setClientTelegram] = useState('');
   const [clientSource, setClientSource] = useState('Інше');
   const [budget, setBudget] = useState('');
+  const [currency, setCurrency] = useState('UAH');
   const [bank, setBank] = useState('');
   const [prepayment, setPrepayment] = useState('');
   const [paidToSpecialist, setPaidToSpecialist] = useState('');
@@ -58,6 +59,7 @@ export default function ProjectForm({ isOpen, project, specialists, partners, on
       setClientTelegram(project.clientTelegram || '');
       setClientSource(project.clientSource || 'Інше');
       setBudget(String(project.budget || ''));
+      setCurrency(project.currency || 'UAH');
       setBank(project.bank || '');
       setPrepayment(String(project.prepayment || ''));
       setPaidToSpecialist(String(project.paidToSpecialist || ''));
@@ -71,7 +73,7 @@ export default function ProjectForm({ isOpen, project, specialists, partners, on
       setName(''); setType(''); setStatus('Очікування оплати'); setStartDate(today());
       setDeadlineDays(''); setEndDate(''); setDeveloperId(''); setPartnerId('');
       setClientName(''); setClientTelegram(''); setClientSource('Інше');
-      setBudget(''); setBank(''); setPrepayment(''); setPaidToSpecialist('');
+      setBudget(''); setCurrency(displayCurrency()); setBank(''); setPrepayment(''); setPaidToSpecialist('');
       setMyPercent(''); setProfitTaken(''); setFop(''); setPartnerCommission('');
       setDescription(''); setSelectedClientId('');
     }
@@ -120,6 +122,7 @@ export default function ProjectForm({ isOpen, project, specialists, partners, on
       clientId: '',
       clientName: '',
       budget: Number(budget) || 0,
+      currency,
       prepayment: Number(prepayment) || 0,
       paidToSpecialist: Number(paidToSpecialist) || 0,
       myPercent: Number(myPercent) || 0,
@@ -127,7 +130,7 @@ export default function ProjectForm({ isOpen, project, specialists, partners, on
       fop: Number(fop) || 0,
       partnerCommission: Number(partnerCommission) || 0,
     } as Project);
-  }, [budget, prepayment, paidToSpecialist, myPercent, profitTaken, fop, partnerCommission]);
+  }, [budget, currency, prepayment, paidToSpecialist, myPercent, profitTaken, fop, partnerCommission]);
 
   const handleSave = () => {
     onSave({
@@ -137,6 +140,7 @@ export default function ProjectForm({ isOpen, project, specialists, partners, on
       developerId, partnerId,
       clientName, clientTelegram, clientSource,
       budget: Number(budget) || 0,
+      currency,
       bank,
       prepayment: Number(prepayment) || 0,
       paidToSpecialist: Number(paidToSpecialist) || 0,
@@ -235,8 +239,19 @@ export default function ProjectForm({ isOpen, project, specialists, partners, on
           </select>
         </div>
         <div className="form-group">
-          <label className="form-label">Бюджет (₴) *</label>
+          <label className="form-label">Валюта *</label>
+          <select className="form-input" value={currency} onChange={e => setCurrency(e.target.value)}>
+            <option value="UAH">₴ Гривня</option>
+            <option value="USD">$ Долар</option>
+            <option value="EUR">€ Євро</option>
+          </select>
+        </div>
+        <div className="form-group">
+          <label className="form-label">Бюджет ({currencySymbol(currency)}) *</label>
           <input type="number" className="form-input" value={budget} onChange={e => setBudget(e.target.value)} min="0" placeholder="0" />
+          {currency !== 'UAH' && Number(budget) > 0 && (
+            <small className="form-hint">≈ {formatMoney(Number(budget) * rateForCurrency(currency), 'UAH')}</small>
+          )}
         </div>
         <div className="form-group">
           <label className="form-label">Банк</label>
@@ -248,24 +263,24 @@ export default function ProjectForm({ isOpen, project, specialists, partners, on
           />
         </div>
         <div className="form-group">
-          <label className="form-label">Передоплата (₴)</label>
+          <label className="form-label">Передоплата ({currencySymbol(currency)})</label>
           <input type="number" className="form-input" value={prepayment} onChange={e => setPrepayment(e.target.value)} min="0" placeholder="0" />
         </div>
         <div className="form-group">
           <label className="form-label">До доплати (авто)</label>
-          <input type="text" className="form-input form-input--readonly" value={formatMoney(calc.remainingPayment)} readOnly />
+          <input type="text" className="form-input form-input--readonly" value={formatMoney(calc.remainingPayment, currency)} readOnly />
         </div>
         <div className="form-group">
           <label className="form-label">Вартість фахівця (авто)</label>
-          <input type="text" className="form-input form-input--readonly" value={formatMoney(calc.specialistCost)} readOnly />
+          <input type="text" className="form-input form-input--readonly" value={formatMoney(calc.specialistCost, currency)} readOnly />
         </div>
         <div className="form-group">
-          <label className="form-label">Виплачено фахівцю (₴)</label>
+          <label className="form-label">Виплачено фахівцю ({currencySymbol(currency)})</label>
           <input type="number" className="form-input" value={paidToSpecialist} onChange={e => setPaidToSpecialist(e.target.value)} min="0" placeholder="0" />
         </div>
         <div className="form-group">
           <label className="form-label">Борг фахівцю (авто)</label>
-          <input type="text" className="form-input form-input--readonly" value={formatMoney(calc.specialistDebt)} readOnly />
+          <input type="text" className="form-input form-input--readonly" value={formatMoney(calc.specialistDebt, currency)} readOnly />
         </div>
         <div className="form-group">
           <label className="form-label">Мій % від суми</label>
@@ -273,15 +288,15 @@ export default function ProjectForm({ isOpen, project, specialists, partners, on
         </div>
         <div className="form-group">
           <label className="form-label">Прибуток (авто)</label>
-          <input type="text" className="form-input form-input--readonly" value={formatMoney(calc.projectProfit)} readOnly />
+          <input type="text" className="form-input form-input--readonly" value={formatMoney(calc.projectProfit, currency)} readOnly />
         </div>
         <div className="form-group">
-          <label className="form-label">Забрав собі (₴)</label>
+          <label className="form-label">Забрав собі ({currencySymbol(currency)})</label>
           <input type="number" className="form-input" value={profitTaken} onChange={e => setProfitTaken(e.target.value)} min="0" placeholder="0" />
         </div>
         <div className="form-group">
           <label className="form-label">Лишилось (авто)</label>
-          <input type="text" className="form-input form-input--readonly" value={formatMoney(calc.profitLeft)} readOnly />
+          <input type="text" className="form-input form-input--readonly" value={formatMoney(calc.profitLeft, currency)} readOnly />
         </div>
         <div className="form-group">
           <label className="form-label">ФОП (%)</label>

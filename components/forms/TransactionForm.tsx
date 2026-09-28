@@ -2,8 +2,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import type { Transaction } from '@/types';
 import { BANKS } from '@/lib/banks';
+import { bankCurrency } from '@/lib/banks';
 import { getTransactions } from '@/lib/storage';
-import { today } from '@/lib/utils';
+import { today, currencySymbol } from '@/lib/utils';
 import Modal from '@/components/ui/Modal';
 import ModalFooter from '@/components/ui/ModalFooter';
 import AutocompleteInput from '@/components/ui/AutocompleteInput';
@@ -90,6 +91,7 @@ export default function TransactionForm({ isOpen, transaction, initialType = 'in
             <option value="">Оберіть банк / гаманець</option>
             {BANKS.map(b => <option key={b.id} value={b.id}>{b.label}</option>)}
           </select>
+          {bank && <small className="form-hint">Валюта: {currencySymbol(bankCurrency(bank))} {bankCurrency(bank)}</small>}
         </div>
         <div className="form-group">
           <label className="form-label">Категорія</label>

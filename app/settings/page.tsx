@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
-import { getBackupInfo, shouldShowBackupReminder, snoozeBackupReminder, exportData, importData, markManualBackup } from '@/lib/storage';
+import { getBackupInfo, shouldShowBackupReminder, snoozeBackupReminder, exportData, importData, markManualBackup, getFinanceSettings, saveFinanceSettings } from '@/lib/storage';
 import { formatDateTime } from '@/lib/utils';
 
 export default function SettingsPage() {
@@ -9,12 +9,17 @@ export default function SettingsPage() {
   const [info, setInfo] = useState({ lastSavedAt: '', lastManualBackupAt: '', backupSnoozedUntil: '' });
   const [showWarning, setShowWarning] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [displayCurrency, setDisplayCurrency] = useState('UAH');
+  const [settings, setSettings] = useState({ usdRate: 41, eurRate: 44 });
 
   useEffect(() => {
     setMounted(true);
     if (typeof window !== 'undefined') {
       setInfo(getBackupInfo());
       setShowWarning(shouldShowBackupReminder());
+      const s = getFinanceSettings();
+      setDisplayCurrency((s as any).displayCurrency || 'UAH');
+      setSettings({ usdRate: s.usdRate, eurRate: s.eurRate });
     }
   }, []);
 
@@ -50,12 +55,38 @@ export default function SettingsPage() {
 
   const snooze = () => { snoozeBackupReminder(); setInfo(getBackupInfo()); setShowWarning(shouldShowBackupReminder()); alert('Нагадаю пізніше'); };
 
+  const changeDisplayCurrency = (cur: string) => {
+    setDisplayCurrency(cur);
+    const s = getFinanceSettings();
+    saveFinanceSettings({ ...s, displayCurrency: cur as 'UAH' | 'USD' | 'EUR' });
+    triggerRefresh();
+  };
+
   return (
     <section className="page active">
       <div className="page-header">
         <div><h1 className="page-title">Налаштування</h1><p className="page-subtitle">Резервні копії, експорт та відновлення CRM</p></div>
       </div>
       <div className="settings-grid">
+        <div className="settings-card">
+          <h3 className="settings-title">Валюта відображення</h3>
+          <p className="settings-text">Усі суми в CRM відображатимуться у вибраній валюті.</p>
+          <div style={{ marginTop: 12 }}>
+            <label className="form-label" style={{ marginBottom: 6, display: 'block' }}>Показувати все в:</label>
+            <select className="form-input" style={{ maxWidth: 220 }} value={displayCurrency} onChange={e => changeDisplayCurrency(e.target.value)}>
+              <option value="UAH">₴ Гривня (UAH)</option>
+              <option value="USD">$ Долар (USD)</option>
+              <option value="EUR">€ Євро (EUR)</option>
+            </select>
+          </div>
+          {mounted && (
+            <div style={{ marginTop: 12, color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+              <span>Поточні курси: </span>
+              <strong>1$ = {settings.usdRate}₴</strong> · <strong>1€ = {settings.eurRate}₴</strong>
+              <span style={{ marginLeft: 8 }}>(редагуються на сторінці Фінанси)</span>
+            </div>
+          )}
+        </div>
         <div className="settings-card">
           <h3 className="settings-title">Резервна копія</h3>
           <p className="settings-text">Експорт та імпорт усіх локальних даних CRM у JSON-файл.</p>

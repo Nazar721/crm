@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import type { PersonalDebt } from '@/types';
-import { today } from '@/lib/utils';
+import { today, displayCurrency, currencySymbol } from '@/lib/utils';
 import Modal from '@/components/ui/Modal';
 import ModalFooter from '@/components/ui/ModalFooter';
 
@@ -17,6 +17,7 @@ export default function DebtForm({ isOpen, debt, initialType = 'owed_to_me', onS
   const [type, setType] = useState<'owed_to_me' | 'my_debt'>(initialType);
   const [person, setPerson] = useState('');
   const [amount, setAmount] = useState('');
+  const [currency, setCurrency] = useState('UAH');
   const [note, setNote] = useState('');
   const [date, setDate] = useState('');
 
@@ -25,16 +26,17 @@ export default function DebtForm({ isOpen, debt, initialType = 'owed_to_me', onS
       setType(debt.type);
       setPerson(debt.person || '');
       setAmount(String(debt.amount || ''));
+      setCurrency(debt.currency || 'UAH');
       setNote(debt.note || '');
       setDate(debt.date || '');
     } else {
       setType(initialType);
-      setPerson(''); setAmount(''); setNote(''); setDate(today());
+      setPerson(''); setAmount(''); setCurrency(displayCurrency()); setNote(''); setDate(today());
     }
   }, [debt, isOpen, initialType]);
 
   const handleSave = () => {
-    onSave({ type, person, amount: Number(amount) || 0, note, date });
+    onSave({ type, person, amount: Number(amount) || 0, currency, note, date });
   };
 
   return (
@@ -48,7 +50,15 @@ export default function DebtForm({ isOpen, debt, initialType = 'owed_to_me', onS
           </select>
         </div>
         <div className="form-group">
-          <label className="form-label">Сума (₴) *</label>
+          <label className="form-label">Валюта *</label>
+          <select className="form-input" value={currency} onChange={e => setCurrency(e.target.value)}>
+            <option value="UAH">₴ Гривня</option>
+            <option value="USD">$ Долар</option>
+            <option value="EUR">€ Євро</option>
+          </select>
+        </div>
+        <div className="form-group">
+          <label className="form-label">Сума ({currencySymbol(currency)}) *</label>
           <input type="number" className="form-input" value={amount} onChange={e => setAmount(e.target.value)} min="0" />
         </div>
         <div className="form-group form-group--full">

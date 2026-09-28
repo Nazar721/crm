@@ -81,8 +81,8 @@ export default function SavingsPage() {
               <tr key={s.id}>
                 <td data-label="Ціль">{s.name || '—'}</td>
                 <td data-label="Банк"><BankBadge bankId={s.bank} /></td>
-                <td data-label="Наразі" style={{ color: 'var(--accent-green)', fontWeight: 600 }}>{formatMoney(s.amount)}</td>
-                <td data-label="Ціль сума">{formatMoney(s.goal)}</td>
+                <td data-label="Наразі" style={{ color: 'var(--accent-green)', fontWeight: 600 }}>{formatMoney(s.amount, s.currency)}</td>
+                <td data-label="Ціль сума">{formatMoney(s.goal, s.currency)}</td>
                 <td data-label="Прогрес"><ProgressBar value={savingsProgress(s.amount, s.goal)} /></td>
                 <td data-label="Дата">{formatDate(s.date)}</td>
                 <td data-label="Дії">

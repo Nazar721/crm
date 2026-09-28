@@ -2,10 +2,9 @@
 import { useState, useEffect } from 'react';
 import type { Saving } from '@/types';
 import { BANKS } from '@/lib/banks';
-import { today } from '@/lib/utils';
+import { today, displayCurrency, currencySymbol } from '@/lib/utils';
 import Modal from '@/components/ui/Modal';
 import ModalFooter from '@/components/ui/ModalFooter';
-import AutocompleteInput from '@/components/ui/AutocompleteInput';
 
 interface SavingFormProps {
   isOpen: boolean;
@@ -19,6 +18,7 @@ export default function SavingForm({ isOpen, saving, onSave, onCancel }: SavingF
   const [bank, setBank] = useState('');
   const [amount, setAmount] = useState('');
   const [goal, setGoal] = useState('');
+  const [currency, setCurrency] = useState('UAH');
   const [date, setDate] = useState('');
 
   useEffect(() => {
@@ -27,14 +27,15 @@ export default function SavingForm({ isOpen, saving, onSave, onCancel }: SavingF
       setBank(saving.bank || '');
       setAmount(String(saving.amount || ''));
       setGoal(String(saving.goal || ''));
+      setCurrency(saving.currency || 'UAH');
       setDate(saving.date || '');
     } else {
-      setName(''); setBank(''); setAmount(''); setGoal(''); setDate(today());
+      setName(''); setBank(''); setAmount(''); setGoal(''); setCurrency(displayCurrency()); setDate(today());
     }
   }, [saving, isOpen]);
 
   const handleSave = () => {
-    onSave({ name, bank, amount: Number(amount) || 0, goal: Number(goal) || 0, date });
+    onSave({ name, bank, amount: Number(amount) || 0, goal: Number(goal) || 0, currency, date });
   };
 
   return (
@@ -52,15 +53,23 @@ export default function SavingForm({ isOpen, saving, onSave, onCancel }: SavingF
           </select>
         </div>
         <div className="form-group">
+          <label className="form-label">Валюта *</label>
+          <select className="form-input" value={currency} onChange={e => setCurrency(e.target.value)}>
+            <option value="UAH">₴ Гривня</option>
+            <option value="USD">$ Долар</option>
+            <option value="EUR">€ Євро</option>
+          </select>
+        </div>
+        <div className="form-group">
           <label className="form-label">Дата</label>
           <input type="date" className="form-input" value={date} onChange={e => setDate(e.target.value)} />
         </div>
         <div className="form-group">
-          <label className="form-label">Наразі (₴)</label>
+          <label className="form-label">Наразі ({currencySymbol(currency)})</label>
           <input type="number" className="form-input" value={amount} onChange={e => setAmount(e.target.value)} min="0" placeholder="0" />
         </div>
         <div className="form-group">
-          <label className="form-label">Ціль (₴) *</label>
+          <label className="form-label">Ціль ({currencySymbol(currency)}) *</label>
           <input type="number" className="form-input" value={goal} onChange={e => setGoal(e.target.value)} min="0" placeholder="0" />
         </div>
       </div>

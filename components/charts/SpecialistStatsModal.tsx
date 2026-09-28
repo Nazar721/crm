@@ -5,7 +5,8 @@ import './ChartSetup';
 import Modal from '@/components/ui/Modal';
 import { getProjects, getCompleted } from '@/lib/storage';
 import { project as calcProject } from '@/lib/calc';
-import { formatMoney } from '@/lib/utils';
+import { toDisplay } from '@/lib/calc';
+import { formatMoney, itemCurrency } from '@/lib/utils';
 import type { Project, Specialist } from '@/types';
 
 interface SpecialistStatsModalProps {
@@ -37,7 +38,7 @@ export default function SpecialistStatsModal({ isOpen, onClose, specialist }: Sp
     const completed = getCompleted().filter(p => p.developerId === specialist.id);
     const activeCount = active.length;
     // Виплати по проєктах у роботі — показуємо окремо, щоб не змішувати з графіком.
-    const activePaid = active.reduce((s, p) => s + (Number(p.paidToSpecialist) || 0), 0);
+    const activePaid = active.reduce((s, p) => s + toDisplay(Number(p.paidToSpecialist) || 0, itemCurrency(p)), 0);
 
     let totalPaid = 0, totalMy = 0, totalBudget = 0;
     const byMonth = new Map<string, { spec: number; my: number }>();
@@ -45,17 +46,18 @@ export default function SpecialistStatsModal({ isOpen, onClose, specialist }: Sp
 
     completed.forEach(p => {
       const c = calcProject(p);
-      totalPaid += c.paidToSpecialist;
-      totalMy += c.myIncome;
-      totalBudget += c.budget;
+      const cur = itemCurrency(p);
+      totalPaid += toDisplay(c.paidToSpecialist, cur);
+      totalMy += toDisplay(c.myIncome, cur);
+      totalBudget += toDisplay(c.budget, cur);
       const mk = projectMonth(p);
       if (mk) {
         const cell = byMonth.get(mk) || { spec: 0, my: 0 };
-        cell.spec += c.paidToSpecialist;
-        cell.my += c.myIncome;
+        cell.spec += toDisplay(c.paidToSpecialist, cur);
+        cell.my += toDisplay(c.myIncome, cur);
         byMonth.set(mk, cell);
       }
-      byType.set(p.type || 'IT', (byType.get(p.type || 'IT') || 0) + c.myIncome);
+      byType.set(p.type || 'IT', (byType.get(p.type || 'IT') || 0) + toDisplay(c.myIncome, cur));
     });
 
     // Останні 12 місяців, у які була активність (від першого проєкту до поточного)

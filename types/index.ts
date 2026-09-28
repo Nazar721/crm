@@ -26,6 +26,7 @@ export interface Project {
   partnerId?: string;
   fop: number;
   partnerCommission: number;
+  currency?: string;
   description?: string;
   days?: number;
   completedAt?: number;
@@ -54,6 +55,7 @@ export interface Specialist {
 export interface Partner {
   id: string;
   name: string;
+  currency?: string;
   services?: string;
   paidToPartner?: number;
   givenProjectsCount?: number;
@@ -88,6 +90,7 @@ export interface PersonalDebt {
   type: 'owed_to_me' | 'my_debt';
   person: string;
   amount: number;
+  currency?: string;
   note?: string;
   date?: string;
 }
@@ -99,6 +102,7 @@ export interface Saving {
   bank: string;
   amount: number;
   goal: number;
+  currency?: string;
   date?: string;
 }
 
@@ -107,6 +111,7 @@ export interface FinanceSettings {
   usdRate: number;
   eurRate: number;
   usdtRate?: number;
+  displayCurrency?: 'UAH' | 'USD' | 'EUR';
 }
 
 // Backup info

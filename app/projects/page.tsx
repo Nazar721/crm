@@ -3,7 +3,7 @@ import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
 import { getProjects, getCompleted, getClients, getSpecialists, getPartners, getTransactions, saveProjects, saveCompleted, saveTransactions, saveClients } from '@/lib/storage';
 import { project as calcProject, projectStartDate, projectEndDate, projectDaysUsed } from '@/lib/calc';
-import { formatMoney, formatDate, today, daysBetween, generateId, getMonthKey, getMonthLabel } from '@/lib/utils';
+import { formatMoney, formatDate, today, daysBetween, generateId, getMonthKey, getMonthLabel, itemCurrency } from '@/lib/utils';
 import type { Project } from '@/types';
 import { StatusBadge, TypeBadge, BankBadge } from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
@@ -356,15 +356,15 @@ export default function ProjectsPage() {
                     <td data-label="Клієнт">{client?.name || p.clientName || '—'}</td>
                     <td data-label="Старт">{formatDate(projectStartDate(p))}</td>
                     <td data-label="Дедлайн" style={{ color: dl.color }}>{dl.text}</td>
-                    <td data-label="Бюджет">{formatMoney(c.budget)}</td>
+                    <td data-label="Бюджет">{formatMoney(c.budget, itemCurrency(p))}</td>
                     <td data-label="Банк">{p.bank ? <BankBadge bankId={p.bank} /> : <span style={{ color: 'var(--text-secondary)' }}>—</span>}</td>
-                    <td data-label="Борг клієнта" style={{ color: 'var(--accent-orange)' }}>{formatMoney(c.clientDebt)}</td>
+                    <td data-label="Борг клієнта" style={{ color: 'var(--accent-orange)' }}>{formatMoney(c.clientDebt, itemCurrency(p))}</td>
                     <td data-label="Фахівець" className="cell-nowrap">{spec?.name || '—'}</td>
-                    <td data-label="Борг фахівцю" style={{ color: 'var(--accent-orange)' }}>{formatMoney(c.specialistDebt)}</td>
-                    <td data-label="Прибуток" style={{ color: 'var(--accent-green)' }}>{formatMoney(c.projectProfit)}</td>
-                    <td data-label="ФОП" style={{ color: 'var(--accent-orange)' }}>{formatMoney(c.fopAmount)}</td>
-                    <td data-label="Забрав собі" style={{ color: 'var(--accent-blue)' }}>{formatMoney(c.profitTaken)}</td>
-                    <td data-label="Лишилось" style={{ color: 'var(--accent-orange)' }}>{formatMoney(c.profitLeft)}</td>
+                    <td data-label="Борг фахівцю" style={{ color: 'var(--accent-orange)' }}>{formatMoney(c.specialistDebt, itemCurrency(p))}</td>
+                    <td data-label="Прибуток" style={{ color: 'var(--accent-green)' }}>{formatMoney(c.projectProfit, itemCurrency(p))}</td>
+                    <td data-label="ФОП" style={{ color: 'var(--accent-orange)' }}>{formatMoney(c.fopAmount, itemCurrency(p))}</td>
+                    <td data-label="Забрав собі" style={{ color: 'var(--accent-blue)' }}>{formatMoney(c.profitTaken, itemCurrency(p))}</td>
+                    <td data-label="Лишилось" style={{ color: 'var(--accent-orange)' }}>{formatMoney(c.profitLeft, itemCurrency(p))}</td>
                     <td data-label="Статус"><StatusBadge status={p.status} /></td>
                     <td data-label="Дії">
                       <div className="actions-cell">
@@ -409,10 +409,10 @@ export default function ProjectsPage() {
                       <td data-label="Старт" className="cell-nowrap">{formatDate(projectStartDate(p))}</td>
                       <td data-label="Завершено" className="cell-nowrap">{formatDate(projectEndDate(p))}</td>
                       <td data-label="Днів" className="cell-nowrap">{(p as any).days ?? '—'} дн.</td>
-                      <td data-label="Бюджет" className="cell-money">{formatMoney(c.budget)}</td>
-                      <td data-label="ФОП" className="cell-money">{formatMoney(c.fopAmount)}</td>
-                      <td data-label="Фахівець"><div className="cell-nowrap">{spec?.name || '—'}</div><div className="cell-secondary cell-nowrap">{formatMoney(c.specialistCost)}</div></td>
-                      <td data-label="Мій дохід" className="cell-money" style={{ color: 'var(--accent-green)' }}>{formatMoney(c.myIncome)}</td>
+                      <td data-label="Бюджет" className="cell-money">{formatMoney(c.budget, itemCurrency(p))}</td>
+                      <td data-label="ФОП" className="cell-money">{formatMoney(c.fopAmount, itemCurrency(p))}</td>
+                      <td data-label="Фахівець"><div className="cell-nowrap">{spec?.name || '—'}</div><div className="cell-secondary cell-nowrap">{formatMoney(c.specialistCost, itemCurrency(p))}</div></td>
+                      <td data-label="Мій дохід" className="cell-money" style={{ color: 'var(--accent-green)' }}>{formatMoney(c.myIncome, itemCurrency(p))}</td>
                       <td data-label="Дії">
                         <div className="actions-cell">
                           <button className="btn-icon" title="Редагувати" onClick={() => { setEditProject(p); setFormOpen(true); }}><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" strokeWidth="2"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" strokeWidth="2"/></svg></button>

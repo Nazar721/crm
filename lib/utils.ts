@@ -1,6 +1,30 @@
-export function formatMoney(n: number): string {
+export type Currency = 'UAH' | 'USD' | 'EUR' | 'USDT';
+
+export const CURRENCY_SYMBOLS: Record<string, string> = { UAH: '₴', USD: '$', EUR: '€', USDT: 'USDT' };
+
+export function currencySymbol(cur?: string): string {
+  return CURRENCY_SYMBOLS[cur || 'UAH'] || '₴';
+}
+
+export function displayCurrency(): Currency {
+  if (typeof window === 'undefined') return 'UAH';
+  try {
+    const s = JSON.parse(localStorage.getItem('crm_finance_settings') || '{}');
+    return (s && s.displayCurrency) || 'UAH';
+  } catch { return 'UAH'; }
+}
+
+export function itemCurrency(item?: { currency?: string } | null): string {
+  return item?.currency || 'UAH';
+}
+
+export function formatMoney(n: number, currency?: string): string {
   const num = Number(n) || 0;
-  return '₴' + num.toLocaleString('uk-UA', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  const cur = currency || displayCurrency();
+  const sym = currencySymbol(cur);
+  const dec = cur === 'UAH' ? 0 : 2;
+  const s = num.toLocaleString('uk-UA', { minimumFractionDigits: 0, maximumFractionDigits: dec });
+  return cur === 'USDT' ? `${s} USDT` : sym + s;
 }
 
 export function formatDate(str?: string): string {

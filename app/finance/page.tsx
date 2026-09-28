@@ -2,7 +2,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
 import { getTransactions, saveTransactions, getFinanceSettings, saveFinanceSettings } from '@/lib/storage';
-import { financeBalance, bankBalances, bankAmountToUah, bankCurrencyLocal, rateForCurrency } from '@/lib/calc';
+import { financeBalance, bankBalances, bankCurrencyLocal, rateForCurrency, bankAmountToDisplay } from '@/lib/calc';
 import { formatMoney, formatDate, today } from '@/lib/utils';
 import { BANKS, normalizeBank, bankLabel } from '@/lib/banks';
 import { FinanceTypeBadge } from '@/components/ui/Badge';
@@ -80,7 +80,7 @@ export default function FinancePage() {
       if (t.incomeStatus === 'incoming') return;
       const key = getMonthKey(t.date || t.plannedDate);
       if (key && md[key] !== undefined) {
-        md[key] += bankAmountToUah(t.amount, t.bank);
+        md[key] += bankAmountToDisplay(t.amount, t.bank);
       }
     });
     return { labels: Object.keys(md).map(k => getMonthLabel(k)), income: Object.values(md) };

@@ -57,9 +57,9 @@ export function saveSavings(d: Saving[]): void { set(KEYS.savings, d); }
 
 export function getFinanceSettings(): FinanceSettings {
   try {
-    return { usdRate: 41, eurRate: 44, usdtRate: 41, ...(JSON.parse(localStorage.getItem(META_KEYS.financeSettings) || '{}') || {}) };
+    return { usdRate: 41, eurRate: 44, usdtRate: 41, displayCurrency: 'UAH', ...(JSON.parse(localStorage.getItem(META_KEYS.financeSettings) || '{}') || {}) };
   } catch {
-    return { usdRate: 41, eurRate: 44, usdtRate: 41 };
+    return { usdRate: 41, eurRate: 44, usdtRate: 41, displayCurrency: 'UAH' };
   }
 }
 
@@ -68,6 +68,7 @@ export function saveFinanceSettings(settings: FinanceSettings): void {
     usdRate: Number(settings.usdRate) || 41,
     eurRate: Number(settings.eurRate) || 44,
     usdtRate: Number((settings as any).usdtRate) || Number(settings.usdRate) || 41,
+    displayCurrency: settings.displayCurrency || 'UAH',
   }));
   afterSave();
 }

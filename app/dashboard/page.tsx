@@ -1,9 +1,9 @@
 'use client';
 import { useState, useCallback, useMemo, useEffect, type ReactNode } from 'react';
 import { useApp } from '@/context/AppContext';
-import { dashboardStats, project as calcProject, savingsSummary, bankBalances, bankAmountToUah } from '@/lib/calc';
+import { dashboardStats, project as calcProject, savingsSummary, bankBalances, toDisplay, bankAmountToDisplay } from '@/lib/calc';
 import { getCompleted, getTransactions, getSavings, getClients } from '@/lib/storage';
-import { formatMoney, getMonthKey, getMonthLabel, today } from '@/lib/utils';
+import { formatMoney, getMonthKey, getMonthLabel, today, itemCurrency } from '@/lib/utils';
 import dynamic from 'next/dynamic';
 const IncomeChart = dynamic(() => import('@/components/charts/IncomeChart'), { ssr: false });
 const ProjectsBarChart = dynamic(() => import('@/components/charts/ProjectsBarChart'), { ssr: false });
@@ -78,14 +78,14 @@ export default function DashboardPage() {
     const md = last12Months();
     completed.forEach(p => {
       const key = getMonthKey((p as any).endDate || (p as any).finishDate || (p as any).createdAt?.split('T')[0] || '');
-      if (key && md[key]) { md[key].count += 1; md[key].income += calcProject(p as any).paidAmount; }
+      if (key && md[key]) { md[key].count += 1; md[key].income += toDisplay(calcProject(p as any).paidAmount, itemCurrency(p)); }
     });
     transactions.forEach(t => {
       if (t.source && String(t.source).startsWith('project_')) return;
       const key = getMonthKey(t.date || t.plannedDate);
       if (key && md[key]) {
-        if (t.type === 'income') md[key].financeIn += bankAmountToUah(t.amount, t.bank);
-        else if (t.type === 'expense') md[key].financeOut += bankAmountToUah(t.amount, t.bank);
+        if (t.type === 'income') md[key].financeIn += bankAmountToDisplay(t.amount, t.bank);
+        else if (t.type === 'expense') md[key].financeOut += bankAmountToDisplay(t.amount, t.bank);
       }
     });
 
@@ -101,7 +101,7 @@ export default function DashboardPage() {
     const amd = last12Months() as Record<string, { income: number }>;
     completed.forEach(p => {
       const key = getMonthKey((p as any).endDate || (p as any).finishDate || '');
-      if (key && amd[key]) amd[key].income += Number(calcProject(p as any).myIncome);
+      if (key && amd[key]) amd[key].income += toDisplay(calcProject(p as any).myIncome, itemCurrency(p));
     });
     const agencyLabels = Object.keys(amd).map(k => getMonthLabel(k));
     const agencyIncome = Object.values(amd).map(d => d.income);

@@ -1,7 +1,7 @@
 import type { Project, ProjectCalc, ClientStats, SpecialistStats, PartnerStats, DashboardStats, Transaction, PersonalDebt, Saving } from '@/types';
 import * as Storage from '@/lib/storage';
-import { getMonthKey, daysBetween } from '@/lib/utils';
-import { normalizeBank, bankCurrency as bankCurrencyFn } from '@/lib/banks';
+import { getMonthKey, daysBetween, displayCurrency, itemCurrency } from '@/lib/utils';
+import { normalizeBank } from '@/lib/banks';
 
 export function project(p: Project): ProjectCalc {
   const budget = Number(p.budget) || 0;
@@ -72,10 +72,11 @@ export function clientStats(clientId: string): ClientStats {
   let totalBudget = 0, totalProfit = 0, totalPrepayment = 0, totalClientDebt = 0;
   all.forEach(p => {
     const c = project(p);
-    totalBudget += c.budget;
-    totalProfit += c.projectProfit;
-    totalPrepayment += c.prepayment;
-    totalClientDebt += c.clientDebt;
+    const cur = itemCurrency(p);
+    totalBudget += toDisplay(c.budget, cur);
+    totalProfit += toDisplay(c.projectProfit, cur);
+    totalPrepayment += toDisplay(c.prepayment, cur);
+    totalClientDebt += toDisplay(c.clientDebt, cur);
   });
   return {
     count: all.length,
@@ -93,15 +94,16 @@ export function specialistStats(specialistId: string): SpecialistStats {
   let totalCost = 0, totalPaid = 0;
   all.forEach(p => {
     const c = project(p);
-    totalCost += c.specialistCost;
-    totalPaid += c.paidToSpecialist;
+    const cur = itemCurrency(p);
+    totalCost += toDisplay(c.specialistCost, cur);
+    totalPaid += toDisplay(c.paidToSpecialist, cur);
   });
   return {
     activeCount: active.length,
     count: completed.length,
     totalCost,
     totalPaid,
-    debt: all.reduce((sum, p) => sum + project(p).specialistDebt, 0),
+    debt: all.reduce((sum, p) => sum + toDisplay(project(p).specialistDebt, itemCurrency(p)), 0),
   };
 }
 
@@ -111,16 +113,18 @@ export function partnerStats(partnerId: string): PartnerStats {
   let totalDeals = 0, totalCommission = 0, ourIncome = 0;
   all.forEach(p => {
     const c = project(p);
-    totalDeals += c.budget;
-    totalCommission += c.partnerCommission;
-    ourIncome += c.myIncome;
+    const cur = itemCurrency(p);
+    totalDeals += toDisplay(c.budget, cur);
+    totalCommission += toDisplay(c.partnerCommission, cur);
+    ourIncome += toDisplay(c.myIncome, cur);
   });
   const partner = Storage.getPartners().find(x => x.id === partnerId);
-  const paidToPartner = Number(partner?.paidToPartner) || 0;
+  const pc = partner?.currency || 'UAH';
+  const paidToPartner = toDisplay(Number(partner?.paidToPartner) || 0, pc);
   const givenProjectsCount = Number(partner?.givenProjectsCount) || 0;
-  const givenProjectsPrice = Number(partner?.givenProjectsPrice) || 0;
-  const ourCommission = Number(partner?.ourCommission) || 0;
-  const paidToUs = Number(partner?.paidToUs) || 0;
+  const givenProjectsPrice = toDisplay(Number(partner?.givenProjectsPrice) || 0, pc);
+  const ourCommission = toDisplay(Number(partner?.ourCommission) || 0, pc);
+  const paidToUs = toDisplay(Number(partner?.paidToUs) || 0, pc);
   return {
     clientsCount: clientIds.size,
     totalDeals,
@@ -156,9 +160,21 @@ export function bankAmountToUah(amount: number, bankId: string): number {
   return (Number(amount) || 0) * rateForCurrency(bankCurrencyLocal(bankId));
 }
 
+export function toDisplay(amount: number, currency?: string): number {
+  const a = Number(amount) || 0;
+  const cur = currency || 'UAH';
+  const disp = displayCurrency();
+  if (cur === disp) return a;
+  return a * rateForCurrency(cur) / rateForCurrency(disp);
+}
+
+export function bankAmountToDisplay(amount: number, bankId: string): number {
+  return toDisplay(bankAmountToUah(amount, bankId), 'UAH');
+}
+
 export function financeBalance(transactions?: Transaction[]): number {
   const balances = bankBalances(transactions);
-  return Object.values(balances).reduce((sum, amount) => sum + amount, 0);
+  return toDisplay(Object.values(balances).reduce((sum, amount) => sum + amount, 0), 'UAH');
 }
 
 export function bankBalances(transactions?: Transaction[]): Record<string, number> {
@@ -187,7 +203,8 @@ export function personalDebtSummary(debts?: PersonalDebt[]): { owedToMe: number;
   const items = debts || Storage.getPersonalDebts();
   let owedToMe = 0, myDebts = 0;
   items.forEach(d => {
-    const amount = Number(d.amount) || 0;
+    const cur = d.currency || 'UAH';
+    const amount = toDisplay(Number(d.amount) || 0, cur);
     if (d.type === 'owed_to_me') owedToMe += amount;
     else if (d.type === 'my_debt') myDebts += amount;
   });
@@ -204,8 +221,9 @@ export function savingsSummary(items?: Saving[]): { totalSaved: number; totalGoa
   const list = items || Storage.getSavings();
   let totalSaved = 0, totalGoal = 0;
   list.forEach(s => {
-    totalSaved += Number(s.amount) || 0;
-    totalGoal += Number(s.goal) || 0;
+    const cur = s.currency || 'UAH';
+    totalSaved += toDisplay(Number(s.amount) || 0, cur);
+    totalGoal += toDisplay(Number(s.goal) || 0, cur);
   });
   return {
     totalSaved,
@@ -229,14 +247,16 @@ export function dashboardStats(): DashboardStats {
 
   completed.forEach(p => {
     const c = project(p);
-    totalBudget += c.budget;
-    totalProfit += Number(c.myIncome);
+    const cur = itemCurrency(p);
+    totalBudget += toDisplay(c.budget, cur);
+    totalProfit += toDisplay(c.myIncome, cur);
   });
 
   all.forEach(p => {
     const c = project(p);
-    clientDebts += c.clientDebt;
-    specialistDebts += c.specialistDebt;
+    const cur = itemCurrency(p);
+    clientDebts += toDisplay(c.clientDebt, cur);
+    specialistDebts += toDisplay(c.specialistDebt, cur);
   });
 
   partners.forEach(pt => {
@@ -256,7 +276,7 @@ export function dashboardStats(): DashboardStats {
       if (t.type === 'income' && !isProjectSource && t.incomeStatus === 'incoming') return false;
       return t.type === 'income' && !isProjectSource;
     })
-    .reduce((sum, t) => sum + bankAmountToUah(t.amount, t.bank), 0);
+    .reduce((sum, t) => sum + bankAmountToDisplay(t.amount, t.bank), 0);
 
   const savings = savingsSummary();
 

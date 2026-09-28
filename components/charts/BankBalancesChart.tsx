@@ -2,6 +2,7 @@
 import { Bar } from 'react-chartjs-2';
 import './ChartSetup';
 import { BANKS, bankLabel } from '@/lib/banks';
+import { formatMoney } from '@/lib/utils';
 
 interface BankBalancesChartProps {
   balances: Record<string, number>;
@@ -49,9 +50,9 @@ export default function BankBalancesChart({ balances, usdtRate = 41 }: BankBalan
                   const raw = Number(ctx.parsed.y) || 0;
                   if (id === 'crypto_usdt') {
                     const usdt = raw / (usdtRate || 41);
-                    return `Баланс: $${usdt.toLocaleString('uk-UA', { maximumFractionDigits: 0 })} = ${raw.toLocaleString('uk-UA', { maximumFractionDigits: 0 })} грн`;
+                    return `Баланс: $${usdt.toLocaleString('uk-UA', { maximumFractionDigits: 0 })} = ${formatMoney(raw, 'UAH')}`;
                   }
-                  return `Баланс: ₴${raw.toLocaleString('uk-UA', { maximumFractionDigits: 0 })}`;
+                  return `Баланс: ${formatMoney(raw, 'UAH')}`;
                 },
               },
             },

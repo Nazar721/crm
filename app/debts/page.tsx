@@ -87,7 +87,7 @@ export default function DebtsPage() {
               <tr key={d.id}>
                 <td data-label="Тип"><DebtTypeBadge type={d.type} /></td>
                 <td data-label="Хто / Кому">{d.person || '—'}</td>
-                <td data-label="Сума" style={{ color: d.type === 'owed_to_me' ? 'var(--accent-green)' : 'var(--accent-orange)', fontWeight: 600 }}>{formatMoney(d.amount)}</td>
+                <td data-label="Сума" style={{ color: d.type === 'owed_to_me' ? 'var(--accent-green)' : 'var(--accent-orange)', fontWeight: 600 }}>{formatMoney(d.amount, d.currency)}</td>
                 <td data-label="Примітка">{d.note || '—'}</td>
                 <td data-label="Дата">{formatDate(d.date)}</td>
                 <td data-label="Дії">
