@@ -1836,6 +1836,34 @@ select.form-input option {
 @media (max-width: 768px) {
   html { font-size: 15px; }
 
+  /* --- Краш-фікс iOS PWA («Повторення проблеми») ---
+     5 орбів з blur(100px) + backdrop-filter на великих панелях вичерпують
+     пам'ять WebKit-процесу на сторінці з довгим списком (Фінанси).
+     Суцільні фони візуально майже ідентичні (панелі і так 80%+ непрозорі). */
+  .orb-bg { display: none; }
+  .stat-card,
+  .finance-converter,
+  .chart-card,
+  .tabs,
+  .search-input,
+  .filter-select,
+  .form-input,
+  .modal-stat-card,
+  .stat-icon,
+  .dev-stat,
+  .backup-btn,
+  .toast,
+  .modal,
+  .modal-footer,
+  .page-header {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .stat-card, .finance-converter, .chart-card, .tabs { background: rgba(28, 28, 30, 0.90); }
+  .search-input, .filter-select, .form-input { background: rgba(28, 28, 30, 0.92); }
+  .modal, .modal-footer { background: rgba(30, 30, 32, 0.98); }
+  .page-header { background: rgba(0, 0, 0, 0.85); }
+
   /* --- Sidebar -> TabBar --- */
   .sidebar { display: none; }
   .burger { display: none !important; }
@@ -1854,9 +1882,8 @@ select.form-input option {
     z-index: 50;
     margin: -14px -14px 18px;
     padding: calc(12px + env(safe-area-inset-top)) 14px 12px;
-    background: rgba(0, 0, 0, 0.60);
-    -webkit-backdrop-filter: saturate(200%) blur(var(--glass-blur-strong));
-    backdrop-filter: saturate(200%) blur(var(--glass-blur-strong));
+    /* Без backdrop-filter: стікі-хедер на iOS з довгим списком вичерпує пам'ять */
+    background: rgba(0, 0, 0, 0.85);
     border-bottom: 0.5px solid rgba(255, 255, 255, 0.06);
   }
 
