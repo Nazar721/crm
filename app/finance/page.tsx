@@ -102,14 +102,18 @@ export default function FinancePage() {
 
   // Підсумки по відфільтрованому списку
   const filteredSummary = useMemo(() => {
-    let income = 0, expense = 0;
+    let turnover = 0, income = 0, expense = 0;
     txs.forEach(t => {
       if (t.type === 'transfer') return;
       const v = bankAmountToDisplay(Number(t.amount) || 0, t.bank);
-      if (t.type === 'income') income += v;
-      else if (t.type === 'expense') expense += v;
+      if (t.type === 'income') {
+        turnover += v;
+        if (t.incomeStatus !== 'incoming') income += v;
+      } else if (t.type === 'expense') {
+        expense += v;
+      }
     });
-    return { count: txs.length, income, expense, net: income - expense };
+    return { count: txs.length, turnover, income, expense };
   }, [txs]);
 
   const balance = useMemo(() => mounted ? financeBalance(allTxs) : 0, [mounted, allTxs]);
@@ -256,9 +260,9 @@ export default function FinancePage() {
       {(periodFilter || typeFilter) && txs.length > 0 && (
         <div className="stats-grid stats-grid--wide" style={{ marginBottom: 14 }}>
           <div className="stat-card"><div className="stat-info"><span className="stat-label">Транзакцій</span><span className="stat-value">{filteredSummary.count}</span></div></div>
-          <div className="stat-card"><div className="stat-info"><span className="stat-label">Дохід</span><span className="stat-value" style={{ color: 'var(--accent-green)' }}>{formatMoney(Math.round(filteredSummary.income))}</span></div></div>
+          <div className="stat-card"><div className="stat-info"><span className="stat-label">Оборот</span><span className="stat-value" style={{ color: 'var(--accent-green)' }}>{formatMoney(Math.round(filteredSummary.turnover))}</span></div></div>
           <div className="stat-card"><div className="stat-info"><span className="stat-label">Витрати</span><span className="stat-value" style={{ color: 'var(--accent-orange)' }}>{formatMoney(Math.round(filteredSummary.expense))}</span></div></div>
-          <div className="stat-card"><div className="stat-info"><span className="stat-label">Чистими</span><span className="stat-value" style={{ color: filteredSummary.net >= 0 ? 'var(--accent-green)' : 'var(--danger)' }}>{formatMoney(Math.round(filteredSummary.net))}</span></div></div>
+          <div className="stat-card"><div className="stat-info"><span className="stat-label">Дохід</span><span className="stat-value" style={{ color: 'var(--accent-green)' }}>{formatMoney(Math.round(filteredSummary.income))}</span></div></div>
         </div>
       )}
 

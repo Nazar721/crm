@@ -76,8 +76,8 @@ export default function TransactionForm({ isOpen, transaction, initialType = 'in
           <div className="form-group">
             <label className="form-label">Статус доходу</label>
             <select className="form-input" value={incomeStatus} onChange={e => setIncomeStatus(e.target.value)}>
-              <option value="earned">Зароблені</option>
-              <option value="incoming">Вхідні</option>
+              <option value="earned">Дохід</option>
+              <option value="incoming">Оборот</option>
             </select>
           </div>
         )}
