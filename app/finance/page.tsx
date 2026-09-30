@@ -31,6 +31,7 @@ export default function FinancePage() {
   const { refreshKey, triggerRefresh } = useApp();
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
+  const [periodFilter, setPeriodFilter] = useState('');
   const [formOpen, setFormOpen] = useState(false);
   const [editTx, setEditTx] = useState<Transaction | null>(null);
   const [initialType, setInitialType] = useState<'income' | 'expense'>('income');
@@ -52,6 +53,41 @@ export default function FinancePage() {
 
   const allTxs = useMemo(() => (mounted ? getTransactions() : []), [mounted, refreshKey]);
 
+  // Місяці, в яких реально є транзакції — для селекта
+  const monthOptions = useMemo(() => {
+    const keys = new Set<string>();
+    allTxs.forEach(t => {
+      if (t.hidden) return;
+      const k = getMonthKey(t.date || t.plannedDate);
+      if (k) keys.add(k);
+    });
+    return [...keys].sort().reverse();
+  }, [allTxs]);
+
+  const inPeriod = (t: Transaction) => {
+    if (!periodFilter) return true;
+    const dateStr = t.date || t.plannedDate;
+    if (!dateStr) return false;
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return false;
+    const now = new Date();
+    if (periodFilter.startsWith('m:')) return getMonthKey(dateStr) === periodFilter.slice(2);
+    switch (periodFilter) {
+      case 'this_month':
+        return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+      case 'last_month': {
+        const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        return d.getFullYear() === prev.getFullYear() && d.getMonth() === prev.getMonth();
+      }
+      case 'this_year':
+        return d.getFullYear() === now.getFullYear();
+      case 'last_year':
+        return d.getFullYear() === now.getFullYear() - 1;
+      default:
+        return true;
+    }
+  };
+
   const txs = useMemo(() => {
     if (!mounted) return [];
     return allTxs.filter(t => {
@@ -59,9 +95,22 @@ export default function FinancePage() {
       const bankL = bankLabel(normalizeBank(t.bank) || t.bank).toLowerCase();
       const ms = (t.description || '').toLowerCase().includes(search.toLowerCase()) || (t.category || '').toLowerCase().includes(search.toLowerCase()) || bankL.includes(search.toLowerCase());
       const mt = !typeFilter || t.type === typeFilter;
-      return ms && mt;
+      const mp = inPeriod(t);
+      return ms && mt && mp;
     }).sort((a, b) => new Date(b.date || b.plannedDate || '').getTime() - new Date(a.date || a.plannedDate || '').getTime());
-  }, [mounted, refreshKey, search, typeFilter]);
+  }, [mounted, refreshKey, search, typeFilter, periodFilter, allTxs]);
+
+  // Підсумки по відфільтрованому списку
+  const filteredSummary = useMemo(() => {
+    let income = 0, expense = 0;
+    txs.forEach(t => {
+      if (t.type === 'transfer') return;
+      const v = bankAmountToDisplay(Number(t.amount) || 0, t.bank);
+      if (t.type === 'income') income += v;
+      else if (t.type === 'expense') expense += v;
+    });
+    return { count: txs.length, income, expense, net: income - expense };
+  }, [txs]);
 
   const balance = useMemo(() => mounted ? financeBalance(allTxs) : 0, [mounted, allTxs]);
 
@@ -187,7 +236,31 @@ export default function FinancePage() {
         <select className="filter-select" value={typeFilter} onChange={e => setTypeFilter(e.target.value)}>
           <option value="">Усі типи</option><option value="income">Дохід</option><option value="expense">Витрата</option><option value="transfer">Конвертація</option>
         </select>
+        <select className="filter-select" value={periodFilter} onChange={e => setPeriodFilter(e.target.value)}>
+          <option value="">Увесь час</option>
+          <option value="this_month">Цього місяця</option>
+          <option value="last_month">Минулого місяця</option>
+          <option value="this_year">Цього року</option>
+          <option value="last_year">Минулого року</option>
+          {monthOptions.length > 0 && (
+            <optgroup label="Конкретний місяць">
+              {monthOptions.map(k => <option key={k} value={`m:${k}`}>{getMonthLabel(k)}</option>)}
+            </optgroup>
+          )}
+        </select>
+        {(typeFilter || periodFilter || search) && (
+          <button className="btn btn-ghost" onClick={() => { setTypeFilter(''); setPeriodFilter(''); setSearch(''); }}>Скинути</button>
+        )}
       </div>
+
+      {(periodFilter || typeFilter) && txs.length > 0 && (
+        <div className="stats-grid stats-grid--wide" style={{ marginBottom: 14 }}>
+          <div className="stat-card"><div className="stat-info"><span className="stat-label">Транзакцій</span><span className="stat-value">{filteredSummary.count}</span></div></div>
+          <div className="stat-card"><div className="stat-info"><span className="stat-label">Дохід</span><span className="stat-value" style={{ color: 'var(--accent-green)' }}>{formatMoney(Math.round(filteredSummary.income))}</span></div></div>
+          <div className="stat-card"><div className="stat-info"><span className="stat-label">Витрати</span><span className="stat-value" style={{ color: 'var(--accent-orange)' }}>{formatMoney(Math.round(filteredSummary.expense))}</span></div></div>
+          <div className="stat-card"><div className="stat-info"><span className="stat-label">Чистими</span><span className="stat-value" style={{ color: filteredSummary.net >= 0 ? 'var(--accent-green)' : 'var(--danger)' }}>{formatMoney(Math.round(filteredSummary.net))}</span></div></div>
+        </div>
+      )}
 
       <div className="table-wrap">
         <table className="data-table">

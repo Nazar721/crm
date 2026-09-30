@@ -9,6 +9,7 @@ import { StatusBadge, TypeBadge, BankBadge } from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
 import ProjectForm from '@/components/forms/ProjectForm';
 import ConfirmModal from '@/components/ui/ConfirmModal';
+import Modal from '@/components/ui/Modal';
 import { useConfirm } from '@/hooks/useConfirm';
 
 type PeriodFilter = '' | 'this_month' | 'last_month' | 'last_30' | 'last_90' | 'this_year' | 'last_year' | `m:${string}`;
@@ -25,6 +26,8 @@ export default function ProjectsPage() {
   const [completedSort, setCompletedSort] = useState<CompletedSort>('date_desc');
   const [formOpen, setFormOpen] = useState(false);
   const [editProject, setEditProject] = useState<Project | null>(null);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
   const { isOpen: confirmOpen, title: confirmTitle, text: confirmText, confirm, handleConfirm, cancel } = useConfirm();
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
@@ -141,6 +144,73 @@ export default function ProjectsPage() {
   };
 
   const hasCompletedFilters = !!(periodFilter || specFilter || clientFilter || typeFilter || search || completedSort !== 'date_desc');
+
+  // Чи можна показати кнопку звіту: є період (місяць) + вибраний фахівець
+  const canExportReport = !!(periodFilter && specFilter && specFilter !== 'none' && completed.length > 0);
+
+  const periodTitle = useMemo(() => {
+    if (!periodFilter) return 'Увесь час';
+    if (periodFilter.startsWith('m:')) return getMonthLabel(periodFilter.slice(2));
+    const map: Record<string, string> = {
+      this_month: 'Цього місяця',
+      last_month: 'Минулого місяця',
+      last_30: 'Останні 30 днів',
+      last_90: 'Останні 90 днів',
+      this_year: 'Цього року',
+      last_year: 'Минулого року',
+    };
+    return map[periodFilter] || periodFilter;
+  }, [periodFilter]);
+
+  const reportSpecName = useMemo(() => {
+    if (!specFilter || specFilter === 'none') return '';
+    return specialists.find(s => s.id === specFilter)?.name || '';
+  }, [specFilter, specialists]);
+
+  // Гарно відформатований текстовий звіт для передачі фахівцю (Telegram / копіпаст)
+  const reportText = useMemo(() => {
+    if (!completed.length) return '';
+    const lines: string[] = [];
+    lines.push(`📊 Статистика — ${reportSpecName || 'Фахівець'}`);
+    lines.push(`🗓 Період: ${periodTitle}`);
+    lines.push('');
+    let totalSpecPay = 0;
+    completed.forEach((p, i) => {
+      const c = calcProject(p);
+      const cur = itemCurrency(p);
+      const specPay = c.specialistCost;
+      totalSpecPay += specPay;
+      const paid = Number(p.paidToSpecialist) || 0;
+      const rest = specPay - paid;
+      const status = rest <= 0 ? '✅ виплачено' : `⏳ залишок ${formatMoney(rest, cur)}`;
+      lines.push(`${i + 1}. ${p.name}`);
+      lines.push(`   📅 ${formatDate(projectStartDate(p))} → ${formatDate(projectEndDate(p))} · ${Number((p as any).days) || '—'} дн.`);
+      lines.push(`   💰 Бюджет: ${formatMoney(c.budget, cur)} · Оплата фахівцю: ${formatMoney(specPay, cur)} (${status})`);
+    });
+    lines.push('');
+    lines.push(`———————————`);
+    lines.push(`✅ Проєктів: ${completedSummary.count}`);
+    lines.push(`💼 Оборот: ${formatMoney(completedSummary.totalBudget)}`);
+    lines.push(`💸 Всього фахівцю: ${formatMoney(Math.round(totalSpecPay))}`);
+    lines.push(`📈 Середній чек: ${formatMoney(completedSummary.avgCheck)}`);
+    return lines.join('\n');
+  }, [completed, completedSummary, periodTitle, reportSpecName]);
+
+  const copyReport = async () => {
+    if (!reportText) return;
+    try {
+      await navigator.clipboard.writeText(reportText);
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = reportText;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   // Тільки ті фахівці/клієнти, які реально є в завершених
   const completedSpecialists = useMemo(() => {
@@ -425,8 +495,46 @@ export default function ProjectsPage() {
               </tbody>
             </table>
           </div>
+          {canExportReport && (
+            <div style={{ display: 'flex', justifyContent: 'center', marginTop: 16 }}>
+              <button className="btn btn-primary" onClick={() => setReportOpen(true)}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><polyline points="7 10 12 15 17 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><line x1="12" y1="15" x2="12" y2="3" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+                Статистика для фахівця · {reportSpecName} · {periodTitle}
+              </button>
+            </div>
+          )}
+          {periodFilter && !specFilter && completed.length > 0 && (
+            <p style={{ textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '0.8rem', marginTop: 10 }}>
+              💡 Оберіть фахівця у фільтрі, щоб зʼявилась кнопка вивантаження статистики для нього
+            </p>
+          )}
         </>
       )}
+
+      <Modal isOpen={reportOpen} onClose={() => setReportOpen(false)} title={`Статистика · ${reportSpecName} · ${periodTitle}`} size="lg">
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', margin: '0 0 12px' }}>
+          Готовий текст для відправки фахівцю в Telegram — скопіюйте або поділіться:
+        </p>
+        <pre style={{
+          whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+          background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.10)',
+          borderRadius: 12, padding: 14, fontSize: '0.85rem', lineHeight: 1.55,
+          fontFamily: 'inherit', color: 'var(--text-primary)', margin: 0, maxHeight: 380, overflowY: 'auto'
+        }}>{reportText}</pre>
+        <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
+          <button className="btn btn-primary" onClick={copyReport} style={{ flex: 1, justifyContent: 'center', minWidth: 180 }}>
+            {copied ? '✅ Скопійовано!' : '📋 Копіювати текст'}
+          </button>
+          <a
+            className="btn btn-ghost"
+            style={{ flex: 1, justifyContent: 'center', minWidth: 180, textDecoration: 'none' }}
+            href={`https://t.me/share/url?url=${encodeURIComponent('')}&text=${encodeURIComponent(reportText)}`}
+            target="_blank" rel="noopener noreferrer"
+          >
+            ✈️ Поділитись в Telegram
+          </a>
+        </div>
+      </Modal>
 
       <ProjectForm isOpen={formOpen} project={editProject} specialists={specialists} partners={partners} onSave={handleSave} onCancel={() => { setFormOpen(false); setEditProject(null); }} />
       <ConfirmModal isOpen={confirmOpen} title={confirmTitle} text={confirmText} onConfirm={handleConfirm} onCancel={cancel} />
