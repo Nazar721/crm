@@ -58,7 +58,7 @@ export function validateClientInput(input: Partial<Client>): FieldError[] {
   ];
 }
 
-export async function createClient(input: Partial<Client>): Promise<ActionResult<Client>> {
+async function _createClient(input: Partial<Client>): Promise<ActionResult<Client>> {
   const errors = validateClientInput(input);
   if (errors.length) return fail(errors);
   const client: Client = {
@@ -73,7 +73,7 @@ export async function createClient(input: Partial<Client>): Promise<ActionResult
   return result.ok ? ok(client) : result;
 }
 
-export async function updateClient(id: string, input: Partial<Client>): Promise<ActionResult<Client>> {
+async function _updateClient(id: string, input: Partial<Client>): Promise<ActionResult<Client>> {
   const errors = validateClientInput(input);
   if (errors.length) return fail(errors);
   const clients = Storage.getClients();
@@ -85,7 +85,7 @@ export async function updateClient(id: string, input: Partial<Client>): Promise<
   return result.ok ? ok(next) : result;
 }
 
-export async function toggleClientRegular(id: string): Promise<ActionResult> {
+async function _toggleClientRegular(id: string): Promise<ActionResult> {
   const clients = Storage.getClients();
   const index = clients.findIndex(c => c.id === id);
   if (index < 0) return fail([{ field: 'id', message: 'Клієнта не знайдено' }]);
@@ -93,12 +93,12 @@ export async function toggleClientRegular(id: string): Promise<ActionResult> {
   return persist(Storage.saveClients(clients));
 }
 
-export async function deleteClient(id: string): Promise<ActionResult> {
+async function _deleteClient(id: string): Promise<ActionResult> {
   return persist(Storage.saveClients(Storage.getClients().filter(c => c.id !== id)));
 }
 
 /** Знаходить або створює клієнта за назвою (використовується формою проєкту й AI). */
-export async function resolveClient(input: { name: string; telegram?: string; source?: string }): Promise<ActionResult<{ clientId: string; created: boolean }>> {
+async function _resolveClient(input: { name: string; telegram?: string; source?: string }): Promise<ActionResult<{ clientId: string; created: boolean }>> {
   const name = (input.name || '').trim();
   if (!name) return fail([{ field: 'clientName', message: 'Ім’я клієнта: обов’язкове поле' }]);
   const clients = Storage.getClients();
@@ -178,13 +178,13 @@ export function validateProjectInput(input: Partial<Project>): FieldError[] {
   return errors;
 }
 
-export async function saveProject(input: Partial<Project>, editId?: string): Promise<ActionResult<Project>> {
+async function _saveProject(input: Partial<Project>, editId?: string): Promise<ActionResult<Project>> {
   const errors = validateProjectInput(input);
   if (errors.length) return fail(errors);
 
   let clientId = editId ? (Storage.getProjects().find(p => p.id === editId)?.clientId || Storage.getCompleted().find(p => p.id === editId)?.clientId || '') : '';
   if (input.clientName) {
-    const resolved = await resolveClient({
+    const resolved = await _resolveClient({
       name: input.clientName,
       telegram: input.clientTelegram,
       source: input.clientSource,
@@ -222,7 +222,7 @@ export async function saveProject(input: Partial<Project>, editId?: string): Pro
   return result.ok ? ok(project) : result;
 }
 
-export async function completeProject(id: string): Promise<ActionResult<Project>> {
+async function _completeProject(id: string): Promise<ActionResult<Project>> {
   const active = Storage.getProjects();
   const index = active.findIndex(p => p.id === id);
   if (index < 0) return fail([{ field: 'id', message: 'Активний проєкт не знайдено' }]);
@@ -241,7 +241,7 @@ export async function completeProject(id: string): Promise<ActionResult<Project>
   return resultActive.ok ? ok(record) : resultActive;
 }
 
-export async function deleteProject(id: string, fromCompleted: boolean): Promise<ActionResult> {
+async function _deleteProject(id: string, fromCompleted: boolean): Promise<ActionResult> {
   return fromCompleted
     ? persist(Storage.saveCompleted(Storage.getCompleted().filter(p => p.id !== id)))
     : persist(Storage.saveProjects(Storage.getProjects().filter(p => p.id !== id)));
@@ -264,7 +264,7 @@ export function validateTransactionInput(input: Partial<Transaction>): FieldErro
   return errors;
 }
 
-export async function saveTransaction(input: Partial<Transaction>, editId?: string): Promise<ActionResult<Transaction>> {
+async function _saveTransaction(input: Partial<Transaction>, editId?: string): Promise<ActionResult<Transaction>> {
   const errors = validateTransactionInput(input);
   if (errors.length) return fail(errors);
   const transactions = Storage.getTransactions();
@@ -287,7 +287,7 @@ export async function saveTransaction(input: Partial<Transaction>, editId?: stri
   return result.ok ? ok(record) : result;
 }
 
-export async function deleteTransaction(id: string): Promise<ActionResult> {
+async function _deleteTransaction(id: string): Promise<ActionResult> {
   return persist(Storage.saveTransactions(Storage.getTransactions().filter(t => t.id !== id)));
 }
 
@@ -295,7 +295,7 @@ export async function deleteTransaction(id: string): Promise<ActionResult> {
 // Конвертація
 // ------------------------------------------------------------
 
-export async function convertCurrency(input: { fromBank: string; toBank: string; amount: number }): Promise<ActionResult<Transaction>> {
+async function _convertCurrency(input: { fromBank: string; toBank: string; amount: number }): Promise<ActionResult<Transaction>> {
   const errors: FieldError[] = [];
   if (!input.fromBank) errors.push({ field: 'fromBank', message: 'Оберіть рахунок-джерело' });
   if (!input.toBank) errors.push({ field: 'toBank', message: 'Оберіть рахунок-отримувач' });
@@ -328,7 +328,7 @@ export async function convertCurrency(input: { fromBank: string; toBank: string;
 // Фахівці / партнери
 // ------------------------------------------------------------
 
-export async function saveSpecialist(input: Partial<Specialist>, editId?: string): Promise<ActionResult<Specialist>> {
+async function _saveSpecialist(input: Partial<Specialist>, editId?: string): Promise<ActionResult<Specialist>> {
   const errors = [
     ...validateRequiredText(input.name, 'name', 'Ім’я', 120),
     ...validateRequiredText(input.specialization, 'specialization', 'Спеціалізація', 120),
@@ -349,7 +349,7 @@ export async function saveSpecialist(input: Partial<Specialist>, editId?: string
   return result.ok ? ok(record) : result;
 }
 
-export async function deleteSpecialist(id: string): Promise<ActionResult> {
+async function _deleteSpecialist(id: string): Promise<ActionResult> {
   return persist(Storage.saveSpecialists(Storage.getSpecialists().filter(s => s.id !== id)));
 }
 
@@ -364,7 +364,7 @@ export function validatePartnerInput(input: Partial<Partner>): FieldError[] {
   ];
 }
 
-export async function savePartner(input: Partial<Partner>, editId?: string): Promise<ActionResult<Partner>> {
+async function _savePartner(input: Partial<Partner>, editId?: string): Promise<ActionResult<Partner>> {
   const errors = validatePartnerInput(input);
   if (errors.length) return fail(errors);
   const list = Storage.getPartners();
@@ -389,7 +389,7 @@ export async function savePartner(input: Partial<Partner>, editId?: string): Pro
   return result.ok ? ok(record) : result;
 }
 
-export async function deletePartner(id: string): Promise<ActionResult> {
+async function _deletePartner(id: string): Promise<ActionResult> {
   return persist(Storage.savePartners(Storage.getPartners().filter(p => p.id !== id)));
 }
 
@@ -407,7 +407,7 @@ export function validateDebtInput(input: Partial<PersonalDebt>): FieldError[] {
   ];
 }
 
-export async function saveDebt(input: Partial<PersonalDebt>, editId?: string): Promise<ActionResult<PersonalDebt>> {
+async function _saveDebt(input: Partial<PersonalDebt>, editId?: string): Promise<ActionResult<PersonalDebt>> {
   const errors = validateDebtInput(input);
   if (errors.length) return fail(errors);
   const list = Storage.getPersonalDebts();
@@ -424,7 +424,7 @@ export async function saveDebt(input: Partial<PersonalDebt>, editId?: string): P
   return result.ok ? ok(record) : result;
 }
 
-export async function deleteDebt(id: string): Promise<ActionResult> {
+async function _deleteDebt(id: string): Promise<ActionResult> {
   return persist(Storage.savePersonalDebts(Storage.getPersonalDebts().filter(d => d.id !== id)));
 }
 
@@ -442,7 +442,7 @@ export function validateSavingInput(input: Partial<Saving>): FieldError[] {
   ];
 }
 
-export async function saveSaving(input: Partial<Saving>, editId?: string): Promise<ActionResult<Saving>> {
+async function _saveSaving(input: Partial<Saving>, editId?: string): Promise<ActionResult<Saving>> {
   const errors = validateSavingInput(input);
   if (errors.length) return fail(errors);
   const goal = toFiniteNumber(input.goal);
@@ -461,7 +461,7 @@ export async function saveSaving(input: Partial<Saving>, editId?: string): Promi
   return result.ok ? ok(record) : result;
 }
 
-export async function deleteSaving(id: string): Promise<ActionResult> {
+async function _deleteSaving(id: string): Promise<ActionResult> {
   return persist(Storage.saveSavings(Storage.getSavings().filter(s => s.id !== id)));
 }
 
@@ -473,7 +473,7 @@ export async function deleteSaving(id: string): Promise<ActionResult> {
  * Збереження курсів. displayCurrency НЕ скидається: чинне значення
  * зберігається, якщо його не передано явно.
  */
-export async function saveRates(input: { usdRate?: unknown; eurRate?: unknown; usdtRate?: unknown; displayCurrency?: FinanceSettings['displayCurrency'] }): Promise<ActionResult<FinanceSettings>> {
+async function _saveRates(input: { usdRate?: unknown; eurRate?: unknown; usdtRate?: unknown; displayCurrency?: FinanceSettings['displayCurrency'] }): Promise<ActionResult<FinanceSettings>> {
   const errors: FieldError[] = [
     ...validateRate(input.usdRate, 'usdRate', 'Курс долара'),
     ...validateRate(input.eurRate, 'eurRate', 'Курс євро'),
@@ -495,7 +495,7 @@ export async function saveRates(input: { usdRate?: unknown; eurRate?: unknown; u
   return result.ok ? ok(next) : result;
 }
 
-export async function setDisplayCurrency(currency: FinanceSettings['displayCurrency']): Promise<ActionResult<FinanceSettings>> {
+async function _setDisplayCurrency(currency: FinanceSettings['displayCurrency']): Promise<ActionResult<FinanceSettings>> {
   if (currency !== 'UAH' && currency !== 'USD' && currency !== 'EUR') {
     return fail([{ field: 'displayCurrency', message: 'Валюта відображення: недопустиме значення' }]);
   }
@@ -503,3 +503,26 @@ export async function setDisplayCurrency(currency: FinanceSettings['displayCurre
   const result = await persist(store.saveSettings({ ...current, displayCurrency: currency }));
   return result.ok ? ok({ ...current, displayCurrency: currency }) : result;
 }
+
+// One atomic remote commit per complete domain action.
+export const createClient = (...args: Parameters<typeof _createClient>) => store.atomicAction(() => _createClient(...args));
+export const updateClient = (...args: Parameters<typeof _updateClient>) => store.atomicAction(() => _updateClient(...args));
+export const toggleClientRegular = (...args: Parameters<typeof _toggleClientRegular>) => store.atomicAction(() => _toggleClientRegular(...args));
+export const deleteClient = (...args: Parameters<typeof _deleteClient>) => store.atomicAction(() => _deleteClient(...args));
+export const resolveClient = (...args: Parameters<typeof _resolveClient>) => store.atomicAction(() => _resolveClient(...args));
+export const saveProject = (...args: Parameters<typeof _saveProject>) => store.atomicAction(() => _saveProject(...args));
+export const completeProject = (...args: Parameters<typeof _completeProject>) => store.atomicAction(() => _completeProject(...args));
+export const deleteProject = (...args: Parameters<typeof _deleteProject>) => store.atomicAction(() => _deleteProject(...args));
+export const saveTransaction = (...args: Parameters<typeof _saveTransaction>) => store.atomicAction(() => _saveTransaction(...args));
+export const deleteTransaction = (...args: Parameters<typeof _deleteTransaction>) => store.atomicAction(() => _deleteTransaction(...args));
+export const convertCurrency = (...args: Parameters<typeof _convertCurrency>) => store.atomicAction(() => _convertCurrency(...args));
+export const saveSpecialist = (...args: Parameters<typeof _saveSpecialist>) => store.atomicAction(() => _saveSpecialist(...args));
+export const deleteSpecialist = (...args: Parameters<typeof _deleteSpecialist>) => store.atomicAction(() => _deleteSpecialist(...args));
+export const savePartner = (...args: Parameters<typeof _savePartner>) => store.atomicAction(() => _savePartner(...args));
+export const deletePartner = (...args: Parameters<typeof _deletePartner>) => store.atomicAction(() => _deletePartner(...args));
+export const saveDebt = (...args: Parameters<typeof _saveDebt>) => store.atomicAction(() => _saveDebt(...args));
+export const deleteDebt = (...args: Parameters<typeof _deleteDebt>) => store.atomicAction(() => _deleteDebt(...args));
+export const saveSaving = (...args: Parameters<typeof _saveSaving>) => store.atomicAction(() => _saveSaving(...args));
+export const deleteSaving = (...args: Parameters<typeof _deleteSaving>) => store.atomicAction(() => _deleteSaving(...args));
+export const saveRates = (...args: Parameters<typeof _saveRates>) => store.atomicAction(() => _saveRates(...args));
+export const setDisplayCurrency = (...args: Parameters<typeof _setDisplayCurrency>) => store.atomicAction(() => _setDisplayCurrency(...args));

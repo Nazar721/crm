@@ -1,5 +1,7 @@
 import type { BackupInfo, DataSnapshot, FinanceSettings, ImportIncident } from '@/types';
 import { COLLECTION_KEYS, type CollectionKey, type CrmDataSource, type StorageIssue, type WriteOutcome } from '@/lib/datasource/types';
+import { SupabaseDataSource } from '@/lib/datasource/supabase';
+import { cloudEnabled } from '@/lib/supabase/client';
 import { localDataSource } from '@/lib/datasource/local';
 import { normalizeSettings, primeSettings } from '@/lib/settings';
 import { flushBackupOnClose, markSnapshotDirty, registerSnapshotReader, resumePendingBackup } from '@/lib/backup';
@@ -48,6 +50,7 @@ function emptySnapshot(): DataSnapshot {
 }
 
 function notify(): void {
+  if (staging) return;
   listeners.forEach(fn => {
     try { fn(); } catch (err) { console.error('store listener failed', err); }
   });
@@ -108,6 +111,7 @@ export function isCollectionCorrupt(key: CollectionKey): boolean {
  * reinitialize, runMigrations, очищення журналу чи перезапуск.
  */
 export function getWriteBlock(): string | null {
+  if (dataSource.writeBlockedReason()) return dataSource.writeBlockedReason();
   return storageWriteBlock || importIncidentReason() || migrationWriteBlock;
 }
 
@@ -176,7 +180,7 @@ function refreshHealth(): void {
  * Перше завантаження сховища. Викликається один раз до того, як
  * сторінки отримують доступ до даних (див. AppContext).
  */
-export async function initStore(source: CrmDataSource = localDataSource): Promise<void> {
+export async function initStore(source: CrmDataSource = cloudEnabled() ? new SupabaseDataSource() : localDataSource): Promise<void> {
   dataSource = source;
   status = 'loading';
   loadError = null;
@@ -226,11 +230,38 @@ export async function reloadStore(): Promise<void> {
   notify();
 }
 
+let staging = false;
+let actionQueue: Promise<unknown> = Promise.resolve();
+export function remoteEnabled(): boolean { return dataSource.kind === 'remote'; }
+export function atomicAction<T extends {ok:boolean}>(work:()=>Promise<T>):Promise<T> {
+  if (!(dataSource instanceof SupabaseDataSource)) return work();
+  const source = dataSource;
+  const run = async ():Promise<T> => {
+    const previous = structuredClone(snapshot);
+    staging = true;
+    try {
+      const result = await source.transaction(work);
+      if (!result.ok) {
+        snapshot = previous;
+        if ('issue' in result) return {ok:false,errors:[{field:'storage',message:result.issue.message}]} as unknown as T;
+      }
+      if (result.ok) markSnapshotDirty();
+      return result as T;
+    } catch { snapshot=previous; return {ok:false,errors:[{field:'storage',message:'Запис не підтверджено. Онови сторінку перед повторною дією.'}]} as unknown as T; }
+    finally { staging=false; storageWriteBlock=source.writeBlockedReason(); primeSettings(snapshot.financeSettings); notify(); }
+  };
+  const pending = actionQueue.then(run,run);
+  actionQueue = pending.then(()=>undefined,()=>undefined);
+  return pending;
+}
+
 function commit(next: DataSnapshot): void {
   const now = new Date().toISOString();
   snapshot = { ...next, meta: { ...next.meta, lastSavedAt: now } };
+  if (staging) return;
   markSnapshotDirty();
   notify();
+  if (dataSource.kind === 'remote') return;
   // Службова мітка «останнє збереження» — один короткий запис,
   // окремо від важкої повної копії (див. lib/backup.ts).
   void dataSource.saveMeta({ lastSavedAt: now }).then(result => {
@@ -239,6 +270,7 @@ function commit(next: DataSnapshot): void {
 }
 
 function guard(key: CollectionKey | undefined, scope: WriteScope): WriteOutcome | null {
+  if (dataSource.writeBlockedReason()) return failIssue(dataSource.writeBlockedReason()!, key);
   if (scope === 'import') return null;
   if (storageWriteBlock) return failIssue(storageWriteBlock, key);
   if (key && corruptCollections.has(key)) {

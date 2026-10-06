@@ -1,0 +1,19 @@
+{
+  "sourceBytes": 346399,
+  "sourceSha256": "98e719023626fcfa4da3a4357e98fdb5b9c55d1dda176f77fece7efdd7f09b7a",
+  "counts": {
+    "projectsActive": 14,
+    "projectsCompleted": 179,
+    "clients": 86,
+    "specialists": 7,
+    "partners": 9,
+    "transactions": 366,
+    "personalDebts": 4,
+    "savings": 1
+  },
+  "preservedAllFields": true,
+  "unassignedTransactions": 5,
+  "unresolvedSpecialistLinks": 10,
+  "unresolvedProjectLinks": 1,
+  "cloudImportExecuted": false
+}

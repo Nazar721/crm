@@ -6,6 +6,7 @@ import TabBar from '@/components/layout/TabBar';
 import ToastContainer from '@/components/ui/Toast';
 import { ToastProvider } from '@/components/ToastProvider';
 import InstallBanner from '@/components/ui/InstallBanner';
+import CloudAccess from '@/components/CloudAccess';
 import Script from 'next/script';
 
 export const metadata: Metadata = {
@@ -43,7 +44,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="uk">
       <body>
                 <Script src="/sw-register.js" strategy="afterInteractive" />
-        <AppProvider>
+        <CloudAccess><AppProvider>
           <ToastProvider>
             <div className="orb-bg" aria-hidden="true">
               <div className="orb orb--blue" />
@@ -59,7 +60,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </main>
             <InstallBanner />
           </ToastProvider>
-        </AppProvider>
+        </AppProvider></CloudAccess>
       </body>
     </html>
   );

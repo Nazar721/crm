@@ -109,7 +109,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       // Міграції виконуються до того, як дані стають доступними для редагування.
       // Якщо якась не виконалася — запис даних блокується (див. runMigrations).
-      const report = await runMigrations();
+      const report = await (store.remoteEnabled() ? Promise.resolve({applied:[],skipped:[],failed:[]}) : runMigrations());
       await store.reloadStore();
       setSnapshot(store.getSnapshot());
       setBadges(countBadges(store.getSnapshot()));
@@ -132,7 +132,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const reinitialize = useCallback(async () => {
     try {
-      const report = await runMigrations();
+      const report = await (store.remoteEnabled() ? Promise.resolve({applied:[],skipped:[],failed:[]}) : runMigrations());
       await store.reloadStore();
       setSnapshot(store.getSnapshot());
       setBadges(countBadges(store.getSnapshot()));

@@ -2,6 +2,7 @@ import type { BackupInfo, DataSnapshot, ExportPayload } from '@/types';
 import type { CollectionKey } from '@/lib/datasource/types';
 import { COLLECTION_KEYS } from '@/lib/datasource/types';
 import type { BackupIssue, BackupValidation, CollectionCounts } from '@/lib/validate-backup';
+import { validateCloudBackup } from '@/lib/cloud-import';
 import { validateBackup } from '@/lib/validate-backup';
 import { buildExportPayload } from '@/lib/export';
 import { withBackupsSuppressed } from '@/lib/backup';
@@ -105,7 +106,7 @@ function emptyValidation(message: string): BackupValidation {
  * НІЧОГО не пише в сховище.
  */
 export function previewImport(raw: unknown, options: { strict?: boolean } = {}): ImportPreview {
-  const validation = validateBackup(raw, options);
+  const validation = store.remoteEnabled() ? validateCloudBackup(raw) : validateBackup(raw, options);
   const previousCounts = countSnapshot(store.getSnapshot());
   return {
     validation,
@@ -221,6 +222,7 @@ async function failAndRestore(
  * успішного відновлення; інакше вона переживає reinitialize і перезапуск.
  */
 export async function applyImport(raw: unknown, options: ImportOptions = {}): Promise<ImportReport> {
+  if (store.remoteEnabled()) return applyCloudImport(raw, options);
   const mode = options.mode ?? 'import';
   const validation = validateBackup(raw, options);
   if (!validation.ok || !validation.content) {
@@ -415,4 +417,26 @@ export async function restoreFromPreviousCopy(): Promise<ImportReport> {
   }
 
   return applyImport(payload, { mode: 'restore-previous' });
+}
+
+async function applyCloudImport(raw:unknown, options:ImportOptions):Promise<ImportReport> {
+  const validation = validateCloudBackup(raw);
+  if (!validation.ok || !validation.content || options.mode === 'restore-previous') return {
+    ok:false,stage:'validate',validation,written:[],errors:validation.errors.length ? validation.errors : [{message:'Для бази використовуй перевірений JSON-експорт.'}],
+  };
+  let copyFailed = false;
+  const result = await store.atomicAction(async () => {
+    const copy = await store.saveBackupCopy(JSON.stringify({payload:buildExportPayload(store.getSnapshot())}));
+    if (!copy.ok) { copyFailed = true; return {ok:false,errors:[{message:copy.issue.message}]}; }
+    for (const key of COLLECTION_KEYS) {
+      const saved = await store.saveCollection(key,validation.content![key],'import');
+      if (!saved.ok) return {ok:false,errors:[{message:saved.issue.message}]};
+    }
+    if (validation.settings) {
+      const saved = await store.saveSettings(validation.settings,'import');
+      if (!saved.ok) return {ok:false,errors:[{message:saved.issue.message}]};
+    }
+    return {ok:true,errors:[] as {message:string}[]};
+  });
+  return {ok:result.ok,stage:result.ok ? 'done':copyFailed ? 'safety-copy':'write',validation,written:result.ok ? [...COLLECTION_KEYS]:[],errors:result.errors};
 }
