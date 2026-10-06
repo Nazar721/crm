@@ -1,3 +1,4 @@
+import {classifyAuthFailure} from '@/lib/assistant/auth-failure';
 import {requestedIncomeMonth,monthlyIncomeReply} from '@/lib/income-report';
 import {currentBalanceReply} from '@/lib/assistant/balance-report';
 import {assistantInstructions} from '@/lib/assistant/instructions';
@@ -10,7 +11,7 @@ import {askProvider,resolveProvider,ProviderError} from '@/lib/assistant/provide
 import {ASSISTANT_ERROR_MESSAGES,type AssistantErrorCode} from '@/lib/assistant/contract';
 export const runtime='nodejs';export const maxDuration=60;
 const buckets=new Map<string,{at:number;count:number;busy:boolean}>();
-function error(code:AssistantErrorCode,message?:string,status=200){return NextResponse.json({kind:'error',error:{code,message:message||ASSISTANT_ERROR_MESSAGES[code].message}},{status,headers:{'Cache-Control':'no-store'}});}
+function error(code:AssistantErrorCode,message?:string,status=200,hint?:string){return NextResponse.json({kind:'error',error:{code,message:message||ASSISTANT_ERROR_MESSAGES[code].message,hint}},{status,headers:{'Cache-Control':'no-store'}});}
 export async function POST(req:Request){
  let userId='',released=false;
  try {
@@ -19,7 +20,13 @@ export async function POST(req:Request){
   const url=process.env.NEXT_PUBLIC_SUPABASE_URL,key=process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
   if(!url||!key)return error('not_connected');
   const db=createClient(url,key,{global:{headers:{Authorization:`Bearer ${token}`}},auth:{persistSession:false,autoRefreshToken:false}});
-  const auth=await db.auth.getUser(token);if(auth.error||!auth.data.user)return error('unavailable','Потрібно повторно увійти в CRM',401);
+  const auth=await db.auth.getUser(token);
+  if(auth.error||!auth.data.user){
+   const failure=classifyAuthFailure(auth.error);
+   // Deliberately exclude tokens, user IDs, emails and raw error text from logs.
+   console.warn('crm_auth_check_failed',{reason:failure.reason,name:auth.error?.name,code:auth.error?.code,status:auth.error?.status});
+   return error('unavailable',failure.message,failure.status,failure.hint);
+  }
   userId=auth.data.user.id;
   const result=await db.rpc('crm_read');if(result.error)return error('unavailable','Доступ до CRM не підтверджено',403);
   const s=result.data.snapshot as DataSnapshot;
