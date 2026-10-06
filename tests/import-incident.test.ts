@@ -338,3 +338,112 @@ test('успішний повторний імпорт також знімає �
   assert.equal(store.getSnapshot().clients[0].name, 'НОВИЙ СТАН');
   assert.ok(listAppliedMigrations().length > 0, 'міграції відновлено');
 });
+
+// ------------------------------------------------------------
+// P1: повторне відновлення не губить початкову резервну копію
+// ------------------------------------------------------------
+
+test('невдала явна спроба відновлення не перезаписує початкову точку; після перезапуску ORIGINAL повертається', async () => {
+  clearAll();
+  const inner = new LocalDataSource();
+  const flaky = new FlakyDataSource(inner);
+  await bootStore(flaky);
+  await runMigrations();
+  await store.saveCollection('clients', [makeClient({ name: 'ORIGINAL' })]);
+
+  const base = flaky.collectionCalls;
+  flaky.shouldFail = (kind, key) =>
+    kind === 'collection' && key === 'clients' && flaky.collectionCalls > base + 8;
+  flaky.failNextOn(['transactions'], base + 1);
+
+  // 1) Невдалий імпорт + невдале автоматичне відновлення.
+  const failed = await applyImport(payload({ data: {
+    projectsActive: [], projectsCompleted: [], clients: [makeClient({ name: 'IMPORTED' })],
+    specialists: [], partners: [], transactions: [], personalDebts: [], savings: [],
+  } }));
+  assert.equal(failed.ok, false);
+  assert.equal(failed.recovered, false);
+  assert.equal(store.getSnapshot().clients[0].name, 'IMPORTED');
+  assert.ok(store.getWriteBlocks().importIncident);
+
+  const initialCopy = localStorage.getItem('crm_import_previous');
+  assert.ok(initialCopy, 'початкову копію створено');
+  assert.equal(JSON.parse(initialCopy!).payload.data.clients[0].name, 'ORIGINAL');
+  const incidentCopyKey = store.getImportIncident()!.copyKey;
+  assert.equal(incidentCopyKey, 'crm_import_previous');
+
+  // 2) Перша явна спроба відновлення — зі збоєм першого запису.
+  flaky.shouldFail = () => false;
+  flaky.failNextOn(['projectsActive'], flaky.collectionCalls + 1);
+  const attempt1 = await restoreFromPreviousCopy();
+  assert.equal(attempt1.ok, false, 'спроба мала впасти');
+
+  assert.equal(localStorage.getItem('crm_import_previous'), initialCopy,
+    'початкова копія НЕ перезаписана невдалою спробою');
+  assert.equal(JSON.parse(localStorage.getItem('crm_import_previous')!).payload.data.clients[0].name, 'ORIGINAL');
+  assert.ok(localStorage.getItem('crm_import_attempt'), 'копія спроби зберігається ОКРЕМО');
+  assert.equal(store.getSnapshot().clients[0].name, 'IMPORTED', 'стан не змінився');
+  assert.equal(store.getImportIncident()!.copyKey, incidentCopyKey, 'інцидент лишається на тій самій точці');
+
+  // 3) Повний перезапуск: стійка мітка переживає й указує на ту саму копію.
+  store.resetStoreForTests();
+  await store.initStore(new LocalDataSource());
+  assert.ok(store.getWriteBlock(), 'інцидент пережив перезапуск');
+  assert.equal(store.getImportIncident()!.copyKey, 'crm_import_previous');
+  assert.equal(localStorage.getItem('crm_import_previous'), initialCopy);
+
+  // 4) Друга явна спроба — без збоїв.
+  const attempt2 = await restoreFromPreviousCopy();
+  assert.equal(attempt2.ok, true, attempt2.issue || '');
+  assert.equal(store.getSnapshot().clients[0].name, 'ORIGINAL', 'ORIGINAL повернувся');
+  assert.equal(store.getWriteBlock(), null, 'інцидент знято після відновлення вибраної точки');
+  assert.equal(localStorage.getItem('crm_import_previous'), initialCopy,
+    'початкова копія незмінна до завершення');
+});
+
+test('повторний невдалий звичайний імпорт під час активного інциденту не губить початкову копію', async () => {
+  clearAll();
+  const inner = new LocalDataSource();
+  const flaky = new FlakyDataSource(inner);
+  await bootStore(flaky);
+  await runMigrations();
+  await store.saveCollection('clients', [makeClient({ name: 'ORIGINAL' })]);
+
+  const base = flaky.collectionCalls;
+  flaky.shouldFail = (kind, key) =>
+    kind === 'collection' && key === 'clients' && flaky.collectionCalls > base + 8;
+  flaky.failNextOn(['transactions'], base + 1);
+
+  await applyImport(payload({ data: {
+    projectsActive: [], projectsCompleted: [], clients: [makeClient({ name: 'IMPORTED' })],
+    specialists: [], partners: [], transactions: [], personalDebts: [], savings: [],
+  } }));
+  const initialCopy = localStorage.getItem('crm_import_previous');
+  assert.ok(initialCopy);
+  assert.equal(JSON.parse(initialCopy!).payload.data.clients[0].name, 'ORIGINAL');
+  const initialIncident = store.getImportIncident()!;
+  assert.ok(initialIncident.copyKey);
+
+  // Ще один звичайний імпорт (не відновлення) при активному інциденті — зі збоєм.
+  flaky.shouldFail = () => false;
+  flaky.failNextOn(['projectsActive'], flaky.collectionCalls + 1);
+  const second = await applyImport(payload({ data: {
+    projectsActive: [], projectsCompleted: [], clients: [makeClient({ name: 'ІМПОРТ-2' })],
+    specialists: [], partners: [], transactions: [], personalDebts: [], savings: [],
+  } }));
+
+  assert.equal(second.ok, false, 'імпорт мав впасти');
+  assert.equal(localStorage.getItem('crm_import_previous'), initialCopy,
+    'повторний імпорт НЕ затирає єдину початкову точку відновлення');
+  assert.equal(JSON.parse(localStorage.getItem('crm_import_previous')!).payload.data.clients[0].name, 'ORIGINAL');
+
+  const incidentNow = store.getImportIncident();
+  assert.ok(incidentNow, 'інцидент активний');
+  assert.equal(incidentNow!.copyKey, initialIncident.copyKey, "прив'язка до копії збережена");
+
+  // Відновлення з початкової точки працює.
+  const restored = await restoreFromPreviousCopy();
+  assert.equal(restored.ok, true, restored.issue || '');
+  assert.equal(store.getSnapshot().clients[0].name, 'ORIGINAL');
+  assert.equal(store.getWriteBlock(), null);
+});

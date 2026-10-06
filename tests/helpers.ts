@@ -179,14 +179,16 @@ export class FlakyDataSource implements CrmDataSource {
     return this.inner.saveSettings(s);
   }
 
-  async saveBackupCopy(value: string): Promise<WriteOutcome> {
-    const call = this.next('backupCopy', 'crm_import_previous');
-    if (this.shouldFail('backupCopy', 'crm_import_previous', call)) return this.fail('backupCopy', 'crm_import_previous');
-    return this.inner.saveBackupCopy(value);
+  async saveBackupCopy(value: string, key?: string): Promise<WriteOutcome> {
+    const call = this.next('backupCopy', key || 'crm_import_previous');
+    if (this.shouldFail('backupCopy', key || 'crm_import_previous', call)) {
+      return this.fail('backupCopy', key || 'crm_import_previous');
+    }
+    return this.inner.saveBackupCopy(value, key);
   }
 
   saveMeta(m: Parameters<CrmDataSource['saveMeta']>[0]) { return this.inner.saveMeta(m); }
-  loadBackupCopy() { return this.inner.loadBackupCopy(); }
+  loadBackupCopy(key?: string) { return this.inner.loadBackupCopy(key); }
   listIssues() { return this.inner.listIssues(); }
   clearIssues() { this.inner.clearIssues(); }
 }

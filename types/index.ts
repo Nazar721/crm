@@ -124,6 +124,12 @@ export interface ImportIncident {
   reason: string;
   stage?: string;
   recovered?: boolean;
+  /**
+   * Ключ копії, яка є точкою відновлення для ЦЬОГО інциденту.
+   * Змінюється лише раз — при створенні інциденту; наступні спроби
+   * не перезаписують ані копію, ані це посилання.
+   */
+  copyKey?: string;
 }
 
 // Backup info

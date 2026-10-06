@@ -83,10 +83,13 @@ export interface CrmDataSource {
   saveCollection(key: CollectionKey, value: unknown[]): Promise<WriteOutcome>;
   saveSettings(settings: FinanceSettings): Promise<WriteOutcome>;
   saveMeta(patch: Partial<BackupInfo>): Promise<WriteOutcome>;
-  /** Окрема важка копія (наприклад, попередній стан перед імпортом). */
-  saveBackupCopy(serialized: string): Promise<WriteOutcome>;
-  /** Прочитати копію попереднього стану (null — копії немає або вона непридатна). */
-  loadBackupCopy(): Promise<string | null>;
+  /**
+   * Окрема важка копія. `key` дозволяє тримати початкову точку
+   * відновлення окремо від копії поточного (часткового) стану.
+   */
+  saveBackupCopy(serialized: string, key?: string): Promise<WriteOutcome>;
+  /** Прочитати копію (null — копії немає або вона непридатна). */
+  loadBackupCopy(key?: string): Promise<string | null>;
   listIssues(): StorageIssue[];
   clearIssues(): void;
   /** Прибрати issue про пошкодження конкретної колекції (після успішного відновлення). */

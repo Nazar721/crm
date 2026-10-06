@@ -30,6 +30,18 @@ const CORRUPT_PREFIX = 'crm_corrupt_';
 /** Стан здоров'я даних — живе окремо від журналу повідомлень. */
 const HEALTH_KEY = 'crm_data_health';
 
+/**
+ * Копії стану:
+ * - `previous` — початкова точка відновлення для активного інциденту,
+ *   НЕ перезаписується до підтвердженого завершення;
+ * - `attempt` — копія поточного (часткового) стану перед черговою спробою
+ *   відновлення чи повторним імпортом.
+ */
+export const COPY_KEYS = {
+  previous: 'crm_import_previous',
+  attempt: 'crm_import_attempt',
+} as const;
+
 function issueId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
@@ -342,15 +354,15 @@ export class LocalDataSource implements CrmDataSource {
     return ok ? { ok: true } : { ok: false, issue: this.pushIssue('write_failed', 'Не вдалося оновити службові мітки сховища') };
   }
 
-  async saveBackupCopy(serialized: string): Promise<WriteOutcome> {
-    return this.write('crm_import_previous', serialized);
+  async saveBackupCopy(serialized: string, key: string = COPY_KEYS.previous): Promise<WriteOutcome> {
+    return this.write(key, serialized);
   }
 
-  async loadBackupCopy(): Promise<string | null> {
+  async loadBackupCopy(key: string = COPY_KEYS.previous): Promise<string | null> {
     try {
-      return localStorage.getItem('crm_import_previous');
+      return localStorage.getItem(key);
     } catch (err) {
-      this.pushIssue('read_failed', `Не вдалося прочитати копію попереднього стану: ${String(err)}`, 'crm_import_previous');
+      this.pushIssue('read_failed', `Не вдалося прочитати копію стану «${key}»: ${String(err)}`, key);
       return null;
     }
   }

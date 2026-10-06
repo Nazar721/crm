@@ -10,6 +10,8 @@ import { runMigrations } from '@/lib/migrations';
 import * as store from '@/lib/store';
 
 export const PREVIOUS_STATE_KEY = 'crm_import_previous';
+/** Копія поточного (часткового) стану перед черговою спробою. */
+export const ATTEMPT_STATE_KEY = 'crm_import_attempt';
 
 export type ImportStage = 'validate' | 'safety-copy' | 'write' | 'settings' | 'finalize' | 'done';
 
@@ -51,6 +53,8 @@ interface RestoreContext {
   previousFlags: string[];
   corruptBefore: Set<CollectionKey>;
   corruptRaw: Partial<Record<CollectionKey, string>>;
+  /** Точка відновлення, прив'язана до активного інциденту. */
+  initialCopyKey: string;
 }
 
 type FailureOutcome = {
@@ -199,6 +203,7 @@ async function failAndRestore(
       reason: `Імпорт не завершено (${stage}): ${finalIssue}. Попередній стан відновлено не повністю — перегляд і експорт доступні, запис заблоковано.`,
       stage,
       recovered: false,
+      copyKey: ctx.initialCopyKey,
     });
   }
 
@@ -222,21 +227,31 @@ export async function applyImport(raw: unknown, options: ImportOptions = {}): Pr
     return { ok: false, stage: 'validate', validation, written: [], errors: validation.errors };
   }
 
+  const existingIncident = store.getImportIncident();
   const ctx: RestoreContext = {
     previous: store.getSnapshot(),
     previousFlags: listAppliedMigrations(),
     corruptBefore: new Set(store.getCorruptCollections()),
     corruptRaw: store.getCorruptRaw(),
+    initialCopyKey: existingIncident?.copyKey ?? PREVIOUS_STATE_KEY,
   };
   const incomingCorruptRaw = (raw as { corruptRaw?: Record<string, string> }).corruptRaw;
 
-  // 1. Копія попереднього стану — обов'язкова умова подальшого запису.
+  // 1. Копія стану перед записом.
+  //
+  // Початкова точка відновлення (`PREVIOUS_STATE_KEY`) пишеться ЛИШЕ коли
+  // активного інциденту немає. Поки інцидент активний (і для кожної спроби
+  // відновлення) копія поточного стану йде в ОКРЕМИЙ ключ — інакше повторна
+  // спроба стирала б єдину початкову точку, з якої саме відновлюються.
+  const safetyKey = mode === 'restore-previous' || existingIncident
+    ? ATTEMPT_STATE_KEY
+    : PREVIOUS_STATE_KEY;
   const safetyPayload: ExportPayload = buildExportPayload(ctx.previous, {
     issues: store.getIssues(),
     corruptRaw: ctx.corruptRaw,
   });
   const serialized = JSON.stringify({ createdAt: new Date().toISOString(), kind: 'pre-import', payload: safetyPayload });
-  const copyResult = await store.saveBackupCopy(serialized);
+  const copyResult = await store.saveBackupCopy(serialized, safetyKey);
   if (!copyResult.ok) {
     return {
       ok: false,
@@ -252,11 +267,16 @@ export async function applyImport(raw: unknown, options: ImportOptions = {}): Pr
   const result: ImportOutcome = await withBackupsSuppressed(async (): Promise<ImportOutcome> => {
     // 2. Стійка мітка до ПЕРШОЇ зміни основних даних: аварійне закриття
     // вкладки під час імпорту має бути виявлене при наступному старті.
-    const marked = await store.setImportIncident({
-      at: new Date().toISOString(),
-      reason: 'Імпорт розпочато і не завершено — стан не підтверджено.',
-      stage: 'write',
-    });
+    // Якщо інцидент уже є — не перезаписуємо його (зберігаємо час, причину
+    // та прив'язку до початкової копії). Мітка вже стоїть до першого запису.
+    const marked = existingIncident
+      ? true
+      : await store.setImportIncident({
+          at: new Date().toISOString(),
+          reason: 'Імпорт розпочато і не завершено — стан не підтверджено.',
+          stage: 'write',
+          copyKey: safetyKey,
+        });
     if (!marked) {
       return {
         ok: false,
@@ -354,11 +374,17 @@ export async function applyImport(raw: unknown, options: ImportOptions = {}): Pr
 }
 
 /**
- * Явне відновлення з копії попереднього стану (`crm_import_previous`).
- * Знімає стійкий інцидент лише за повного успіху.
+ * Явне відновлення з ТОЧКИ, на яку посилається активний інцидент
+ * (типово `crm_import_previous`). Читає копію ДО будь-якого запису, тому
+ * сама спроба не може її перезаписати; власна копія спроби йде в
+ * `crm_import_attempt`. Стійкий інцидент знімається лише за повного успіху.
  */
 export async function restoreFromPreviousCopy(): Promise<ImportReport> {
-  const serialized = await store.loadBackupCopy();
+  // Точкою відновлення є саме та копія, на яку посилається інцидент
+  // (після перезапуску вона читається зі стійких метаданих).
+  const incident = store.getImportIncident();
+  const copyKey = incident?.copyKey || PREVIOUS_STATE_KEY;
+  const serialized = await store.loadBackupCopy(copyKey);
   if (!serialized) {
     return {
       ok: false,
@@ -366,8 +392,8 @@ export async function restoreFromPreviousCopy(): Promise<ImportReport> {
       validation: emptyValidation('Копію попереднього стану не знайдено або її не вдалося прочитати'),
       written: [],
       recovered: false,
-      issue: 'Копію попереднього стану не знайдено',
-      errors: [{ message: 'Копію попереднього стану не знайдено або її не вдалося прочитати' }],
+      issue: `Копію попереднього стану («${copyKey}») не знайдено`,
+      errors: [{ message: `Точку відновлення «${copyKey}» не знайдено або її не вдалося прочитати` }],
     };
   }
 
@@ -376,7 +402,7 @@ export async function restoreFromPreviousCopy(): Promise<ImportReport> {
     const parsed = JSON.parse(serialized) as { payload?: unknown };
     payload = parsed && parsed.payload ? parsed.payload : parsed;
   } catch (err) {
-    const message = `Копію попереднього стану пошкоджено: ${String(err)}`;
+    const message = `Копію попереднього стану «${copyKey}» пошкоджено: ${String(err)}`;
     return {
       ok: false,
       stage: 'safety-copy',

@@ -343,15 +343,15 @@ export async function saveMeta(patch: Partial<BackupInfo>, scope: WriteScope = '
 }
 
 /** Окрема важка копія (наприклад, попередній стан перед імпортом). */
-export async function saveBackupCopy(serialized: string): Promise<WriteOutcome> {
-  const outcome = await dataSource.saveBackupCopy(serialized);
+export async function saveBackupCopy(serialized: string, key?: string): Promise<WriteOutcome> {
+  const outcome = await dataSource.saveBackupCopy(serialized, key);
   if (!outcome.ok) notify();
   return outcome;
 }
 
-/** Копія попереднього стану (null — немає або непридатна). */
-export function loadBackupCopy(): Promise<string | null> {
-  return dataSource.loadBackupCopy();
+/** Копія стану (null — немає або непридатна). */
+export function loadBackupCopy(key?: string): Promise<string | null> {
+  return dataSource.loadBackupCopy(key);
 }
 
 /** Замінити snapshot після того, як імпорт уже записав дані у сховище. */
