@@ -252,19 +252,16 @@ export async function migrate(): Promise<MigrationReport> {
       break;
     }
   }
+  // Синхронізація блокування запису: допоки потрібна міграція не
+  // виконалася, редагування даних заблоковане — незалежно від того, хто
+  // викликав migrate(): сторінка, імпорт чи тест.
+  store.setMigrationBlock(
+    failed.length
+      ? `Міграції не застосовано: ${failed.join(', ')}. Запис даних заблоковано до виправлення.`
+      : null,
+  );
   return { applied, skipped, failed };
 }
 
-/**
- * Запуск міграцій із синхронізацією блокування запису:
- * допоки потрібна міграція не виконалася, редагування даних заблоковане.
- */
-export async function runMigrations(): Promise<MigrationReport> {
-  const report = await migrate();
-  store.setMigrationBlock(
-    report.failed.length
-      ? `Міграції не застосовано: ${report.failed.join(', ')}. Запис даних заблоковано до виправлення.`
-      : null,
-  );
-  return report;
-}
+/** Сумісна обгортка (той самий виклик, що й migrate). */
+export const runMigrations = migrate;

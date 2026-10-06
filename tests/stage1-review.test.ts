@@ -46,7 +46,8 @@ test('невдала міграція НЕ позначається викона
   const flaky = new FlakyDataSource(inner, (kind, key) => kind === 'collection' && key === 'specialists' && failSpecialists);
   await bootStore(flaky);
 
-  const report = await runMigrations();
+  // Саме migrate() (без обгортки) має виставляти блок — як у репродукції огляду.
+  const report = await migrate();
   assert.ok(report.failed.includes('v11'), `failed: ${report.failed.join(',')}`);
   assert.equal(report.applied.includes('v11'), false, 'прапорець не має ставитися');
   assert.equal(isMigrationApplied('v11'), false, 'прапорець у сховищі не має існувати');
@@ -61,7 +62,7 @@ test('невдала міграція НЕ позначається викона
 
   // Повторний запуск після «виправлення» — міграція таки виконується.
   failSpecialists = false;
-  const retry = await runMigrations();
+  const retry = await migrate();
   assert.equal(retry.failed.length, 0);
   assert.ok(retry.applied.includes('v11'));
   assert.equal(isMigrationApplied('v11'), true);
