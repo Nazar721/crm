@@ -1,35 +1,43 @@
 'use client';
 import { useState, useMemo, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
-import { getClients, saveClients } from '@/lib/storage';
-import { clientStats } from '@/lib/calc';
+import { clientStats, getStatsContext } from '@/lib/calc';
 import { formatMoney } from '@/lib/utils';
+import { createClient, updateClient, deleteClient, toggleClientRegular } from '@/lib/actions';
+import { emitToast } from '@/lib/toast-bus';
 import type { Client } from '@/types';
 import { SourceBadge } from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
 import ClientForm from '@/components/forms/ClientForm';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { useConfirm } from '@/hooks/useConfirm';
+import { usePersistedState, useScrollRestoration, useVisibleCount } from '@/hooks/useUiState';
 
 type SortKey = '' | 'budget_desc' | 'profit_desc' | 'projects_desc' | 'debt_desc';
 type TypeFilter = '' | 'regular' | 'new';
 
+const PAGE_SIZE = 50;
+
+function reportErrors(errors: { message: string }[]) {
+  emitToast(errors.map(e => e.message).join('; '), 'error');
+}
+
 export default function ClientsPage() {
-  const { refreshKey, triggerRefresh } = useApp();
-  const [search, setSearch] = useState('');
-  const [sourceFilter, setSourceFilter] = useState('');
-  const [typeFilter, setTypeFilter] = useState<TypeFilter>('');
-  const [sortBy, setSortBy] = useState<SortKey>('');
+  const { snapshot, triggerRefresh } = useApp();
+  const [search, setSearch] = usePersistedState('clients:search', '');
+  const [sourceFilter, setSourceFilter] = usePersistedState('clients:source', '');
+  const [typeFilter, setTypeFilter] = usePersistedState<TypeFilter>('clients:type', '');
+  const [sortBy, setSortBy] = usePersistedState<SortKey>('clients:sort', '');
   const [formOpen, setFormOpen] = useState(false);
   const [editClient, setEditClient] = useState<Client | null>(null);
   const { isOpen: confirmOpen, title: confirmTitle, text: confirmText, confirm, handleConfirm, cancel } = useConfirm();
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
+  const { count: visibleCount, showMore, reset: resetVisible } = useVisibleCount(PAGE_SIZE);
 
-  const clientsWithStats = useMemo(() => {
-    if (!mounted) return [];
-    return getClients().map(c => ({ client: c, stats: clientStats(c.id) }));
-  }, [mounted, refreshKey]);
+  const statsCtx = useMemo(() => getStatsContext(snapshot), [snapshot]);
+
+  const clientsWithStats = useMemo(() => (
+    snapshot.clients.map(c => ({ client: c, stats: clientStats(c.id, statsCtx) }))
+  ), [snapshot.clients, statsCtx]);
 
   const filtered = useMemo(() => {
     let result = clientsWithStats;
@@ -78,33 +86,50 @@ export default function ClientsPage() {
     return result;
   }, [clientsWithStats, search, sourceFilter, typeFilter, sortBy]);
 
+  const visible = filtered.slice(0, visibleCount);
+
+  useEffect(() => { resetVisible(); }, [search, sourceFilter, typeFilter, sortBy, resetVisible]);
+
   const toggleRegular = (id: string) => {
-    const clients = getClients();
-    const idx = clients.findIndex(c => c.id === id);
-    if (idx >= 0) {
-      clients[idx].isRegular = !clients[idx].isRegular;
-      saveClients(clients);
+    void toggleClientRegular(id).then(result => {
+      if (!result.ok) reportErrors(result.errors);
       triggerRefresh();
-    }
+    });
   };
 
-  const handleSave = (data: Partial<Client>) => {
-    if (!editClient) return;
-    const clients = getClients();
-    const idx = clients.findIndex(c => c.id === editClient.id);
-    if (idx >= 0) { clients[idx] = { ...clients[idx], ...data }; saveClients(clients); }
-    setFormOpen(false); setEditClient(null); triggerRefresh();
+  const handleSave = async (data: Partial<Client>) => {
+    const result = editClient
+      ? await updateClient(editClient.id, data)
+      : await createClient(data);
+    if (!result.ok) {
+      reportErrors(result.errors);
+      return;
+    }
+    setFormOpen(false);
+    setEditClient(null);
+    triggerRefresh();
   };
 
   const handleDelete = (id: string) => {
     confirm('Видалити клієнта?', 'Клієнт буде видалений. Проєкти залишаться.', () => {
-      saveClients(getClients().filter(c => c.id !== id)); triggerRefresh();
+      void deleteClient(id).then(result => {
+        if (!result.ok) reportErrors(result.errors);
+        triggerRefresh();
+      });
     });
   };
 
+  useScrollRestoration('clients', true);
+
   return (
     <section className="page active">
-      <div className="page-header"><div><h1 className="page-title">Клієнти</h1><p className="page-subtitle">Статистика рахується з проєктів</p></div></div>
+      <div className="page-header">
+        <div><h1 className="page-title">Клієнти</h1><p className="page-subtitle">Статистика рахується з проєктів</p></div>
+        <button className="btn btn-primary" onClick={() => { setEditClient(null); setFormOpen(true); }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><line x1="12" y1="5" x2="12" y2="19" stroke="currentColor" strokeWidth="2"/><line x1="5" y1="12" x2="19" y2="12" stroke="currentColor" strokeWidth="2"/></svg>
+          Новий клієнт
+        </button>
+      </div>
       <div className="table-toolbar">
         <div className="search-wrap">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="2"/><line x1="21" y1="21" x2="16.65" y2="16.65" stroke="currentColor" strokeWidth="2"/></svg>
@@ -132,8 +157,8 @@ export default function ClientsPage() {
         <table className="data-table">
           <thead><tr><th>Ім'я</th><th>Telegram</th><th>Джерело</th><th>Проєктів</th><th>Оборот</th><th>Прибуток</th><th>Передоплати</th><th>Борг</th><th>Дії</th></tr></thead>
           <tbody>
-            {!filtered.length ? <tr className="empty-row"><td colSpan={9}><EmptyState message="Немає клієнтів" hint="Клієнти додаються автоматично при створенні проєкту" /></td></tr> :
-            filtered.map(({ client: c, stats: s }) => (
+            {!visible.length ? <tr className="empty-row"><td colSpan={9}><EmptyState message="Немає клієнтів" hint="Клієнти додаються автоматично при створенні проєкту" /></td></tr> :
+            visible.map(({ client: c, stats: s }) => (
                 <tr key={c.id}>
                   <td data-label="Клієнт">
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -165,6 +190,13 @@ export default function ClientsPage() {
             ))}
           </tbody>
         </table>
+        {filtered.length > visible.length && (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 14 }}>
+            <button className="btn btn-ghost" onClick={showMore}>
+              Показати ще {Math.min(PAGE_SIZE, filtered.length - visible.length)} з {filtered.length}
+            </button>
+          </div>
+        )}
       </div>
       <ClientForm isOpen={formOpen} client={editClient} onSave={handleSave} onCancel={() => { setFormOpen(false); setEditClient(null); }} />
       <ConfirmModal isOpen={confirmOpen} title={confirmTitle} text={confirmText} onConfirm={handleConfirm} onCancel={cancel} />

@@ -28,6 +28,12 @@ const navSections = [
       { href: '/savings', label: 'Відкладення', icon: 'wallet', badge: null },
     ],
   },
+  {
+    title: 'AI',
+    items: [
+      { href: '/assistant', label: 'AI-помічник', icon: 'spark', badge: null },
+    ],
+  },
 ];
 
 function NavIcon({ icon }: { icon: string }) {
@@ -41,6 +47,7 @@ function NavIcon({ icon }: { icon: string }) {
     dollar: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>,
     wallet: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M19 5H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z" stroke="currentColor" strokeWidth="2"/><path d="M12 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" stroke="currentColor" strokeWidth="2"/></svg>,
     target: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2"/><circle cx="12" cy="12" r="5" stroke="currentColor" strokeWidth="2"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/></svg>,
+    spark: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 3l1.8 4.7L18.5 9.5 13.8 11.3 12 16l-1.8-4.7L5.5 9.5l4.7-1.8L12 3z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/><path d="M18.5 15.5l.9 2.3 2.3.9-2.3.9-.9 2.3-.9-2.3-2.3-.9 2.3-.9.9-2.3z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>,
   };
   return icons[icon] || null;
 }

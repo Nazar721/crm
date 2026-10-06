@@ -19,6 +19,7 @@ const mainTabs: TabItem[] = [
 ];
 
 const moreItems: TabItem[] = [
+  { href: '/assistant', label: 'AI-помічник', icon: 'spark' },
   { href: '/specialists', label: 'Фахівці', icon: 'code', badge: 'specialists' },
   { href: '/partners', label: 'Партнери', icon: 'users2', badge: 'partners' },
   { href: '/debts', label: 'Борги', icon: 'dollar' },

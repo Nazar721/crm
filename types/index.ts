@@ -122,22 +122,36 @@ export interface BackupInfo {
 }
 
 // Export data
+export const EXPORT_FORMAT_ID = 'WebAgency CRM';
+export const EXPORT_SCHEMA_VERSION = 2;
+
+export interface ExportData {
+  projectsActive: Project[];
+  projectsCompleted: Project[];
+  clients: Client[];
+  specialists: Specialist[];
+  partners: Partner[];
+  transactions: Transaction[];
+  personalDebts: PersonalDebt[];
+  savings: Saving[];
+}
+
 export interface ExportPayload {
   app: string;
   version: number;
   exportedAt: string;
-  data: {
-    projectsActive: Project[];
-    projectsCompleted: Project[];
-    clients: Client[];
-    specialists: Specialist[];
-    partners: Partner[];
-    transactions: Transaction[];
-    personalDebts: PersonalDebt[];
-    savings: Saving[];
-  };
+  data: ExportData;
   financeSettings: FinanceSettings;
   meta?: BackupInfo;
+}
+
+/**
+ * Повний snapshot даних у пам'яті — єдиний вхід для всіх синхронних
+ * розрахунків. Сторінки працюють зі snapshot, а не з localStorage.
+ */
+export interface DataSnapshot extends ExportData {
+  financeSettings: FinanceSettings;
+  meta: BackupInfo;
 }
 
 // Calculated project stats

@@ -1,9 +1,10 @@
 'use client';
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
-import { getProjects, getCompleted, getClients, getSpecialists, getPartners, getTransactions, saveProjects, saveCompleted, saveTransactions, saveClients } from '@/lib/storage';
-import { project as calcProject, projectStartDate, projectEndDate, projectDaysUsed } from '@/lib/calc';
-import { formatMoney, formatDate, today, daysBetween, generateId, getMonthKey, getMonthLabel, itemCurrency } from '@/lib/utils';
+import { project as calcProject, projectStartDate, projectEndDate, projectDaysUsed, getStatsContext } from '@/lib/calc';
+import { formatMoney, formatDate, today, daysBetween, getMonthKey, getMonthLabel, itemCurrency } from '@/lib/utils';
+import { saveProject, completeProject, deleteProject } from '@/lib/actions';
+import { emitToast } from '@/lib/toast-bus';
 import type { Project } from '@/types';
 import { StatusBadge, TypeBadge, BankBadge } from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
@@ -11,46 +12,49 @@ import ProjectForm from '@/components/forms/ProjectForm';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import Modal from '@/components/ui/Modal';
 import { useConfirm } from '@/hooks/useConfirm';
+import { usePersistedState, useScrollRestoration, useVisibleCount } from '@/hooks/useUiState';
 
 type PeriodFilter = '' | 'this_month' | 'last_month' | 'last_30' | 'last_90' | 'this_year' | 'last_year' | `m:${string}`;
 type CompletedSort = 'date_desc' | 'date_asc' | 'budget_desc' | 'budget_asc' | 'income_desc' | 'days_asc' | 'days_desc';
 
+const PAGE_SIZE = 60;
+
 export default function ProjectsPage() {
-  const { refreshKey, triggerRefresh } = useApp();
-  const [tab, setTab] = useState<'active' | 'completed'>('active');
-  const [search, setSearch] = useState('');
-  const [typeFilter, setTypeFilter] = useState('');
-  const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('');
-  const [specFilter, setSpecFilter] = useState('');
-  const [clientFilter, setClientFilter] = useState('');
-  const [completedSort, setCompletedSort] = useState<CompletedSort>('date_desc');
+  const { snapshot, triggerRefresh } = useApp();
+  const [tab, setTab] = usePersistedState<'active' | 'completed'>('projects:tab', 'active');
+  const [search, setSearch] = usePersistedState('projects:search', '');
+  const [typeFilter, setTypeFilter] = usePersistedState('projects:type', '');
+  const [periodFilter, setPeriodFilter] = usePersistedState<PeriodFilter>('projects:period', '');
+  const [specFilter, setSpecFilter] = usePersistedState('projects:spec', '');
+  const [clientFilter, setClientFilter] = usePersistedState('projects:client', '');
+  const [completedSort, setCompletedSort] = usePersistedState<CompletedSort>('projects:sort', 'date_desc');
   const [formOpen, setFormOpen] = useState(false);
   const [editProject, setEditProject] = useState<Project | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const { isOpen: confirmOpen, title: confirmTitle, text: confirmText, confirm, handleConfirm, cancel } = useConfirm();
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
+  const { count: activeVisible, showMore: showMoreActive, reset: resetActive } = useVisibleCount(PAGE_SIZE);
+  const { count: completedVisible, showMore: showMoreCompleted, reset: resetCompleted } = useVisibleCount(PAGE_SIZE);
 
-  const specialists = useMemo(() => mounted ? getSpecialists() : [], [mounted, refreshKey]);
-  const partners = useMemo(() => mounted ? getPartners() : [], [mounted, refreshKey]);
-  const clients = useMemo(() => mounted ? getClients() : [], [mounted, refreshKey]);
+  const statsCtx = useMemo(() => getStatsContext(snapshot), [snapshot]);
+  const specialists = statsCtx.specialists;
+  const partners = statsCtx.partners;
+  const clients = statsCtx.clients;
 
   const filterList = useCallback((list: Project[]) => {
     const s = search.toLowerCase();
     return list.filter(p => {
-      const client = clients.find(c => c.id === p.clientId);
+      const client = statsCtx.clientsById.get(p.clientId);
       const clientName = client ? client.name : p.clientName || '';
       return (p.name.toLowerCase().includes(s) || clientName.toLowerCase().includes(s)) && (!typeFilter || p.type === typeFilter);
     });
-  }, [search, typeFilter, clients]);
+  }, [search, typeFilter, statsCtx]);
 
   const active = useMemo(() => {
-    if (!mounted) return [];
-    const filtered = filterList(getProjects());
+    const filtered = filterList(statsCtx.active);
     const order: Record<string, number> = { IT: 1, Video: 2, Design: 3 };
-    return filtered.sort((a, b) => (order[a.type] || 99) - (order[b.type] || 99));
-  }, [mounted, refreshKey, filterList]);
+    return [...filtered].sort((a, b) => (order[a.type] || 99) - (order[b.type] || 99));
+  }, [statsCtx, filterList]);
 
   // Дата, за якою фільтруємо завершені: фактичне завершення, інакше старт
   const completionDate = useCallback((p: Project) => {
@@ -60,7 +64,7 @@ export default function ProjectsPage() {
     return projectStartDate(p);
   }, []);
 
-  const allCompleted = useMemo(() => mounted ? getCompleted() : [], [mounted, refreshKey]);
+  const allCompleted = statsCtx.completed;
 
   // Місяці, у яких реально є завершені проєкти — для селекта
   const monthOptions = useMemo(() => {
@@ -73,34 +77,30 @@ export default function ProjectsPage() {
     if (!periodFilter) return true;
     const dateStr = completionDate(p);
     if (!dateStr) return false;
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return false;
-    const now = new Date();
+    const key = getMonthKey(dateStr);
+    if (!key) return false;
+    if (periodFilter.startsWith('m:')) return key === periodFilter.slice(2);
 
-    if (periodFilter.startsWith('m:')) return getMonthKey(dateStr) === periodFilter.slice(2);
+    const monthNow = today().slice(0, 7);
+    const yearNow = today().slice(0, 4);
+    const shiftMonth = (mk: string, delta: number) => {
+      const [y, m] = mk.split('-').map(Number);
+      const total = y * 12 + (m - 1) + delta;
+      return `${Math.floor(total / 12)}-${String((total % 12) + 1).padStart(2, '0')}`;
+    };
 
     switch (periodFilter) {
-      case 'this_month':
-        return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-      case 'last_month': {
-        const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        return d.getFullYear() === prev.getFullYear() && d.getMonth() === prev.getMonth();
-      }
-      case 'last_30':
-        return daysBetween(dateStr, today()) <= 30 && d.getTime() <= now.getTime();
-      case 'last_90':
-        return daysBetween(dateStr, today()) <= 90 && d.getTime() <= now.getTime();
-      case 'this_year':
-        return d.getFullYear() === now.getFullYear();
-      case 'last_year':
-        return d.getFullYear() === now.getFullYear() - 1;
-      default:
-        return true;
+      case 'this_month': return key === monthNow;
+      case 'last_month': return key === shiftMonth(monthNow, -1);
+      case 'last_30': return daysBetween(dateStr, today()) <= 30 && dateStr <= today();
+      case 'last_90': return daysBetween(dateStr, today()) <= 90 && dateStr <= today();
+      case 'this_year': return key.startsWith(`${yearNow}-`);
+      case 'last_year': return key.startsWith(`${Number(yearNow) - 1}-`);
+      default: return true;
     }
   }, [periodFilter, completionDate]);
 
   const completed = useMemo(() => {
-    if (!mounted) return [];
     const list = filterList(allCompleted).filter(p =>
       inPeriod(p) &&
       (!specFilter || (specFilter === 'none' ? !p.developerId : p.developerId === specFilter)) &&
@@ -118,9 +118,9 @@ export default function ProjectsPage() {
         default: return (b.completedAt || 0) - (a.completedAt || 0);
       }
     });
-  }, [mounted, allCompleted, filterList, inPeriod, specFilter, clientFilter, completedSort]);
+  }, [allCompleted, filterList, inPeriod, specFilter, clientFilter, completedSort]);
 
-  // Підсумки по відфільтрованих завершених
+  // Підсумки по відфільтрованих завершених — по повному набору, не по сторінці
   const completedSummary = useMemo(() => {
     let totalBudget = 0, totalIncome = 0, biggest: Project | null = null, biggestBudget = 0;
     completed.forEach(p => {
@@ -238,75 +238,11 @@ export default function ProjectsPage() {
     return { text: `${left} дн.`, color: 'var(--accent-green)' };
   }
 
-  // Відлік дедлайну йде ТІЛЬКИ поки статус «В роботі».
-  // Вхід у «В роботі» — ставимо workStartDate; вихід — накопичуємо відпрацьовані дні.
-  function resolveDeadlineTracking(next: Partial<Project>, prev?: Project): Pick<Project, 'workStartDate' | 'workedDays'> {
-    const wasWorking = prev?.status === 'В роботі';
-    const isWorking = next.status === 'В роботі';
-    const accumulated = Number(prev?.workedDays) || 0;
-
-    if (isWorking) {
-      // Уже був у роботі — не зсуваємо початок поточного відрізка
-      if (wasWorking) return { workStartDate: prev?.workStartDate || today(), workedDays: accumulated };
-      // Заходимо в роботу — новий відрізок з сьогодні
-      return { workStartDate: today(), workedDays: accumulated };
-    }
-
-    // Виходимо з роботи — фіксуємо накопичене, зупиняємо відлік
-    if (wasWorking) {
-      const from = (prev?.workStartDate || '').split('T')[0] || projectStartDate(prev!);
-      const segment = from ? Math.max(0, daysBetween(from, today())) : 0;
-      return { workStartDate: undefined, workedDays: accumulated + segment };
-    }
-
-    return { workStartDate: undefined, workedDays: accumulated };
-  }
-
-  const handleSave = (data: Partial<Project>) => {
-    if (!data.name) return;
-
-    let clientId = editProject?.clientId || '';
-    if (data.clientName) {
-      const clients = getClients();
-      const nameLower = data.clientName.toLowerCase().trim();
-      let existing = clients.find(c => c.name.toLowerCase().trim() === nameLower);
-      if (existing) {
-        clientId = existing.id;
-        const idx = clients.findIndex(c => c.id === existing!.id);
-        if (idx >= 0) {
-          if (data.clientTelegram && data.clientTelegram !== existing.telegram) clients[idx].telegram = data.clientTelegram;
-          if (data.clientSource && data.clientSource !== existing.source) clients[idx].source = data.clientSource;
-          saveClients(clients);
-        }
-      } else {
-        const newClient = { id: generateId(), name: data.clientName, telegram: data.clientTelegram || '', source: data.clientSource || 'Інше', createdAt: new Date().toISOString() };
-        clients.push(newClient);
-        saveClients(clients);
-        clientId = newClient.id;
-      }
-    }
-
-    const projectData = { ...data, clientId };
-
-    const id = editProject?.id;
-    if (id) {
-      const activeList = getProjects();
-      const activeIdx = activeList.findIndex(p => p.id === id);
-      if (activeIdx >= 0) {
-        activeList[activeIdx] = { ...activeList[activeIdx], ...projectData, ...resolveDeadlineTracking(projectData, activeList[activeIdx]) };
-        saveProjects(activeList);
-      } else {
-        const completedList = getCompleted();
-        const completedIdx = completedList.findIndex(p => p.id === id);
-        if (completedIdx >= 0) {
-          completedList[completedIdx] = { ...completedList[completedIdx], ...projectData };
-          saveCompleted(completedList);
-        }
-      }
-    } else {
-      const list = getProjects();
-      list.push({ id: generateId(), createdAt: new Date().toISOString(), ...projectData, ...resolveDeadlineTracking(projectData) } as Project);
-      saveProjects(list);
+  const handleSave = async (data: Partial<Project>) => {
+    const result = await saveProject(data, editProject?.id);
+    if (!result.ok) {
+      emitToast(result.errors.map(e => e.message).join('; '), 'error');
+      return;
     }
     setFormOpen(false);
     setEditProject(null);
@@ -315,31 +251,31 @@ export default function ProjectsPage() {
 
   const handleComplete = (id: string) => {
     confirm('Завершити проєкт?', 'Проєкт буде перенесено до завершених.', () => {
-      const activeList = getProjects();
-      const idx = activeList.findIndex(p => p.id === id);
-      if (idx < 0) return;
-      const p = activeList[idx];
-      const finishDate = (p as any).endDate || today();
-      const start = projectStartDate(p);
-      const days = daysBetween(start, finishDate);
-      // Заморожуємо відлік дедлайну на момент завершення
-      const frozen = resolveDeadlineTracking({ status: 'Завершено' }, p);
-      const completedList = getCompleted();
-      completedList.push({ ...p, ...frozen, endDate: finishDate, finishDate, days, completedAt: Date.now() });
-      saveCompleted(completedList);
-      activeList.splice(idx, 1);
-      saveProjects(activeList);
-      triggerRefresh();
+      void completeProject(id).then(result => {
+        if (!result.ok) emitToast(result.errors.map(e => e.message).join('; '), 'error');
+        triggerRefresh();
+      });
     });
   };
 
   const handleDelete = (id: string, fromCompleted: boolean) => {
     confirm('Видалити проєкт?', 'Проєкт буде видалений безповоротно.', () => {
-      if (fromCompleted) saveCompleted(getCompleted().filter(p => p.id !== id));
-      else saveProjects(getProjects().filter(p => p.id !== id));
-      triggerRefresh();
+      void deleteProject(id, fromCompleted).then(result => {
+        if (!result.ok) emitToast(result.errors.map(e => e.message).join('; '), 'error');
+        triggerRefresh();
+      });
     });
   };
+
+  const visibleActive = active.slice(0, activeVisible);
+  const visibleCompleted = completed.slice(0, completedVisible);
+
+  useEffect(() => {
+    resetActive();
+    resetCompleted();
+  }, [search, typeFilter, periodFilter, specFilter, clientFilter, completedSort, resetActive, resetCompleted]);
+
+  useScrollRestoration('projects', true);
 
   return (
     <section className="page active">
@@ -413,10 +349,10 @@ export default function ProjectsPage() {
           <table className="data-table">
             <thead><tr><th>Назва</th><th>Тип</th><th>Клієнт</th><th>Старт</th><th>Дедлайн</th><th>Бюджет</th><th>Банк</th><th>Борг клієнта</th><th>Фахівець</th><th>Борг фахівцю</th><th>Прибуток</th><th>ФОП</th><th>Забрав собі</th><th>Лишилось</th><th>Статус</th><th>Дії</th></tr></thead>
             <tbody>
-              {!active.length ? <tr className="empty-row"><td colSpan={16}><EmptyState message="Немає активних проєктів" hint="Натисніть «Новий проєкт», щоб додати" /></td></tr> :
-              active.map(p => {
-                const client = clients.find(c => c.id === p.clientId);
-                const spec = specialists.find(s => s.id === p.developerId);
+              {!visibleActive.length ? <tr className="empty-row"><td colSpan={16}><EmptyState message="Немає активних проєктів" hint="Натисніть «Новий проєкт», щоб додати" /></td></tr> :
+              visibleActive.map(p => {
+                const client = statsCtx.clientsById.get(p.clientId);
+                const spec = p.developerId ? statsCtx.specialistsById.get(p.developerId) : undefined;
                 const c = calcProject(p);
                 const dl = deadlineInfo(p);
                 return (
@@ -448,6 +384,13 @@ export default function ProjectsPage() {
               })}
             </tbody>
           </table>
+          {active.length > visibleActive.length && (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: 14 }}>
+              <button className="btn btn-ghost" onClick={showMoreActive}>
+                Показати ще {Math.min(PAGE_SIZE, active.length - visibleActive.length)} з {active.length}
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -465,10 +408,10 @@ export default function ProjectsPage() {
             <table className="data-table">
               <thead><tr><th>Назва</th><th>Тип</th><th>Клієнт</th><th>Старт</th><th>Завершено</th><th>Днів</th><th>Бюджет</th><th>ФОП</th><th>Фахівець</th><th>Мій дохід</th><th>Дії</th></tr></thead>
               <tbody>
-                {!completed.length ? <tr className="empty-row"><td colSpan={11}><EmptyState message="Немає завершених проєктів" hint={hasCompletedFilters ? 'Спробуйте змінити фільтри' : undefined} /></td></tr> :
-                completed.map(p => {
-                  const client = clients.find(c => c.id === p.clientId);
-                  const spec = specialists.find(s => s.id === p.developerId);
+                {!visibleCompleted.length ? <tr className="empty-row"><td colSpan={11}><EmptyState message="Немає завершених проєктів" hint={hasCompletedFilters ? 'Спробуйте змінити фільтри' : undefined} /></td></tr> :
+                visibleCompleted.map(p => {
+                  const client = statsCtx.clientsById.get(p.clientId);
+                  const spec = p.developerId ? statsCtx.specialistsById.get(p.developerId) : undefined;
                   const c = calcProject(p);
                   const isBiggest = completedSummary.biggest?.id === p.id && completed.length > 1;
                   return (
@@ -494,11 +437,18 @@ export default function ProjectsPage() {
                 })}
               </tbody>
             </table>
+            {completed.length > visibleCompleted.length && (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: 14 }}>
+                <button className="btn btn-ghost" onClick={showMoreCompleted}>
+                  Показати ще {Math.min(PAGE_SIZE, completed.length - visibleCompleted.length)} з {completed.length}
+                </button>
+              </div>
+            )}
           </div>
           {canExportReport && (
             <div style={{ display: 'flex', justifyContent: 'center', marginTop: 16 }}>
               <button className="btn btn-primary" onClick={() => setReportOpen(true)}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><polyline points="7 10 12 15 17 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><line x1="12" y1="15" x2="12" y2="3" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" stroke="currentColor" strokeWidth="2"/><polyline points="7 10 12 15 17 10" stroke="currentColor" strokeWidth="2"/><line x1="12" y1="15" x2="12" y2="3" stroke="currentColor" strokeWidth="2"/></svg>
                 Статистика для фахівця · {reportSpecName} · {periodTitle}
               </button>
             </div>

@@ -1,8 +1,7 @@
 'use client';
-import { useState, useCallback, useMemo, useEffect, type ReactNode } from 'react';
+import { useState, useMemo, type ReactNode } from 'react';
 import { useApp } from '@/context/AppContext';
 import { dashboardStats, project as calcProject, savingsSummary, bankBalances, toDisplay, bankAmountToDisplay } from '@/lib/calc';
-import { getCompleted, getTransactions, getSavings, getClients } from '@/lib/storage';
 import { formatMoney, getMonthKey, getMonthLabel, today, itemCurrency } from '@/lib/utils';
 import dynamic from 'next/dynamic';
 const IncomeChart = dynamic(() => import('@/components/charts/IncomeChart'), { ssr: false });
@@ -62,36 +61,35 @@ const STAT_COLORS: Record<string, string> = {
 };
 
 export default function DashboardPage() {
-  const { refreshKey } = useApp();
+  const { snapshot } = useApp();
   const [showAgencyIncome, setShowAgencyIncome] = useState(false);
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
 
   const data = useMemo(() => {
-    if (!mounted) return null;
-    const stats = dashboardStats();
-    const completed = getCompleted();
-    const transactions = getTransactions();
-    const savingsItems = getSavings();
-    const clients = getClients();
+    const stats = dashboardStats(snapshot);
+    const completed = snapshot.projectsCompleted;
+    const transactions = snapshot.transactions;
+    const savingsItems = snapshot.savings;
+    const clients = snapshot.clients;
 
     const md = last12Months();
     completed.forEach(p => {
       const key = getMonthKey((p as any).endDate || (p as any).finishDate || (p as any).createdAt?.split('T')[0] || '');
-      if (key && md[key]) { md[key].count += 1; md[key].income += toDisplay(calcProject(p as any).paidAmount, itemCurrency(p)); }
+      if (key && md[key]) { md[key].count += 1; md[key].income += toDisplay(calcProject(p as any).paidAmount, itemCurrency(p), snapshot.financeSettings); }
     });
     transactions.forEach(t => {
+      // Приховані записи виключаються — так само, як у балансі.
+      if (t.hidden) return;
       if (t.source && String(t.source).startsWith('project_')) return;
       const key = getMonthKey(t.date || t.plannedDate);
       if (key && md[key]) {
-        if (t.type === 'income') md[key].financeIn += bankAmountToDisplay(t.amount, t.bank);
-        else if (t.type === 'expense') md[key].financeOut += bankAmountToDisplay(t.amount, t.bank);
+        if (t.type === 'income') md[key].financeIn += bankAmountToDisplay(t.amount, t.bank, snapshot.financeSettings);
+        else if (t.type === 'expense') md[key].financeOut += bankAmountToDisplay(t.amount, t.bank, snapshot.financeSettings);
       }
     });
 
     const labels = Object.keys(md).map(k => getMonthLabel(k));
-    const balances = bankBalances();
-    const sav = savingsSummary();
+    const balances = bankBalances(transactions, snapshot.financeSettings);
+    const sav = savingsSummary(savingsItems, snapshot.financeSettings);
     const savedItems = savingsItems.map(s => ({ name: s.name || s.bank || 'Ціль', amount: Number(s.amount) || 0, goal: Number(s.goal) || 0 }));
 
     const srcMap: Record<string, number> = {};
@@ -101,7 +99,7 @@ export default function DashboardPage() {
     const amd = last12Months() as Record<string, { income: number }>;
     completed.forEach(p => {
       const key = getMonthKey((p as any).endDate || (p as any).finishDate || '');
-      if (key && amd[key]) amd[key].income += toDisplay(calcProject(p as any).myIncome, itemCurrency(p));
+      if (key && amd[key]) amd[key].income += toDisplay(calcProject(p as any).myIncome, itemCurrency(p), snapshot.financeSettings);
     });
     const agencyLabels = Object.keys(amd).map(k => getMonthLabel(k));
     const agencyIncome = Object.values(amd).map(d => d.income);
@@ -109,9 +107,7 @@ export default function DashboardPage() {
     const cmIncome = amd[cmKey || '']?.income || 0;
 
     return { stats, labels, md, balances, sav, savedItems, srcLabels: Object.keys(srcMap), srcData: Object.values(srcMap), srcColors: Object.keys(srcMap).map(l => srcColors[l] || '#555a70'), agencyLabels, agencyIncome, cmIncome };
-  }, [mounted, refreshKey]);
-
-  if (!data) return <section className="page active" style={{ padding: 34 }}><p style={{ color: 'var(--text-secondary)' }}>Завантаження...</p></section>;
+  }, [snapshot]);
 
   const counterKeysRow1 = ['total-budget', 'net-profit', 'avg-check', 'client-debts', 'specialist-debts'] as const;
   const counterKeysRow3 = ['month-income', 'savings', 'balance', 'debt-owed', 'my-debts'] as const;

@@ -1,9 +1,24 @@
 import { normalizeBank } from '@/lib/banks';
 import { generateId } from '@/lib/utils';
-import { getProjects, saveProjects, getCompleted, saveCompleted, getClients, saveClients, getPartners, savePartners, getSpecialists, saveSpecialists, getTransactions, saveTransactions, getSavings, saveSavings } from '@/lib/storage';
+import * as store from '@/lib/store';
+import { isMigrationApplied, markMigrationApplied } from '@/lib/migration-flags';
+import type { Client, Project, Saving, Specialist, Transaction } from '@/types';
 
-function stripProject(p: Record<string, unknown>): Record<string, unknown> {
-  const raw = { ...p };
+// ============================================================
+// Міграції виконуються ОДИН РАЗ на версію (прапорець у localStorage).
+// Раніше частину переписувань (stripProject/партнери/фахівці) виконували
+// безумовно при кожному завантаженні — це перезаписувало дані й
+// видаляло поля, які користувач заповнив вручну.
+// ============================================================
+
+export interface Migration {
+  id: string;
+  title: string;
+  run: () => void | Promise<void>;
+}
+
+function stripProject(p: Project): Project {
+  const raw = { ...p } as Record<string, unknown>;
   delete raw.myIncome;
   delete raw.projectProfit;
   delete raw.clientDebt;
@@ -15,178 +30,209 @@ function stripProject(p: Record<string, unknown>): Record<string, unknown> {
   if (raw.profitTaken == null) raw.profitTaken = 0;
   if (raw.partnerCommission == null) raw.partnerCommission = 0;
   if (!raw.partnerId) raw.partnerId = '';
-  return raw;
+  return raw as unknown as Project;
 }
 
-export function migrate(): void {
-  if (typeof window === 'undefined') return;
+const TYPE_MAP: Record<string, string> = {
+  'Landing Page': 'IT',
+  'Корпоративний сайт': 'IT',
+  'Інтернет-магазин': 'IT',
+  'Дизайн': 'Design',
+  'Інше': 'IT',
+};
 
-  // myPercent тепер зберігається в проєкті й ніколи не перераховується автоматично:
-  // v12-міграція, що виводила його з specialistCost, зіпсовувала дані (у нових
-  // проєктах specialistCost немає → myPercent ставав 100), тому прибрана.
-  const _pa = getProjects();
-  const _pc = getCompleted();
-  // Avoid rewriting storage on every navigation when nothing changed
-  if (_pa.length || _pc.length) {
-    saveProjects(_pa.map(stripProject as any));
-    saveCompleted(_pc.map(stripProject as any));
-  }
-
-  // Partners migration
-  const partners = getPartners();
-  partners.forEach(p => {
-    if (p.givenProjectsCount == null) p.givenProjectsCount = 0;
-    if (p.givenProjectsPrice == null) p.givenProjectsPrice = 0;
-    if (p.ourCommission == null) p.ourCommission = 0;
-    if (p.paidToUs == null) p.paidToUs = 0;
-  });
-  savePartners(partners);
-
-  if (!partners.length && !localStorage.getItem('crm_migrated_v11')) {
-    // ensure key exists
-  }
-
-  // v11 migration
-  const specialists = getSpecialists();
-  specialists.forEach(s => {
-    if ((s as any).paidToSpecialist != null) delete (s as any).paidToSpecialist;
-    if ((s as any).debt != null) delete (s as any).debt;
-  });
-  saveSpecialists(specialists);
-  localStorage.setItem('crm_migrated_v11', '1');
-
-  // v13 migration - type normalization
-  if (!localStorage.getItem('crm_migrated_v13')) {
-    const typeMap: Record<string, string> = {
-      'Landing Page': 'IT',
-      'Корпоративний сайт': 'IT',
-      'Інтернет-магазин': 'IT',
-      'Дизайн': 'Design',
-      'Інше': 'IT',
-    };
-    const migrateType = (p: any) => {
-      const raw = { ...p };
-      if (raw.type && typeMap[raw.type as string]) raw.type = typeMap[raw.type as string];
-      return raw;
-    };
-    saveProjects(getProjects().map(migrateType) as any);
-    saveCompleted(getCompleted().map(migrateType) as any);
-    localStorage.setItem('crm_migrated_v13', '1');
-  }
-
-  // v14 migration - bank normalization
-  if (!localStorage.getItem('crm_migrated_v14')) {
-    const normalizeBankField = (bank: string) => normalizeBank(bank) || bank;
-    saveTransactions(getTransactions().map(t => ({
-      ...t,
-      bank: normalizeBankField(t.bank),
-    })));
-    saveSavings(getSavings().map(s => ({
-      ...s,
-      bank: normalizeBankField(s.bank),
-    })));
-    localStorage.setItem('crm_migrated_v14', '1');
-  }
-
-  // v15 migration - income status
-  if (!localStorage.getItem('crm_migrated_v15')) {
-    const cutoff = new Date('2026-07-01');
-    saveTransactions(getTransactions().map(t => {
-      if (t.type === 'income' && !t.incomeStatus) {
-        const d = new Date(t.date || t.plannedDate || '');
-        if (d < cutoff) return { ...t, incomeStatus: 'earned' };
-      }
-      return t;
-    }));
-    localStorage.setItem('crm_migrated_v15', '1');
-  }
-
-  // v16 migration - partner commission percentage
-  if (!localStorage.getItem('crm_migrated_v16')) {
-    const migrateCommission = (p: any) => {
-      if ((p.partnerCommission as number) > 0 && (p.partnerCommission as number) <= 100) return p;
-      if (p.partnerCommission && p.budget) {
-        const oldVal = Number(p.partnerCommission) || 0;
-        if (oldVal > 0 && oldVal <= (p.budget as number)) {
-          return { ...p, partnerCommission: Math.round(oldVal / (p.budget as number) * 100) };
+export const MIGRATIONS: Migration[] = [
+  {
+    id: 'v11',
+    title: 'Прибрано зайві поля з фахівців',
+    run: async () => {
+      const list = store.getSnapshot().specialists.map(s => {
+        const raw = { ...s } as Record<string, unknown>;
+        if (raw.paidToSpecialist != null) delete raw.paidToSpecialist;
+        if (raw.debt != null) delete raw.debt;
+        return raw as unknown as Specialist;
+      });
+      await store.saveCollection('specialists', list);
+    },
+  },
+  {
+    id: 'v21',
+    title: 'Нормалізація проєктів та партнерів (один раз)',
+    run: async () => {
+      const snap = store.getSnapshot();
+      await store.saveCollection('projectsActive', snap.projectsActive.map(stripProject));
+      await store.saveCollection('projectsCompleted', snap.projectsCompleted.map(stripProject));
+      await store.saveCollection('partners', snap.partners.map(p => ({
+        ...p,
+        givenProjectsCount: p.givenProjectsCount ?? 0,
+        givenProjectsPrice: p.givenProjectsPrice ?? 0,
+        ourCommission: p.ourCommission ?? 0,
+        paidToUs: p.paidToUs ?? 0,
+      })));
+    },
+  },
+  {
+    id: 'v13',
+    title: 'Нормалізація типів проєктів',
+    run: async () => {
+      const snap = store.getSnapshot();
+      const mapType = (p: Project) => (p.type && TYPE_MAP[p.type] ? { ...p, type: TYPE_MAP[p.type] } : p);
+      await store.saveCollection('projectsActive', snap.projectsActive.map(mapType));
+      await store.saveCollection('projectsCompleted', snap.projectsCompleted.map(mapType));
+    },
+  },
+  {
+    id: 'v14',
+    title: 'Нормалізація рахунків',
+    run: async () => {
+      const snap = store.getSnapshot();
+      await store.saveCollection('transactions', snap.transactions.map((t: Transaction) => ({ ...t, bank: normalizeBank(t.bank) || t.bank })));
+      await store.saveCollection('savings', snap.savings.map((s: Saving) => ({ ...s, bank: normalizeBank(s.bank) || s.bank })));
+    },
+  },
+  {
+    id: 'v15',
+    title: 'Статуси доходів',
+    run: async () => {
+      const cutoff = new Date('2026-07-01');
+      await store.saveCollection('transactions', store.getSnapshot().transactions.map(t => {
+        if (t.type === 'income' && !t.incomeStatus) {
+          const d = new Date(t.date || t.plannedDate || '');
+          if (!isNaN(d.getTime()) && d < cutoff) return { ...t, incomeStatus: 'earned' as const };
         }
-      }
-      return p;
-    };
-    saveProjects(getProjects().map(migrateCommission) as any);
-    saveCompleted(getCompleted().map(migrateCommission) as any);
-    localStorage.setItem('crm_migrated_v16', '1');
-  }
-
-  // v17 migration - backfill clients from projects
-  if (!localStorage.getItem('crm_migrated_v17')) {
-    const clients = getClients();
-    let changed = false;
-
-    const linkProject = (p: any) => {
-      if (p.clientId || !p.clientName) return p;
-      const nameLower = String(p.clientName).toLowerCase().trim();
-      const existing = clients.find(c => c.name.toLowerCase().trim() === nameLower);
-      if (existing) {
-        p.clientId = existing.id;
-      } else {
-        const newClient = { id: generateId(), name: p.clientName, telegram: p.clientTelegram || '', source: p.clientSource || 'Інше' };
-        clients.push(newClient);
-        p.clientId = newClient.id;
+        return t;
+      }));
+    },
+  },
+  {
+    id: 'v16',
+    title: 'Комісія партнера у відсотках',
+    run: async () => {
+      const convert = (p: Project): Project => {
+        const pc = Number(p.partnerCommission) || 0;
+        const budget = Number(p.budget) || 0;
+        if (pc > 0 && pc <= 100) return p;
+        if (pc > 0 && budget > 0 && pc <= budget) {
+          return { ...p, partnerCommission: Math.round(pc / budget * 100) };
+        }
+        return p;
+      };
+      const snap = store.getSnapshot();
+      await store.saveCollection('projectsActive', snap.projectsActive.map(convert));
+      await store.saveCollection('projectsCompleted', snap.projectsCompleted.map(convert));
+    },
+  },
+  {
+    id: 'v17',
+    title: 'Прив’язка клієнтів до проєктів',
+    run: async () => {
+      const snap = store.getSnapshot();
+      const clients: Client[] = [...snap.clients];
+      let changed = false;
+      const link = (p: Project): Project => {
+        if (p.clientId || !p.clientName) return p;
+        const nameLower = String(p.clientName).toLowerCase().trim();
+        const existing = clients.find(c => c.name.toLowerCase().trim() === nameLower);
+        if (existing) return { ...p, clientId: existing.id };
+        const created: Client = {
+          id: generateId(),
+          name: p.clientName,
+          telegram: p.clientTelegram || '',
+          source: p.clientSource || 'Інше',
+          createdAt: p.createdAt || new Date().toISOString(),
+        };
+        clients.push(created);
         changed = true;
-      }
-      return p;
-    };
-
-    saveProjects(getProjects().map(linkProject));
-    saveCompleted(getCompleted().map(linkProject));
-    if (changed) saveClients(clients);
-    localStorage.setItem('crm_migrated_v17', '1');
-  }
-
-  // v18 migration - workStartDate/workedDays: відлік дедлайну лише в статусі «В роботі»
-  if (!localStorage.getItem('crm_migrated_v18')) {
-    const migrateWorkStart = (p: any) => {
-      const raw = { ...p };
-      if (raw.workedDays == null) raw.workedDays = 0;
-      if (raw.status === 'В роботі') {
-        if (!raw.workStartDate) {
-          raw.workStartDate = raw.startDate || (raw.createdAt ? String(raw.createdAt).split('T')[0] : '');
+        return { ...p, clientId: created.id };
+      };
+      await store.saveCollection('projectsActive', snap.projectsActive.map(link));
+      await store.saveCollection('projectsCompleted', snap.projectsCompleted.map(link));
+      if (changed) await store.saveCollection('clients', clients);
+    },
+  },
+  {
+    id: 'v18',
+    title: 'Відлік дедлайну лише «В роботі»',
+    run: async () => {
+      const migrateWorkStart = (p: Project): Project => {
+        const raw = { ...p } as Record<string, unknown>;
+        if (raw.workedDays == null) raw.workedDays = 0;
+        if (raw.status === 'В роботі') {
+          if (!raw.workStartDate) {
+            raw.workStartDate = raw.startDate || (raw.createdAt ? String(raw.createdAt).split('T')[0] : '');
+          }
+        } else {
+          delete raw.workStartDate;
         }
-      } else {
-        delete raw.workStartDate;
+        return raw as unknown as Project;
+      };
+      const snap = store.getSnapshot();
+      await store.saveCollection('projectsActive', snap.projectsActive.map(migrateWorkStart));
+      await store.saveCollection('projectsCompleted', snap.projectsCompleted.map(migrateWorkStart));
+    },
+  },
+  {
+    id: 'v19',
+    title: 'Прибрано старий модуль лідогенерації',
+    run: async () => {
+      try {
+        localStorage.removeItem('leadgen_leads');
+        localStorage.removeItem('leadgen_filters');
+      } catch {
+        // Службові ключі — не критично.
       }
-      return raw;
-    };
-    saveProjects(getProjects().map(migrateWorkStart) as any);
-    saveCompleted(getCompleted().map(migrateWorkStart) as any);
-    localStorage.setItem('crm_migrated_v18', '1');
-  }
-
-  // v19 migration - прибрано модуль лідогенерації
-  if (!localStorage.getItem('crm_migrated_v19')) {
-    localStorage.removeItem('leadgen_leads');
-    localStorage.removeItem('leadgen_filters');
-    localStorage.setItem('crm_migrated_v19', '1');
-  }
-
-  // v20 migration - backfill createdAt for existing clients
-  if (!localStorage.getItem('crm_migrated_v20')) {
-    const clients = getClients();
-    const allProjects = [...getProjects(), ...getCompleted()];
-    let changed = false;
-    clients.forEach(c => {
-      if (!c.createdAt) {
-        const clientProjects = allProjects.filter(p => p.clientId === c.id);
-        const earliest = clientProjects
+    },
+  },
+  {
+    id: 'v20',
+    title: 'Дата створення клієнтів',
+    run: async () => {
+      const snap = store.getSnapshot();
+      const allProjects = [...snap.projectsActive, ...snap.projectsCompleted];
+      let changed = false;
+      const clients = snap.clients.map(c => {
+        if (c.createdAt) return c;
+        const earliest = allProjects
+          .filter(p => p.clientId === c.id)
           .map(p => p.createdAt)
           .filter(Boolean)
           .sort()[0];
-        c.createdAt = earliest || new Date().toISOString();
         changed = true;
-      }
-    });
-    if (changed) saveClients(clients);
-    localStorage.setItem('crm_migrated_v20', '1');
+        return { ...c, createdAt: earliest || new Date().toISOString() };
+      });
+      if (changed) await store.saveCollection('clients', clients);
+    },
+  },
+];
+
+export interface MigrationReport {
+  applied: string[];
+  skipped: string[];
+}
+
+/**
+ * Запускає лише ті міграції, які ще не застосовані до поточної версії.
+ * Повторний виклик нічого не переписує. Асинхронний: чекає записів,
+ * щоб споживачі одразу бачили актуальні дані.
+ */
+export async function migrate(): Promise<MigrationReport> {
+  const applied: string[] = [];
+  const skipped: string[] = [];
+  if (typeof window === 'undefined') return { applied, skipped };
+
+  for (const migration of MIGRATIONS) {
+    if (isMigrationApplied(migration.id)) {
+      skipped.push(migration.id);
+      continue;
+    }
+    try {
+      await migration.run();
+      markMigrationApplied(migration.id);
+      applied.push(migration.id);
+    } catch (err) {
+      console.error(`Міграція ${migration.id} не виконалася:`, err);
+      // Прапорець не ставимо — спробуємо на наступному старті.
+    }
   }
+  return { applied, skipped };
 }

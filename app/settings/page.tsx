@@ -1,64 +1,155 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
-import { getBackupInfo, shouldShowBackupReminder, snoozeBackupReminder, exportData, importData, markManualBackup, getFinanceSettings, saveFinanceSettings } from '@/lib/storage';
+import { getBackupInfo, shouldShowBackupReminder, snoozeBackupReminder, exportData, markManualBackup } from '@/lib/storage';
+import { previewImport, applyImport, type ImportPreview, type ImportReport } from '@/lib/importer';
+import { getBackupRuntimeStatus, type BackupRuntimeStatus } from '@/lib/backup';
+import { setDisplayCurrency } from '@/lib/actions';
+import { clearIssues } from '@/lib/store';
+import { emitToast } from '@/lib/toast-bus';
 import { formatDateTime } from '@/lib/utils';
+import Modal from '@/components/ui/Modal';
+import type { StorageIssue } from '@/lib/datasource/types';
+
+const COLLECTION_LABELS: Record<string, string> = {
+  projectsActive: 'Активні проєкти',
+  projectsCompleted: 'Завершені проєкти',
+  clients: 'Клієнти',
+  specialists: 'Фахівці',
+  partners: 'Партнери',
+  transactions: 'Транзакції',
+  personalDebts: 'Борги',
+  savings: 'Відкладення',
+};
 
 export default function SettingsPage() {
-  const { triggerRefresh } = useApp();
+  const { triggerRefresh, reinitialize, snapshot, storageIssues, refreshKey } = useApp();
   const [info, setInfo] = useState({ lastSavedAt: '', lastManualBackupAt: '', backupSnoozedUntil: '' });
+  const [backupStatus, setBackupStatus] = useState<BackupRuntimeStatus | null>(null);
   const [showWarning, setShowWarning] = useState(false);
-  const [mounted, setMounted] = useState(false);
-  const [displayCurrency, setDisplayCurrency] = useState('UAH');
-  const [settings, setSettings] = useState({ usdRate: 41, eurRate: 44 });
+  const [displayCurrency, setDisplayCurrencyValue] = useState('UAH');
+  const [settings, setSettings] = useState({ usdRate: 41, eurRate: 44, usdtRate: 41 });
+  const [preview, setPreview] = useState<ImportPreview | null>(null);
+  const [rawPayload, setRawPayload] = useState<unknown>(null);
+  const [fileName, setFileName] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [issues, setIssues] = useState<StorageIssue[]>(storageIssues);
 
-  useEffect(() => {
-    setMounted(true);
-    if (typeof window !== 'undefined') {
-      setInfo(getBackupInfo());
-      setShowWarning(shouldShowBackupReminder());
-      const s = getFinanceSettings();
-      setDisplayCurrency((s as any).displayCurrency || 'UAH');
-      setSettings({ usdRate: s.usdRate, eurRate: s.eurRate });
-    }
-  }, []);
-
-  const doBackup = () => {
-    markManualBackup();
-    const payload = exportData();
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url;
-    const d = new Date();
-    a.download = `crm-backup-${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}.json`;
-    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  const refreshStatuses = () => {
     setInfo(getBackupInfo());
     setShowWarning(shouldShowBackupReminder());
+    setBackupStatus(getBackupRuntimeStatus());
   };
 
-  const doImport = (file: File | undefined) => {
+  useEffect(() => {
+    refreshStatuses();
+    setDisplayCurrencyValue(snapshot.financeSettings.displayCurrency || 'UAH');
+    setSettings({
+      usdRate: snapshot.financeSettings.usdRate,
+      eurRate: snapshot.financeSettings.eurRate,
+      usdtRate: snapshot.financeSettings.usdtRate ?? snapshot.financeSettings.usdRate,
+    });
+    setIssues(storageIssues);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshKey]);
+
+  const doBackup = async () => {
+    try {
+      // Експорт завжди будується з повного snapshot, а не з видимої сторінки.
+      const payload = exportData(true);
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url;
+      const d = new Date();
+      a.download = `crm-backup-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}.json`;
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      await markManualBackup();
+      refreshStatuses();
+      triggerRefresh();
+    } catch (err) {
+      emitToast(`Не вдалося створити резервну копію: ${String(err)}`, 'error');
+    }
+  };
+
+  const startImport = (file: File | undefined) => {
     if (!file) return;
+    setFileName(file.name);
     const reader = new FileReader();
+    reader.onerror = () => emitToast('Не вдалося прочитати файл', 'error');
     reader.onload = () => {
+      const emptyCounts = {
+        projectsActive: 0, projectsCompleted: 0, clients: 0, specialists: 0,
+        partners: 0, transactions: 0, personalDebts: 0, savings: 0,
+      };
+      let parsed: unknown;
       try {
-        const payload = JSON.parse(reader.result as string);
-        if (confirm('Імпортувати backup? Поточні дані CRM будуть замінені.')) {
-          importData(payload);
-          setInfo(getBackupInfo());
-          triggerRefresh();
-          alert('Дані імпортовано');
-        }
-      } catch { alert('Не вдалося прочитати JSON файл'); }
+        parsed = JSON.parse(String(reader.result || ''));
+      } catch (err) {
+        const message = `Некоректний JSON: ${String(err)}`;
+        emitToast(message, 'error');
+        setRawPayload(null);
+        setPreview({
+          validation: {
+            ok: false, format: 'unknown', version: null, exportedAt: null,
+            errors: [{ message }],
+            recordIssues: [], counts: { ...emptyCounts }, skipped: { ...emptyCounts },
+            warnings: [], content: null, settings: null,
+          },
+          previousCounts: { ...emptyCounts },
+          previousTotal: 0,
+          safetyCopyKey: 'crm_import_previous',
+        });
+        return;
+      }
+      setRawPayload(parsed);
+      setPreview(previewImport(parsed));
     };
     reader.readAsText(file);
   };
 
-  const snooze = () => { snoozeBackupReminder(); setInfo(getBackupInfo()); setShowWarning(shouldShowBackupReminder()); alert('Нагадаю пізніше'); };
+  const confirmImport = async () => {
+    if (!preview || !preview.validation.ok || rawPayload === null) return;
+    setImporting(true);
+    try {
+      const report: ImportReport = await applyImport(rawPayload);
+      if (!report.ok) {
+        emitToast(
+          report.recovered === false
+            ? `Імпорт не завершено (${report.stage}): ${report.issue || 'помилка'}. Попередній стан відновити не вдалося — копію збережено у «${preview.safetyCopyKey}».`
+            : `Імпорт не завершено (${report.stage}): ${report.issue || 'помилка'}. Попередній стан відновлено.`,
+          'error',
+        );
+        await reinitialize();
+        refreshStatuses();
+        return;
+      }
+      await reinitialize();
+      refreshStatuses();
+      triggerRefresh();
+      emitToast(
+        preview.validation.recordIssues.length
+          ? `Дані імпортовано, але пропущено некоректних записів: ${preview.validation.recordIssues.length}`
+          : 'Дані імпортовано',
+        preview.validation.recordIssues.length ? 'info' : 'success',
+      );
+      setPreview(null);
+      setRawPayload(null);
+    } catch (err) {
+      emitToast(`Не вдалося імпортувати: ${String(err)}`, 'error');
+    } finally {
+      setImporting(false);
+    }
+  };
 
-  const changeDisplayCurrency = (cur: string) => {
-    setDisplayCurrency(cur);
-    const s = getFinanceSettings();
-    saveFinanceSettings({ ...s, displayCurrency: cur as 'UAH' | 'USD' | 'EUR' });
+  const snooze = async () => { await snoozeBackupReminder(); refreshStatuses(); emitToast('Нагадаю пізніше', 'info'); };
+
+  const changeDisplayCurrency = async (cur: string) => {
+    const result = await setDisplayCurrency(cur as 'UAH' | 'USD' | 'EUR');
+    if (!result.ok) {
+      emitToast(result.errors.map(e => e.message).join('; '), 'error');
+      return;
+    }
+    setDisplayCurrencyValue(cur);
     triggerRefresh();
   };
 
@@ -79,38 +170,174 @@ export default function SettingsPage() {
               <option value="EUR">€ Євро (EUR)</option>
             </select>
           </div>
-          {mounted && (
-            <div style={{ marginTop: 12, color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-              <span>Поточні курси: </span>
-              <strong>1$ = {settings.usdRate}₴</strong> · <strong>1€ = {settings.eurRate}₴</strong>
-              <span style={{ marginLeft: 8 }}>(редагуються на сторінці Фінанси)</span>
+          <div style={{ marginTop: 12, color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+            <span>Поточні курси: </span>
+            <strong>1$ = {settings.usdRate}₴</strong> · <strong>1€ = {settings.eurRate}₴</strong> · <strong>1 USDT = {settings.usdtRate}₴</strong>
+            <span style={{ marginLeft: 8 }}>(редагуються на сторінці Фінанси)</span>
+          </div>
+        </div>
+
+        <div className="settings-card">
+          <h3 className="settings-title">Резервна копія</h3>
+          <p className="settings-text">
+            Експорт та імпорт усіх локальних даних CRM у JSON-файл. Файл містить версію схеми,
+            дати, зв’язки, усі записи та налаштування; секрети виключені.
+          </p>
+          <div className="header-actions">
+            <button className="btn btn-primary" onClick={doBackup}>Завантажити резервну копію</button>
+            <label className="btn btn-ghost" style={{ cursor: 'pointer' }}>
+              Імпорт даних
+              <input
+                type="file"
+                data-import-source
+                accept="application/json,.json"
+                style={{ display: 'none' }}
+                onChange={e => { startImport(e.target.files?.[0]); e.target.value = ''; }}
+              />
+            </label>
+          </div>
+          {backupStatus && (
+            <div style={{ marginTop: 12, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+              <div>Повна копія: {backupStatus.lastRotationAt ? formatDateTime(backupStatus.lastRotationAt) : 'ще не створювалась'}</div>
+              <div>
+                Стан:{' '}
+                {backupStatus.pending
+                  ? <strong style={{ color: 'var(--accent-orange)' }}>є незбережені зміни (копія оновлюється)</strong>
+                  : <strong style={{ color: 'var(--accent-green)' }}>актуальна</strong>}
+              </div>
+              {backupStatus.lastError && <div style={{ color: 'var(--danger)' }}>{backupStatus.lastError}</div>}
             </div>
           )}
         </div>
-        <div className="settings-card">
-          <h3 className="settings-title">Резервна копія</h3>
-          <p className="settings-text">Експорт та імпорт усіх локальних даних CRM у JSON-файл.</p>
-          <div className="header-actions">
-            <button className="btn btn-primary" onClick={doBackup}>Завантажити резервну копію</button>
-            <button className="btn btn-ghost" onClick={() => { const i = document.createElement('input'); i.type = 'file'; i.accept = 'application/json,.json'; i.onchange = (e) => doImport((e.target as HTMLInputElement).files?.[0]); i.click(); }}>Імпорт даних</button>
-          </div>
-        </div>
+
         <div className="settings-card" style={{ gridColumn: '1 / -1' }}>
           <h3 className="settings-title">Стан збереження</h3>
-          <div className="settings-info-row"><span>Останнє збереження</span><strong>{mounted && info.lastSavedAt ? `${formatDateTime(info.lastSavedAt)} ✓` : '—'}</strong></div>
-          <div className="settings-info-row"><span>Остання резервна копія</span><strong>{mounted && info.lastManualBackupAt ? `${formatDateTime(info.lastManualBackupAt)} 💾` : '—'}</strong></div>
+          <div className="settings-info-row"><span>Останнє збереження</span><strong>{info.lastSavedAt ? `${formatDateTime(info.lastSavedAt)} ✓` : '—'}</strong></div>
+          <div className="settings-info-row"><span>Остання резервна копія</span><strong>{info.lastManualBackupAt ? `${formatDateTime(info.lastManualBackupAt)} 💾` : '—'}</strong></div>
+          <div className="settings-info-row"><span>Записів у базі</span><strong>
+            {snapshot.projectsActive.length + snapshot.projectsCompleted.length} проєктів · {snapshot.clients.length} клієнтів · {snapshot.transactions.length} транзакцій
+          </strong></div>
+          {issues.length > 0 && (
+            <div className="backup-warning" style={{ marginTop: 12 }}>
+              <strong>Проблеми з локальним сховищем ({issues.length})</strong>
+              <ul style={{ margin: '8px 0 0 18px', padding: 0 }}>
+                {issues.map(i => (
+                  <li key={i.id} style={{ marginBottom: 4 }}>
+                    {i.message}
+                    {i.preservedAt && <span> — оригінал збережено в «{i.preservedAt}»</span>}
+                  </li>
+                ))}
+              </ul>
+              <div className="header-actions" style={{ marginTop: 10 }}>
+                <button className="btn btn-ghost" onClick={() => { clearIssues(); setIssues([]); }}>Очистити журнал</button>
+              </div>
+            </div>
+          )}
           {showWarning && (
             <div className="backup-warning">
               <strong>Ви давно не створювали резервну копію.</strong>
               <span>Рекомендуємо завантажити JSON-файл.</span>
               <div className="header-actions">
                 <button className="btn btn-primary" onClick={doBackup}>Створити зараз</button>
-                <button className="btn btn-ghost" onClick={snooze}>Нагадати пізніше</button>
+                <button className="btn btn-ghost" onClick={() => { void snooze(); }}>Нагадати пізніше</button>
               </div>
             </div>
           )}
         </div>
       </div>
+
+      <Modal isOpen={!!preview} onClose={() => { if (!importing) setPreview(null); }} title={`Імпорт: ${fileName || 'файл'}`} size="lg">
+        {preview && (
+          <>
+            <div className="settings-info-row">
+              <span>Формат</span>
+              <strong>
+                {preview.validation.format === 'unknown'
+                  ? 'невідомий'
+                  : preview.validation.format === 'legacy-flat'
+                    ? 'старий (legacy-flat)'
+                    : preview.validation.format.toUpperCase()}
+                {preview.validation.version !== null ? ` · версія ${preview.validation.version}` : ''}
+              </strong>
+            </div>
+            {preview.validation.exportedAt && (
+              <div className="settings-info-row"><span>Файл створено</span><strong>{formatDateTime(preview.validation.exportedAt)}</strong></div>
+            )}
+
+            {!preview.validation.ok ? (
+              <div className="backup-warning" style={{ marginTop: 12 }}>
+                <strong>Імпорт неможливий — файл відхилено до будь-якого запису.</strong>
+                <ul style={{ margin: '8px 0 0 18px', padding: 0 }}>
+                  {preview.validation.errors.slice(0, 20).map((e, i) => <li key={i}>{e.message}</li>)}
+                </ul>
+              </div>
+            ) : (
+              <>
+                <h3 className="settings-title" style={{ marginTop: 14 }}>Записи у файлі</h3>
+                <div className="table-wrap">
+                  <table className="data-table">
+                    <thead><tr><th>Колекція</th><th>Зараз</th><th>Приймано</th><th>Стане</th><th>Пропущено</th></tr></thead>
+                    <tbody>
+                      {Object.keys(COLLECTION_LABELS).map(key => (
+                        <tr key={key}>
+                          <td>{COLLECTION_LABELS[key]}</td>
+                          <td>{(preview.previousCounts as Record<string, number>)[key] ?? 0}</td>
+                          <td>{(preview.validation.counts as Record<string, number>)[key] ?? 0}</td>
+                          <td style={{ color: 'var(--accent-green)' }}>{(preview.validation.counts as Record<string, number>)[key] ?? 0}</td>
+                          <td style={{ color: (preview.validation.skipped as Record<string, number>)[key] ? 'var(--accent-orange)' : 'var(--text-secondary)' }}>
+                            {(preview.validation.skipped as Record<string, number>)[key] ?? 0}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: 12 }}>
+                  Поточні дані ({preview.previousTotal} записів) будуть замінені. Перед записом буде створено
+                  копію попереднього стану в «{preview.safetyCopyKey}». Операція не є атомарною: при збої
+                  виконується відновлення, а якщо й воно не вдасться — ви отримаєте явний стан помилки.
+                </p>
+
+                {preview.validation.recordIssues.length > 0 && (
+                  <div className="backup-warning" style={{ marginTop: 10 }}>
+                    <strong>Некоректні записи ({preview.validation.recordIssues.length}) — буде пропущено:</strong>
+                    <ul style={{ margin: '8px 0 0 18px', padding: 0 }}>
+                      {preview.validation.recordIssues.slice(0, 10).map((e, i) => (
+                        <li key={i}>
+                          {e.collection ? `${COLLECTION_LABELS[e.collection] || e.collection}${e.id ? ` · ${e.id}` : ''}: ` : ''}{e.message}
+                        </li>
+                      ))}
+                      {preview.validation.recordIssues.length > 10 && <li>… ще {preview.validation.recordIssues.length - 10}</li>}
+                    </ul>
+                  </div>
+                )}
+
+                {preview.validation.warnings.length > 0 && (
+                  <div style={{ marginTop: 10, fontSize: '0.83rem', color: 'var(--text-secondary)' }}>
+                    <strong>Попередження:</strong>
+                    <ul style={{ margin: '6px 0 0 18px', padding: 0 }}>
+                      {preview.validation.warnings.slice(0, 10).map((w, i) => <li key={i}>{w.message}</li>)}
+                      {preview.validation.warnings.length > 10 && <li>… ще {preview.validation.warnings.length - 10}</li>}
+                    </ul>
+                  </div>
+                )}
+              </>
+            )}
+
+            <div className="modal-footer">
+              <button className="btn btn-ghost" onClick={() => setPreview(null)} disabled={importing}>Скасувати</button>
+              <button
+                className="btn btn-primary"
+                onClick={confirmImport}
+                disabled={!preview.validation.ok || importing}
+              >
+                {importing ? 'Імпортую…' : 'Імпортувати'}
+              </button>
+            </div>
+          </>
+        )}
+      </Modal>
     </section>
   );
 }

@@ -21,6 +21,8 @@ export default function ClientForm({ isOpen, client, onSave, onCancel }: ClientF
       setName(client.name || '');
       setTelegram(client.telegram || '');
       setSource(client.source || 'Інше');
+    } else {
+      setName(''); setTelegram(''); setSource('Інше');
     }
   }, [client, isOpen]);
 
@@ -29,7 +31,7 @@ export default function ClientForm({ isOpen, client, onSave, onCancel }: ClientF
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onCancel} title="Редагувати клієнта">
+    <Modal isOpen={isOpen} onClose={onCancel} title={client ? 'Редагувати клієнта' : 'Новий клієнт'}>
       <div className="form-grid">
         <div className="form-group">
           <label className="form-label">Ім&apos;я *</label>

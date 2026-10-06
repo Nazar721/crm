@@ -1,48 +1,66 @@
 'use client';
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
+import dynamic from 'next/dynamic';
 import { useApp } from '@/context/AppContext';
-import { getSpecialists, saveSpecialists } from '@/lib/storage';
-import { specialistStats } from '@/lib/calc';
+import { specialistStats, getStatsContext } from '@/lib/calc';
 import { formatMoney } from '@/lib/utils';
+import { saveSpecialist, deleteSpecialist } from '@/lib/actions';
+import { emitToast } from '@/lib/toast-bus';
 import type { Specialist } from '@/types';
 import EmptyStateCard from '@/components/ui/EmptyStateCard';
 import SpecialistForm from '@/components/forms/SpecialistForm';
 import ConfirmModal from '@/components/ui/ConfirmModal';
-import SpecialistStatsModal from '@/components/charts/SpecialistStatsModal';
 import { useConfirm } from '@/hooks/useConfirm';
+import { usePersistedState, useScrollRestoration } from '@/hooks/useUiState';
+
+// Важкий модал із графіками вантажиться лише за потреби.
+const SpecialistStatsModal = dynamic(() => import('@/components/charts/SpecialistStatsModal'), {
+  ssr: false,
+  loading: () => null,
+});
+
+function reportErrors(errors: { message: string }[]) {
+  emitToast(errors.map(e => e.message).join('; '), 'error');
+}
 
 export default function SpecialistsPage() {
-  const { refreshKey, triggerRefresh } = useApp();
-  const [search, setSearch] = useState('');
+  const { snapshot, triggerRefresh } = useApp();
+  const [search, setSearch] = usePersistedState('specialists:search', '');
   const [formOpen, setFormOpen] = useState(false);
   const [editSpec, setEditSpec] = useState<Specialist | null>(null);
   const [chartSpec, setChartSpec] = useState<Specialist | null>(null);
   const { isOpen: confirmOpen, title: confirmTitle, text: confirmText, confirm, handleConfirm, cancel } = useConfirm();
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
 
-  const filtered = useMemo(() => {
-    if (!mounted) return [];
-    return getSpecialists().filter(d => d.name.toLowerCase().includes(search.toLowerCase()) || (d.specialization || '').toLowerCase().includes(search.toLowerCase()));
-  }, [mounted, refreshKey, search]);
+  const statsCtx = useMemo(() => getStatsContext(snapshot), [snapshot]);
 
-  const handleSave = (data: { name: string; specialization: string; telegram: string }) => {
-    if (!data.name || !data.specialization) return;
-    const devs = getSpecialists();
-    if (editSpec) {
-      const idx = devs.findIndex(d => d.id === editSpec.id);
-      if (idx >= 0) devs[idx] = { ...devs[idx], ...data };
-    } else {
-      devs.push({ id: Date.now().toString(36) + Math.random().toString(36).substr(2, 5), ...data });
+  const filtered = useMemo(() => (
+    statsCtx.specialists.filter(d =>
+      d.name.toLowerCase().includes(search.toLowerCase()) ||
+      (d.specialization || '').toLowerCase().includes(search.toLowerCase())
+    )
+  ), [statsCtx, search]);
+
+  const handleSave = async (data: { name: string; specialization: string; telegram: string }) => {
+    const result = await saveSpecialist(data, editSpec?.id);
+    if (!result.ok) {
+      reportErrors(result.errors);
+      return;
     }
-    saveSpecialists(devs); setFormOpen(false); setEditSpec(null); triggerRefresh();
+    setFormOpen(false);
+    setEditSpec(null);
+    triggerRefresh();
   };
 
   const handleDelete = (id: string) => {
     confirm('Видалити фахівця?', 'Фахівця буде видалено. Проєкти залишаться.', () => {
-      saveSpecialists(getSpecialists().filter(d => d.id !== id)); triggerRefresh();
+      void deleteSpecialist(id).then(result => {
+        if (!result.ok) reportErrors(result.errors);
+        triggerRefresh();
+      });
     });
   };
+
+  useScrollRestoration('specialists', true);
 
   return (
     <section className="page active">
@@ -62,7 +80,7 @@ export default function SpecialistsPage() {
       <div className="developers-grid">
         {!filtered.length ? <EmptyStateCard icon={<svg width="40" height="40" viewBox="0 0 24 24" fill="none"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>} message="Немає фахівців" hint="Натисніть «Новий фахівець», щоб додати" /> :
         filtered.map(d => {
-          const s = specialistStats(d.id);
+          const s = specialistStats(d.id, statsCtx);
           const initials = d.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
           return (
             <div key={d.id} className="developer-card anim-stagger">
@@ -89,7 +107,7 @@ export default function SpecialistsPage() {
         })}
       </div>
       <SpecialistForm isOpen={formOpen} specialist={editSpec} onSave={handleSave} onCancel={() => { setFormOpen(false); setEditSpec(null); }} />
-      <SpecialistStatsModal isOpen={chartSpec !== null} specialist={chartSpec} onClose={() => setChartSpec(null)} />
+      {chartSpec && <SpecialistStatsModal isOpen specialist={chartSpec} onClose={() => setChartSpec(null)} />}
       <ConfirmModal isOpen={confirmOpen} title={confirmTitle} text={confirmText} onConfirm={handleConfirm} onCancel={cancel} />
     </section>
   );

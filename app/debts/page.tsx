@@ -1,57 +1,72 @@
 'use client';
 import { useState, useMemo, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
-import { getPersonalDebts, savePersonalDebts } from '@/lib/storage';
-import { personalDebtSummary } from '@/lib/calc';
-import { formatMoney, formatDate, today } from '@/lib/utils';
+import { personalDebtSummary, getStatsContext } from '@/lib/calc';
+import { formatMoney, formatDate } from '@/lib/utils';
+import { saveDebt, deleteDebt } from '@/lib/actions';
+import { emitToast } from '@/lib/toast-bus';
 import type { PersonalDebt } from '@/types';
 import { DebtTypeBadge } from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
 import dynamic from 'next/dynamic';
-const DebtsChart = dynamic(() => import('@/components/charts/DebtsChart'), { ssr: false });
+const DebtsChart = dynamic(() => import('@/components/charts/DebtsChart'), { ssr: false, loading: () => null });
 import DebtForm from '@/components/forms/DebtForm';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { useConfirm } from '@/hooks/useConfirm';
+import { usePersistedState, useScrollRestoration, useVisibleCount } from '@/hooks/useUiState';
+
+const PAGE_SIZE = 60;
+
+function reportErrors(errors: { message: string }[]) {
+  emitToast(errors.map(e => e.message).join('; '), 'error');
+}
 
 export default function DebtsPage() {
-  const { refreshKey, triggerRefresh } = useApp();
-  const [search, setSearch] = useState('');
-  const [typeFilter, setTypeFilter] = useState('');
+  const { snapshot, triggerRefresh } = useApp();
+  const [search, setSearch] = usePersistedState('debts:search', '');
+  const [typeFilter, setTypeFilter] = usePersistedState('debts:type', '');
   const [formOpen, setFormOpen] = useState(false);
   const [editDebt, setEditDebt] = useState<PersonalDebt | null>(null);
   const [initialType, setInitialType] = useState<'owed_to_me' | 'my_debt'>('owed_to_me');
   const { isOpen: confirmOpen, title: confirmTitle, text: confirmText, confirm, handleConfirm, cancel } = useConfirm();
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
+  const { count: visibleCount, showMore, reset: resetVisible } = useVisibleCount(PAGE_SIZE);
 
-  const summary = useMemo(() => mounted ? personalDebtSummary() : { owedToMe: 0, myDebts: 0 }, [mounted, refreshKey]);
+  const statsCtx = useMemo(() => getStatsContext(snapshot), [snapshot]);
+  const summary = useMemo(() => personalDebtSummary(statsCtx.debts, statsCtx.settings), [statsCtx]);
 
-  const filtered = useMemo(() => {
-    if (!mounted) return [];
-    return getPersonalDebts().filter(d => {
+  const filtered = useMemo(() => (
+    statsCtx.debts.filter(d => {
       const ms = (d.person || '').toLowerCase().includes(search.toLowerCase()) || (d.note || '').toLowerCase().includes(search.toLowerCase());
       const mt = !typeFilter || d.type === typeFilter;
       return ms && mt;
-    }).sort((a, b) => new Date(b.date || '').getTime() - new Date(a.date || '').getTime());
-  }, [mounted, refreshKey, search, typeFilter]);
+    }).sort((a, b) => new Date(b.date || '').getTime() - new Date(a.date || '').getTime())
+  ), [statsCtx, search, typeFilter]);
 
-  const handleSave = (data: Partial<PersonalDebt>) => {
-    if (!data.person || !data.amount) return;
-    const debts = getPersonalDebts();
-    if (editDebt) {
-      const idx = debts.findIndex(d => d.id === editDebt.id);
-      if (idx >= 0) debts[idx] = { ...debts[idx], ...data };
-    } else {
-      debts.push({ id: Date.now().toString(36) + Math.random().toString(36).substr(2, 5), ...data } as PersonalDebt);
+  const visible = filtered.slice(0, visibleCount);
+
+  useEffect(() => { resetVisible(); }, [search, typeFilter, resetVisible]);
+
+  const handleSave = async (data: Partial<PersonalDebt>) => {
+    const result = await saveDebt(data, editDebt?.id);
+    if (!result.ok) {
+      reportErrors(result.errors);
+      return;
     }
-    savePersonalDebts(debts); setFormOpen(false); setEditDebt(null); triggerRefresh();
+    setFormOpen(false);
+    setEditDebt(null);
+    triggerRefresh();
   };
 
   const handleDelete = (id: string) => {
     confirm('Видалити запис?', 'Запис буде видалено безповоротно.', () => {
-      savePersonalDebts(getPersonalDebts().filter(d => d.id !== id)); triggerRefresh();
+      void deleteDebt(id).then(result => {
+        if (!result.ok) reportErrors(result.errors);
+        triggerRefresh();
+      });
     });
   };
+
+  useScrollRestoration('debts', true);
 
   return (
     <section className="page active">
@@ -82,8 +97,8 @@ export default function DebtsPage() {
         <table className="data-table">
           <thead><tr><th>Тип</th><th>Хто / Кому</th><th>Сума</th><th>Примітка</th><th>Дата</th><th>Дії</th></tr></thead>
           <tbody>
-            {!filtered.length ? <tr className="empty-row"><td colSpan={6}><EmptyState message="Немає записів" hint="Додайте борг мені або свій борг" /></td></tr> :
-            filtered.map(d => (
+            {!visible.length ? <tr className="empty-row"><td colSpan={6}><EmptyState message="Немає записів" hint="Додайте борг мені або свій борг" /></td></tr> :
+            visible.map(d => (
               <tr key={d.id}>
                 <td data-label="Тип"><DebtTypeBadge type={d.type} /></td>
                 <td data-label="Хто / Кому">{d.person || '—'}</td>
@@ -100,6 +115,13 @@ export default function DebtsPage() {
             ))}
           </tbody>
         </table>
+        {filtered.length > visible.length && (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 14 }}>
+            <button className="btn btn-ghost" onClick={showMore}>
+              Показати ще {Math.min(PAGE_SIZE, filtered.length - visible.length)} з {filtered.length}
+            </button>
+          </div>
+        )}
       </div>
       <DebtForm isOpen={formOpen} debt={editDebt} initialType={initialType} onSave={handleSave} onCancel={() => { setFormOpen(false); setEditDebt(null); }} />
       <ConfirmModal isOpen={confirmOpen} title={confirmTitle} text={confirmText} onConfirm={handleConfirm} onCancel={cancel} />

@@ -1,200 +1,88 @@
-import type { Project, Client, Specialist, Partner, Transaction, PersonalDebt, Saving, FinanceSettings, BackupInfo, ExportPayload } from '@/types';
+import type {
+  BackupInfo, Client, DataSnapshot, ExportPayload, FinanceSettings,
+  Partner, PersonalDebt, Project, Saving, Specialist, Transaction,
+} from '@/types';
+import * as store from '@/lib/store';
+import { getSettings } from '@/lib/settings';
+import { buildExportPayload } from '@/lib/export';
+import { applyImport, type ImportReport } from '@/lib/importer';
 
-const KEYS = {
-  projectsActive: 'projects_active',
-  projectsCompleted: 'projects_completed',
-  clients: 'clients',
-  specialists: 'specialists',
-  partners: 'partners',
-  transactions: 'transactions',
-  personalDebts: 'personal_debts',
-  savings: 'savings',
-};
+// ============================================================
+// Публічний фасад сховища. Сторінки/форми викликають ці функції
+// і не знають, чи дані лежать у localStorage, чи (етап 2) на сервері.
+// Синхронні читання йдуть зі snapshot у пам'яті, запис — асинхронний.
+// ============================================================
 
-const META_KEYS = {
-  lastSavedAt: 'crm_last_saved_at',
-  lastManualBackupAt: 'crm_last_manual_backup_at',
-  backupSnoozedUntil: 'crm_backup_snoozed_until',
-  financeSettings: 'crm_finance_settings',
-};
+const read = <T,>(pick: (s: DataSnapshot) => T[]): T[] => [...pick(store.getSnapshot())];
 
-const BACKUP_KEYS = ['crm_backup_1', 'crm_backup_2', 'crm_backup_3', 'crm_backup_4', 'crm_backup_5'];
-
-function get<T>(key: string): T[] {
-  try {
-    return JSON.parse(localStorage.getItem(key) || '[]') || [];
-  } catch {
-    return [];
-  }
-}
-
-function set(key: string, data: unknown): void {
-  localStorage.setItem(key, JSON.stringify(data));
-  afterSave();
-}
-
-export function getProjects(): Project[] { return get<Project>(KEYS.projectsActive); }
-export function getCompleted(): Project[] { return get<Project>(KEYS.projectsCompleted); }
-export function getClients(): Client[] { return get<Client>(KEYS.clients); }
-export function getSpecialists(): Specialist[] { return get<Specialist>(KEYS.specialists); }
-export function getPartners(): Partner[] { return get<Partner>(KEYS.partners); }
-export function getTransactions(): Transaction[] { return get<Transaction>(KEYS.transactions); }
-export function getPersonalDebts(): PersonalDebt[] { return get<PersonalDebt>(KEYS.personalDebts); }
-export function getSavings(): Saving[] { return get<Saving>(KEYS.savings); }
+export const getProjects = (): Project[] => read(s => s.projectsActive);
+export const getCompleted = (): Project[] => read(s => s.projectsCompleted);
+export const getClients = (): Client[] => read(s => s.clients);
+export const getSpecialists = (): Specialist[] => read(s => s.specialists);
+export const getPartners = (): Partner[] => read(s => s.partners);
+export const getTransactions = (): Transaction[] => read(s => s.transactions);
+export const getPersonalDebts = (): PersonalDebt[] => read(s => s.personalDebts);
+export const getSavings = (): Saving[] => read(s => s.savings);
 
 export function getAllProjects(): Project[] {
-  return [...getProjects(), ...getCompleted()];
+  const s = store.getSnapshot();
+  return [...s.projectsActive, ...s.projectsCompleted];
 }
 
-export function saveProjects(d: Project[]): void { set(KEYS.projectsActive, d); }
-export function saveCompleted(d: Project[]): void { set(KEYS.projectsCompleted, d); }
-export function saveClients(d: Client[]): void { set(KEYS.clients, d); }
-export function saveSpecialists(d: Specialist[]): void { set(KEYS.specialists, d); }
-export function savePartners(d: Partner[]): void { set(KEYS.partners, d); }
-export function saveTransactions(d: Transaction[]): void { set(KEYS.transactions, d); }
-export function savePersonalDebts(d: PersonalDebt[]): void { set(KEYS.personalDebts, d); }
-export function saveSavings(d: Saving[]): void { set(KEYS.savings, d); }
+export const saveProjects = (d: Project[]) => store.saveCollection('projectsActive', d);
+export const saveCompleted = (d: Project[]) => store.saveCollection('projectsCompleted', d);
+export const saveClients = (d: Client[]) => store.saveCollection('clients', d);
+export const saveSpecialists = (d: Specialist[]) => store.saveCollection('specialists', d);
+export const savePartners = (d: Partner[]) => store.saveCollection('partners', d);
+export const saveTransactions = (d: Transaction[]) => store.saveCollection('transactions', d);
+export const savePersonalDebts = (d: PersonalDebt[]) => store.saveCollection('personalDebts', d);
+export const saveSavings = (d: Saving[]) => store.saveCollection('savings', d);
 
 export function getFinanceSettings(): FinanceSettings {
-  try {
-    return { usdRate: 41, eurRate: 44, usdtRate: 41, displayCurrency: 'UAH', ...(JSON.parse(localStorage.getItem(META_KEYS.financeSettings) || '{}') || {}) };
-  } catch {
-    return { usdRate: 41, eurRate: 44, usdtRate: 41, displayCurrency: 'UAH' };
+  const snap = store.getSnapshot();
+  return snap.financeSettings ?? getSettings();
+}
+
+export function saveFinanceSettings(settings: FinanceSettings) {
+  return store.saveSettings(settings);
+}
+
+/** Повний JSON-експорт зі snapshot (незалежно від пагінації/фільтрів). */
+export function exportData(includeMeta = true): ExportPayload {
+  return buildExportPayload(store.getSnapshot(), { includeMeta });
+}
+
+/**
+ * Сумісна обгортка над імпортом: строга валідація, попередній стан
+ * зберігається для відновлення. Кидає виняток із переліком помилок.
+ */
+export async function importData(payload: unknown): Promise<ImportReport> {
+  const report = await applyImport(payload);
+  if (!report.ok) {
+    throw new Error(report.errors.map(e => e.message).join('; ') || 'Некоректний файл');
   }
+  return report;
 }
 
-export function saveFinanceSettings(settings: FinanceSettings): void {
-  localStorage.setItem(META_KEYS.financeSettings, JSON.stringify({
-    usdRate: Number(settings.usdRate) || 41,
-    eurRate: Number(settings.eurRate) || 44,
-    usdtRate: Number((settings as any).usdtRate) || Number(settings.usdRate) || 41,
-    displayCurrency: settings.displayCurrency || 'UAH',
-  }));
-  afterSave();
-}
-
-let _suppressBackups = false;
-
-let _lastBackupAt = 0;
-
-function afterSave(): void {
-  if (_suppressBackups) return;
+export async function markManualBackup(): Promise<string> {
   const now = new Date().toISOString();
-  try { localStorage.setItem(META_KEYS.lastSavedAt, now); } catch {}
-  // Throttle heavy full-DB snapshots: max 1 per 30s, otherwise navigation/saves feel laggy.
-  // Rotating 5 full copies on every keystroke/save serializes megabytes synchronously.
-  const nowMs = Date.now();
-  if (nowMs - _lastBackupAt < 30000) return;
-  _lastBackupAt = nowMs;
-  try { rotateInternalBackups(now); } catch {}
-}
-
-function rotateInternalBackups(now: string = new Date().toISOString()): void {
-  for (let i = BACKUP_KEYS.length - 1; i > 0; i--) {
-    const prev = localStorage.getItem(BACKUP_KEYS[i - 1]);
-    if (prev) localStorage.setItem(BACKUP_KEYS[i], prev);
-    else localStorage.removeItem(BACKUP_KEYS[i]);
-  }
-  localStorage.setItem(BACKUP_KEYS[0], JSON.stringify({
-    createdAt: now,
-    payload: exportData(false),
-  }));
-}
-
-export function exportData(includeMeta: boolean = true): ExportPayload {
-  const data = {
-    projectsActive: getProjects(),
-    projectsCompleted: getCompleted(),
-    clients: getClients(),
-    specialists: getSpecialists(),
-    partners: getPartners(),
-    transactions: getTransactions(),
-    personalDebts: getPersonalDebts(),
-    savings: getSavings(),
-  };
-  const payload: ExportPayload = {
-    app: 'WebAgency CRM',
-    version: 1,
-    exportedAt: new Date().toISOString(),
-    data,
-    financeSettings: getFinanceSettings(),
-  };
-  if (includeMeta) payload.meta = getBackupInfo();
-  return payload;
-}
-
-export function importData(payload: ExportPayload): void {
-  if (!payload || typeof payload !== 'object') throw new Error('Некоректний файл');
-  const data = payload.data && typeof payload.data === 'object' ? payload.data : (payload as unknown as Record<string, unknown>);
-
-  const nextData: Record<string, unknown[]> = {};
-  Object.entries(KEYS).forEach(([propName, lsKey]) => {
-    const value = (data as Record<string, unknown>)[propName];
-    nextData[lsKey] = Array.isArray(value) ? value : [];
-  });
-
-  _suppressBackups = true;
-  Object.entries(nextData).forEach(([lsKey, value]) => set(lsKey, value));
-  if (payload.financeSettings) saveFinanceSettings(payload.financeSettings);
-  ['crm_migrated_v11', 'crm_migrated_v13', 'crm_migrated_v14', 'crm_migrated_v15', 'crm_migrated_v16', 'crm_migrated_v17', 'crm_migrated_v18', 'crm_migrated_v19'].forEach(key => localStorage.removeItem(key));
-  _suppressBackups = false;
-
-  // Backfill clients from projects immediately after import
-  backfillClientsFromProjects();
-
-  afterSave();
-}
-
-function backfillClientsFromProjects(): void {
-  const clients = get<Client>(KEYS.clients);
-  let changed = false;
-  const activeProjects = get<Project>(KEYS.projectsActive);
-  const completedProjects = get<Project>(KEYS.projectsCompleted);
-
-  const linkProject = (p: Project): Project => {
-    if (p.clientId || !p.clientName) return p;
-    const nameLower = p.clientName.toLowerCase().trim();
-    const existing = clients.find(c => c.name.toLowerCase().trim() === nameLower);
-    if (existing) {
-      return { ...p, clientId: existing.id };
-    }
-    const newId = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
-    const newClient: Client = { id: newId, name: p.clientName, telegram: p.clientTelegram || '', source: p.clientSource || 'Інше', createdAt: p.createdAt || new Date().toISOString() };
-    clients.push(newClient);
-    changed = true;
-    return { ...p, clientId: newId };
-  };
-
-  const updatedActive = activeProjects.map(linkProject);
-  const updatedCompleted = completedProjects.map(linkProject);
-  if (changed) set(KEYS.clients, clients);
-  set(KEYS.projectsActive, updatedActive);
-  set(KEYS.projectsCompleted, updatedCompleted);
-}
-
-export function markManualBackup(): string {
-  const now = new Date().toISOString();
-  localStorage.setItem(META_KEYS.lastManualBackupAt, now);
-  localStorage.removeItem(META_KEYS.backupSnoozedUntil);
+  await store.saveMeta({ lastManualBackupAt: now, backupSnoozedUntil: '' });
   return now;
 }
 
-export function snoozeBackupReminder(days: number = 3): void {
-  const until = new Date(Date.now() + days * 86400000).toISOString();
-  localStorage.setItem(META_KEYS.backupSnoozedUntil, until);
+export async function snoozeBackupReminder(days = 3): Promise<void> {
+  await store.saveMeta({ backupSnoozedUntil: new Date(Date.now() + days * 86400000).toISOString() });
 }
 
 export function getBackupInfo(): BackupInfo {
-  return {
-    lastSavedAt: localStorage.getItem(META_KEYS.lastSavedAt) || '',
-    lastManualBackupAt: localStorage.getItem(META_KEYS.lastManualBackupAt) || '',
-    backupSnoozedUntil: localStorage.getItem(META_KEYS.backupSnoozedUntil) || '',
-  };
+  return { ...store.getSnapshot().meta };
 }
 
-export function shouldShowBackupReminder(maxAgeDays: number = 7): boolean {
+export function shouldShowBackupReminder(maxAgeDays = 7): boolean {
   const info = getBackupInfo();
   if (info.backupSnoozedUntil && new Date(info.backupSnoozedUntil) > new Date()) return false;
   if (!info.lastManualBackupAt) return true;
   return Date.now() - new Date(info.lastManualBackupAt).getTime() > maxAgeDays * 86400000;
 }
+
+export { getIssues as getStorageIssues } from '@/lib/store';

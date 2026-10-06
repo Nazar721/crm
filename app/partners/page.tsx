@@ -1,46 +1,65 @@
 'use client';
 import { useState, useMemo, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
-import { getPartners, savePartners } from '@/lib/storage';
-import { partnerStats } from '@/lib/calc';
+import { partnerStats, getStatsContext } from '@/lib/calc';
 import { formatMoney } from '@/lib/utils';
+import { savePartner, deletePartner } from '@/lib/actions';
+import { emitToast } from '@/lib/toast-bus';
 import type { Partner } from '@/types';
 import EmptyState from '@/components/ui/EmptyState';
 import PartnerForm from '@/components/forms/PartnerForm';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { useConfirm } from '@/hooks/useConfirm';
+import { usePersistedState, useScrollRestoration, useVisibleCount } from '@/hooks/useUiState';
+
+const PAGE_SIZE = 50;
+
+function reportErrors(errors: { message: string }[]) {
+  emitToast(errors.map(e => e.message).join('; '), 'error');
+}
 
 export default function PartnersPage() {
-  const { refreshKey, triggerRefresh } = useApp();
-  const [search, setSearch] = useState('');
+  const { snapshot, triggerRefresh } = useApp();
+  const [search, setSearch] = usePersistedState('partners:search', '');
   const [formOpen, setFormOpen] = useState(false);
   const [editPartner, setEditPartner] = useState<Partner | null>(null);
   const { isOpen: confirmOpen, title: confirmTitle, text: confirmText, confirm, handleConfirm, cancel } = useConfirm();
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
+  const { count: visibleCount, showMore, reset: resetVisible } = useVisibleCount(PAGE_SIZE);
 
-  const filtered = useMemo(() => {
-    if (!mounted) return [];
-    return getPartners().filter(p => p.name.toLowerCase().includes(search.toLowerCase()) || (p.services || '').toLowerCase().includes(search.toLowerCase()));
-  }, [mounted, refreshKey, search]);
+  const statsCtx = useMemo(() => getStatsContext(snapshot), [snapshot]);
 
-  const handleSave = (data: Partial<Partner>) => {
-    if (!data.name) return;
-    const partners = getPartners();
-    if (editPartner) {
-      const idx = partners.findIndex(p => p.id === editPartner.id);
-      if (idx >= 0) partners[idx] = { ...partners[idx], ...data };
-    } else {
-      partners.push({ id: Date.now().toString(36) + Math.random().toString(36).substr(2, 5), ...data } as Partner);
+  const filtered = useMemo(() => (
+    statsCtx.partners.filter(p =>
+      p.name.toLowerCase().includes(search.toLowerCase()) ||
+      (p.services || '').toLowerCase().includes(search.toLowerCase())
+    )
+  ), [statsCtx, search]);
+
+  const visible = filtered.slice(0, visibleCount);
+
+  useEffect(() => { resetVisible(); }, [search, resetVisible]);
+
+  const handleSave = async (data: Partial<Partner>) => {
+    const result = await savePartner(data, editPartner?.id);
+    if (!result.ok) {
+      reportErrors(result.errors);
+      return;
     }
-    savePartners(partners); setFormOpen(false); setEditPartner(null); triggerRefresh();
+    setFormOpen(false);
+    setEditPartner(null);
+    triggerRefresh();
   };
 
   const handleDelete = (id: string) => {
     confirm('Видалити партнера?', 'Партнер буде видалений.', () => {
-      savePartners(getPartners().filter(p => p.id !== id)); triggerRefresh();
+      void deletePartner(id).then(result => {
+        if (!result.ok) reportErrors(result.errors);
+        triggerRefresh();
+      });
     });
   };
+
+  useScrollRestoration('partners', true);
 
   return (
     <section className="page active">
@@ -61,9 +80,9 @@ export default function PartnersPage() {
         <table className="data-table">
           <thead><tr><th>Назва</th><th>Послуги</th><th>Клієнтів</th><th>Угоди</th><th>Комісія</th><th>Виплачено</th><th>Борг</th><th>Наш дохід</th><th>Передали їм</th><th>Ціна</th><th>Наша комісія</th><th>Виплачено нам</th><th>Їхній борг</th><th>Дії</th></tr></thead>
           <tbody>
-            {!filtered.length ? <tr className="empty-row"><td colSpan={14}><EmptyState message="Немає партнерів" hint="Додайте партнера або прив'яжіть до проєкту" /></td></tr> :
-            filtered.map(p => {
-              const s = partnerStats(p.id);
+            {!visible.length ? <tr className="empty-row"><td colSpan={14}><EmptyState message="Немає партнерів" hint="Додайте партнера або прив'яжіть до проєкту" /></td></tr> :
+            visible.map(p => {
+              const s = partnerStats(p.id, statsCtx);
               return (
                 <tr key={p.id}>
                   <td data-label="Партнер"><strong>{p.name}</strong></td>
@@ -90,6 +109,13 @@ export default function PartnersPage() {
             })}
           </tbody>
         </table>
+        {filtered.length > visible.length && (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 14 }}>
+            <button className="btn btn-ghost" onClick={showMore}>
+              Показати ще {Math.min(PAGE_SIZE, filtered.length - visible.length)} з {filtered.length}
+            </button>
+          </div>
+        )}
       </div>
       <PartnerForm isOpen={formOpen} partner={editPartner} onSave={handleSave} onCancel={() => { setFormOpen(false); setEditPartner(null); }} />
       <ConfirmModal isOpen={confirmOpen} title={confirmTitle} text={confirmText} onConfirm={handleConfirm} onCancel={cancel} />

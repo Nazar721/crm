@@ -1,3 +1,12 @@
+import {
+  calendarDaysBetween,
+  formatKyivDate,
+  formatKyivDateTime,
+  monthKeyOf,
+  todayKyiv,
+} from '@/lib/dates';
+import { displayCurrencySetting } from '@/lib/settings';
+
 export type Currency = 'UAH' | 'USD' | 'EUR' | 'USDT';
 
 export const CURRENCY_SYMBOLS: Record<string, string> = { UAH: '₴', USD: '$', EUR: '€', USDT: 'USDT' };
@@ -6,12 +15,9 @@ export function currencySymbol(cur?: string): string {
   return CURRENCY_SYMBOLS[cur || 'UAH'] || '₴';
 }
 
+/** Динамічна валюта відображення (кеш у пам'яті, без читання localStorage на кожен виклик). */
 export function displayCurrency(): Currency {
-  if (typeof window === 'undefined') return 'UAH';
-  try {
-    const s = JSON.parse(localStorage.getItem('crm_finance_settings') || '{}');
-    return (s && s.displayCurrency) || 'UAH';
-  } catch { return 'UAH'; }
+  return displayCurrencySetting();
 }
 
 export function itemCurrency(item?: { currency?: string } | null): string {
@@ -28,36 +34,29 @@ export function formatMoney(n: number, currency?: string): string {
 }
 
 export function formatDate(str?: string): string {
-  if (!str) return '—';
-  const d = new Date(str);
-  return d.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  return formatKyivDate(str);
 }
 
 export function formatDateTime(str?: string): string {
-  if (!str) return '—';
-  return new Date(str).toLocaleString('uk-UA', {
-    day: '2-digit', month: '2-digit', year: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  });
+  return formatKyivDateTime(str);
 }
 
+/** Облікова дата «сьогодні» (Europe/Kyiv), YYYY-MM-DD. */
 export function today(): string {
-  return new Date().toISOString().split('T')[0];
+  return todayKyiv();
 }
 
 export function daysBetween(start: string, end: string): number {
-  const s = new Date(start), e = new Date(end);
-  return Math.round((e.getTime() - s.getTime()) / 86400000);
+  return calendarDaysBetween(start, end) ?? 0;
 }
 
 export function escHtml(str?: string): string {
   return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+/** Місячний ключ дати за обліковим поясом Europe/Kyiv. */
 export function getMonthKey(dateStr?: string): string | null {
-  if (!dateStr) return null;
-  const d = new Date(dateStr);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  return monthKeyOf(dateStr);
 }
 
 export function getMonthLabel(key?: string): string {

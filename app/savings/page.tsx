@@ -1,56 +1,74 @@
 'use client';
 import { useState, useMemo, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
-import { getSavings, saveSavings } from '@/lib/storage';
-import { savingsSummary, savingsProgress } from '@/lib/calc';
-import { formatMoney, formatDate, today } from '@/lib/utils';
+import { savingsSummary, savingsProgress, getStatsContext } from '@/lib/calc';
+import { formatMoney, formatDate } from '@/lib/utils';
+import { saveSaving, deleteSaving } from '@/lib/actions';
+import { emitToast } from '@/lib/toast-bus';
 import type { Saving } from '@/types';
 import { BankBadge } from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
 import ProgressBar from '@/components/ui/ProgressBar';
 import dynamic from 'next/dynamic';
-const SavingsChart = dynamic(() => import('@/components/charts/SavingsChart'), { ssr: false });
+const SavingsChart = dynamic(() => import('@/components/charts/SavingsChart'), { ssr: false, loading: () => null });
 import SavingForm from '@/components/forms/SavingForm';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { useConfirm } from '@/hooks/useConfirm';
+import { usePersistedState, useScrollRestoration, useVisibleCount } from '@/hooks/useUiState';
+
+const PAGE_SIZE = 60;
+
+function reportErrors(errors: { message: string }[]) {
+  emitToast(errors.map(e => e.message).join('; '), 'error');
+}
 
 export default function SavingsPage() {
-  const { refreshKey, triggerRefresh } = useApp();
-  const [search, setSearch] = useState('');
+  const { snapshot, triggerRefresh } = useApp();
+  const [search, setSearch] = usePersistedState('savings:search', '');
   const [formOpen, setFormOpen] = useState(false);
   const [editSaving, setEditSaving] = useState<Saving | null>(null);
   const { isOpen: confirmOpen, title: confirmTitle, text: confirmText, confirm, handleConfirm, cancel } = useConfirm();
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
+  const { count: visibleCount, showMore, reset: resetVisible } = useVisibleCount(PAGE_SIZE);
 
-  const summary = useMemo(() => mounted ? savingsSummary() : { totalSaved: 0, totalGoal: 0, progress: 0 }, [mounted, refreshKey]);
+  const statsCtx = useMemo(() => getStatsContext(snapshot), [snapshot]);
+  const summary = useMemo(() => savingsSummary(statsCtx.savings, statsCtx.settings), [statsCtx]);
 
-  const filtered = useMemo(() => {
-    if (!mounted) return [];
-    return getSavings().filter(s => (s.name || '').toLowerCase().includes(search.toLowerCase())).sort((a, b) => new Date(b.date || '').getTime() - new Date(a.date || '').getTime());
-  }, [mounted, refreshKey, search]);
+  const filtered = useMemo(() => (
+    statsCtx.savings
+      .filter(s => (s.name || '').toLowerCase().includes(search.toLowerCase()))
+      .sort((a, b) => new Date(b.date || '').getTime() - new Date(a.date || '').getTime())
+  ), [statsCtx, search]);
 
+  const visible = filtered.slice(0, visibleCount);
+
+  useEffect(() => { resetVisible(); }, [search, resetVisible]);
+
+  // Графік малюється по повному відфільтрованому набору, не по сторінці.
   const chartLabels = filtered.map(s => s.name || 'Ціль');
   const chartSaved = filtered.map(s => Number(s.amount) || 0);
   const chartRemaining = filtered.map(s => Math.max(0, (Number(s.goal) || 0) - (Number(s.amount) || 0)));
 
-  const handleSave = (data: Partial<Saving>) => {
-    if (!data.bank || !data.goal) return;
-    const savings = getSavings();
-    if (editSaving) {
-      const idx = savings.findIndex(s => s.id === editSaving.id);
-      if (idx >= 0) savings[idx] = { ...savings[idx], ...data };
-    } else {
-      savings.push({ id: Date.now().toString(36) + Math.random().toString(36).substr(2, 5), ...data } as Saving);
+  const handleSave = async (data: Partial<Saving>) => {
+    const result = await saveSaving(data, editSaving?.id);
+    if (!result.ok) {
+      reportErrors(result.errors);
+      return;
     }
-    saveSavings(savings); setFormOpen(false); setEditSaving(null); triggerRefresh();
+    setFormOpen(false);
+    setEditSaving(null);
+    triggerRefresh();
   };
 
   const handleDelete = (id: string) => {
     confirm('Видалити відкладення?', 'Запис буде видалено безповоротно.', () => {
-      saveSavings(getSavings().filter(s => s.id !== id)); triggerRefresh();
+      void deleteSaving(id).then(result => {
+        if (!result.ok) reportErrors(result.errors);
+        triggerRefresh();
+      });
     });
   };
+
+  useScrollRestoration('savings', true);
 
   return (
     <section className="page active">
@@ -76,8 +94,8 @@ export default function SavingsPage() {
         <table className="data-table">
           <thead><tr><th>Ціль</th><th>Банк</th><th>Наразі</th><th>Ціль</th><th>Прогрес</th><th>Дата</th><th>Дії</th></tr></thead>
           <tbody>
-            {!filtered.length ? <tr className="empty-row"><td colSpan={7}><EmptyState message="Немає відкладень" hint="Додайте ціль і суму на рахунку" /></td></tr> :
-            filtered.map(s => (
+            {!visible.length ? <tr className="empty-row"><td colSpan={7}><EmptyState message="Немає відкладень" hint="Додайте ціль і суму на рахунку" /></td></tr> :
+            visible.map(s => (
               <tr key={s.id}>
                 <td data-label="Ціль">{s.name || '—'}</td>
                 <td data-label="Банк"><BankBadge bankId={s.bank} /></td>
@@ -95,6 +113,13 @@ export default function SavingsPage() {
             ))}
           </tbody>
         </table>
+        {filtered.length > visible.length && (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 14 }}>
+            <button className="btn btn-ghost" onClick={showMore}>
+              Показати ще {Math.min(PAGE_SIZE, filtered.length - visible.length)} з {filtered.length}
+            </button>
+          </div>
+        )}
       </div>
       <SavingForm isOpen={formOpen} saving={editSaving} onSave={handleSave} onCancel={() => { setFormOpen(false); setEditSaving(null); }} />
       <ConfirmModal isOpen={confirmOpen} title={confirmTitle} text={confirmText} onConfirm={handleConfirm} onCancel={cancel} />

@@ -1,57 +1,72 @@
 'use client';
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useApp } from '@/context/AppContext';
-import { getTransactions, saveTransactions, getFinanceSettings, saveFinanceSettings } from '@/lib/storage';
-import { financeBalance, bankBalances, bankCurrencyLocal, rateForCurrency, bankAmountToDisplay } from '@/lib/calc';
-import { formatMoney, formatDate, today } from '@/lib/utils';
+import { financeBalance, bankBalances, bankCurrencyLocal, bankAmountToDisplay, summarizeTransactions } from '@/lib/calc';
+import { formatMoney, formatDate, today, getMonthKey, getMonthLabel } from '@/lib/utils';
 import { BANKS, normalizeBank, bankLabel } from '@/lib/banks';
+import { saveTransaction, deleteTransaction, saveRates, convertCurrency } from '@/lib/actions';
+import { emitToast } from '@/lib/toast-bus';
 import { FinanceTypeBadge } from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
 import TransactionForm from '@/components/forms/TransactionForm';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import ErrorBoundary from '@/components/ui/ErrorBoundary';
 import { useConfirm } from '@/hooks/useConfirm';
+import { usePersistedState, useScrollRestoration, useVisibleCount } from '@/hooks/useUiState';
 import dynamic from 'next/dynamic';
 const IncomeChart = dynamic(() => import('@/components/charts/IncomeChart'), { ssr: false, loading: () => null });
 const BankBalancesChart = dynamic(() => import('@/components/charts/BankBalancesChart'), { ssr: false, loading: () => null });
 import type { Transaction } from '@/types';
 
-function getMonthKey(d?: string): string | null {
-  if (!d) return null;
-  const dt = new Date(d);
-  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
-}
-function getMonthLabel(k: string) {
-  const [y, m] = k.split('-');
-  const months = ['Січ', 'Лют', 'Бер', 'Кві', 'Тра', 'Чер', 'Лип', 'Сер', 'Вер', 'Жов', 'Лис', 'Гру'];
-  return `${months[parseInt(m, 10) - 1]} ${y}`;
-}
+const PAGE_SIZE = 60;
 
 export default function FinancePage() {
-  const { refreshKey, triggerRefresh } = useApp();
-  const [search, setSearch] = useState('');
-  const [typeFilter, setTypeFilter] = useState('');
-  const [periodFilter, setPeriodFilter] = useState('');
+  const { snapshot, triggerRefresh } = useApp();
+  const [search, setSearch] = usePersistedState('finance:search', '');
+  const [typeFilter, setTypeFilter] = usePersistedState('finance:type', '');
+  const [periodFilter, setPeriodFilter] = usePersistedState('finance:period', '');
   const [formOpen, setFormOpen] = useState(false);
   const [editTx, setEditTx] = useState<Transaction | null>(null);
   const [initialType, setInitialType] = useState<'income' | 'expense'>('income');
   const { isOpen: confirmOpen, title: confirmTitle, text: confirmText, confirm, handleConfirm, cancel } = useConfirm();
-  const [mounted, setMounted] = useState(false);
+  const { count: visibleCount, showMore, reset: resetVisible } = useVisibleCount(PAGE_SIZE);
   const [usdRate, setUsdRate] = useState('');
   const [eurRate, setEurRate] = useState('');
   const [usdtRate, setUsdtRate] = useState('');
-  const [convFrom, setConvFrom] = useState('mono');
-  const [convTo, setConvTo] = useState('cash');
+  const [convFrom, setConvFrom] = usePersistedState('finance:convFrom', 'mono');
+  const [convTo, setConvTo] = usePersistedState('finance:convTo', 'cash');
   const [convAmount, setConvAmount] = useState('');
-  useEffect(() => {
-    setMounted(true);
-    const s = getFinanceSettings();
-    setUsdRate(String(s.usdRate));
-    setEurRate(String(s.eurRate));
-    setUsdtRate(String((s as any).usdtRate ?? s.usdRate));
-  }, []);
 
-  const allTxs = useMemo(() => (mounted ? getTransactions() : []), [mounted, refreshKey]);
+  const financeSettings = snapshot.financeSettings;
+
+  useEffect(() => {
+    setUsdRate(String(financeSettings.usdRate));
+    setEurRate(String(financeSettings.eurRate));
+    setUsdtRate(String(financeSettings.usdtRate ?? financeSettings.usdRate));
+  }, [financeSettings]);
+
+  const allTxs = snapshot.transactions;
+
+  const inPeriod = useCallback((t: Transaction) => {
+    if (!periodFilter) return true;
+    const dateStr = t.date || t.plannedDate;
+    if (!dateStr) return false;
+    const key = getMonthKey(dateStr);
+    if (!key) return false;
+    if (periodFilter.startsWith('m:')) return key === periodFilter.slice(2);
+    const monthNow = today().slice(0, 7);
+    switch (periodFilter) {
+      case 'this_month': return key === monthNow;
+      case 'last_month': {
+        const [y, m] = monthNow.split('-').map(Number);
+        const prev = m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
+        return key === prev;
+      }
+      case 'this_year': return key.startsWith(`${today().slice(0, 4)}-`);
+      case 'last_year': return key.startsWith(`${Number(today().slice(0, 4)) - 1}-`);
+      default: return true;
+    }
+  }, [periodFilter]);
 
   // Місяці, в яких реально є транзакції — для селекта
   const monthOptions = useMemo(() => {
@@ -64,62 +79,26 @@ export default function FinancePage() {
     return [...keys].sort().reverse();
   }, [allTxs]);
 
-  const inPeriod = (t: Transaction) => {
-    if (!periodFilter) return true;
-    const dateStr = t.date || t.plannedDate;
-    if (!dateStr) return false;
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return false;
-    const now = new Date();
-    if (periodFilter.startsWith('m:')) return getMonthKey(dateStr) === periodFilter.slice(2);
-    switch (periodFilter) {
-      case 'this_month':
-        return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-      case 'last_month': {
-        const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        return d.getFullYear() === prev.getFullYear() && d.getMonth() === prev.getMonth();
-      }
-      case 'this_year':
-        return d.getFullYear() === now.getFullYear();
-      case 'last_year':
-        return d.getFullYear() === now.getFullYear() - 1;
-      default:
-        return true;
-    }
-  };
-
   const txs = useMemo(() => {
-    if (!mounted) return [];
+    const q = search.toLowerCase();
     return allTxs.filter(t => {
       if (t.hidden) return false;
       const bankL = bankLabel(normalizeBank(t.bank) || t.bank).toLowerCase();
-      const ms = (t.description || '').toLowerCase().includes(search.toLowerCase()) || (t.category || '').toLowerCase().includes(search.toLowerCase()) || bankL.includes(search.toLowerCase());
+      const ms = (t.description || '').toLowerCase().includes(q) || (t.category || '').toLowerCase().includes(q) || bankL.includes(q);
       const mt = !typeFilter || t.type === typeFilter;
-      const mp = inPeriod(t);
-      return ms && mt && mp;
+      return ms && mt && inPeriod(t);
     }).sort((a, b) => new Date(b.date || b.plannedDate || '').getTime() - new Date(a.date || a.plannedDate || '').getTime());
-  }, [mounted, refreshKey, search, typeFilter, periodFilter, allTxs]);
+  }, [allTxs, search, typeFilter, inPeriod]);
 
-  // Підсумки по відфільтрованому списку
-  const filteredSummary = useMemo(() => {
-    let turnover = 0, income = 0, expense = 0;
-    txs.forEach(t => {
-      if (t.type === 'transfer') return;
-      const v = bankAmountToDisplay(Number(t.amount) || 0, t.bank);
-      if (t.type === 'income') {
-        turnover += v;
-        if (t.incomeStatus !== 'incoming') income += v;
-      } else if (t.type === 'expense') {
-        expense += v;
-      }
-    });
-    return { count: txs.length, turnover, income, expense };
-  }, [txs]);
+  // Підсумки рахуються по ВСЬОМУ відфільтрованому набору, не по видимій сторінці.
+  const filteredSummary = useMemo(
+    () => summarizeTransactions(txs, financeSettings),
+    [txs, financeSettings],
+  );
 
-  const balance = useMemo(() => mounted ? financeBalance(allTxs) : 0, [mounted, allTxs]);
+  const balance = useMemo(() => financeBalance(allTxs, financeSettings), [allTxs, financeSettings]);
 
   const chartData = useMemo(() => {
-    if (!mounted) return { labels: [], income: [] };
     const md: Record<string, number> = {};
     const now = new Date();
     for (let i = 11; i >= 0; i--) {
@@ -128,18 +107,19 @@ export default function FinancePage() {
       md[key] = 0;
     }
     allTxs.forEach(t => {
+      if (t.hidden) return;
       if (t.source && String(t.source).startsWith('project_')) return;
       if (t.type !== 'income') return;
       if (t.incomeStatus === 'incoming') return;
       const key = getMonthKey(t.date || t.plannedDate);
       if (key && md[key] !== undefined) {
-        md[key] += bankAmountToDisplay(t.amount, t.bank);
+        md[key] += bankAmountToDisplay(t.amount, t.bank, financeSettings);
       }
     });
     return { labels: Object.keys(md).map(k => getMonthLabel(k)), income: Object.values(md) };
-  }, [mounted, allTxs]);
+  }, [allTxs, financeSettings]);
 
-  const balances = useMemo(() => mounted ? bankBalances(allTxs) : { mono: 0, privat: 0, cash: 0, cash_usd: 0, cash_eur: 0, crypto_usdt: 0 }, [mounted, allTxs]);
+  const balances = useMemo(() => bankBalances(allTxs, financeSettings), [allTxs, financeSettings]);
 
   const weekClass = (dateStr?: string) => {
     const d = new Date(dateStr || today());
@@ -149,54 +129,70 @@ export default function FinancePage() {
     return wi % 2 === 0 ? 'week-a' : 'week-b';
   };
 
+  // Сума показується у валюті самого рахунку: гривневий рахунок
+  // ніколи не отримує символ іншої валюти без конвертації.
   const formatBankAmount = (amount: number, bankId: string) => {
     const cur = bankCurrencyLocal(bankId);
     const v = Number(amount) || 0;
     if (cur === 'USD') return '$' + v.toLocaleString('uk-UA', { maximumFractionDigits: 2 });
     if (cur === 'EUR') return '€' + v.toLocaleString('uk-UA', { maximumFractionDigits: 2 });
     if (cur === 'USDT') return v.toLocaleString('uk-UA', { maximumFractionDigits: 2 }) + ' USDT';
-    return formatMoney(v);
+    return formatMoney(v, 'UAH');
   };
 
+  const visibleTxs = txs.slice(0, visibleCount);
 
-  const handleSave = (data: Partial<Transaction>) => {
-    const transactions = getTransactions();
-    if (editTx) {
-      const idx = transactions.findIndex(t => t.id === editTx.id);
-      if (idx >= 0) transactions[idx] = { ...transactions[idx], ...data };
-    } else {
-      transactions.push({ id: Date.now().toString(36) + Math.random().toString(36).substr(2, 5), ...data } as Transaction);
+  const handleSave = async (data: Partial<Transaction>) => {
+    const result = await saveTransaction(data, editTx?.id);
+    if (!result.ok) {
+      emitToast(result.errors.map(e => e.message).join('; '), 'error');
+      return;
     }
-    saveTransactions(transactions); setFormOpen(false); setEditTx(null); triggerRefresh();
+    setFormOpen(false);
+    setEditTx(null);
+    triggerRefresh();
   };
 
   const handleDelete = (id: string) => {
     confirm('Видалити транзакцію?', 'Транзакція буде видалена безповоротно.', () => {
-      saveTransactions(getTransactions().filter(t => t.id !== id)); triggerRefresh();
+      void deleteTransaction(id).then(result => {
+        if (!result.ok) emitToast(result.errors.map(e => e.message).join('; '), 'error');
+        triggerRefresh();
+      });
     });
   };
 
-  const saveRates = () => {
-    saveFinanceSettings({ usdRate: Number(usdRate) || 41, eurRate: Number(eurRate) || 44, usdtRate: Number(usdtRate) || Number(usdRate) || 41 });
+  const handleSaveRates = async () => {
+    const result = await saveRates({ usdRate, eurRate, usdtRate });
+    if (!result.ok) {
+      emitToast(result.errors.map(e => e.message).join('; '), 'error');
+      return;
+    }
+    // Залежні підсумки (баланс, графіки, конвертації) інвалідуються разом
+    // із snapshot налаштувань; triggerRefresh додатково оновлює бейджі.
+    triggerRefresh();
   };
 
-  const doConversion = () => {
-    saveRates();
-    const amount = Number(convAmount) || 0;
-    if (!convFrom || !convTo || convFrom === convTo || !amount) return;
-    const fromCur = bankCurrencyLocal(convFrom);
-    const toCur = bankCurrencyLocal(convTo);
-    const uah = amount * rateForCurrency(fromCur);
-    const target = uah / rateForCurrency(toCur);
-    const transactions = getTransactions();
-    transactions.push({
-      id: Date.now().toString(36) + Math.random().toString(36).substr(2, 5),
-      type: 'transfer', bank: convFrom, toBank: convTo, amount, targetAmount: target,
-      category: 'Конвертація', description: `${bankLabel(convFrom)} → ${bankLabel(convTo)}`,
-      date: today(), status: 'done',
-    });
-    saveTransactions(transactions); setConvAmount(''); triggerRefresh();
+  const handleConversion = async () => {
+    const amount = Number(convAmount);
+    const result = await convertCurrency({ fromBank: convFrom, toBank: convTo, amount });
+    if (!result.ok) {
+      emitToast(result.errors.map(e => e.message).join('; '), 'error');
+      return;
+    }
+    setConvAmount('');
+    triggerRefresh();
   };
+
+  const resetFilters = () => {
+    setTypeFilter(''); setPeriodFilter(''); setSearch(''); resetVisible();
+  };
+
+  const hasFilters = !!(typeFilter || periodFilter || search);
+
+  useEffect(() => { resetVisible(); }, [search, typeFilter, periodFilter, resetVisible]);
+
+  useScrollRestoration('finance', true);
 
   return (
     <ErrorBoundary>
@@ -213,23 +209,23 @@ export default function FinancePage() {
         <div className="stat-card"><div className="stat-info"><span className="stat-label">Баланс</span><span className="stat-value">{formatMoney(balance)}</span></div></div>
         <div className="finance-converter">
           <div className="converter-rates">
-            <label><span>$</span><input type="number" className="form-input" value={usdRate} onChange={e => setUsdRate(e.target.value)} onBlur={saveRates} min="0" step="0.01" /></label>
-            <label><span>€</span><input type="number" className="form-input" value={eurRate} onChange={e => setEurRate(e.target.value)} onBlur={saveRates} min="0" step="0.01" /></label>
-            <label><span>USDT</span><input type="number" className="form-input" value={usdtRate} onChange={e => setUsdtRate(e.target.value)} onBlur={saveRates} min="0" step="0.01" /></label>
+            <label><span>$</span><input type="number" className="form-input" value={usdRate} onChange={e => setUsdRate(e.target.value)} onBlur={handleSaveRates} min="0" step="0.01" /></label>
+            <label><span>€</span><input type="number" className="form-input" value={eurRate} onChange={e => setEurRate(e.target.value)} onBlur={handleSaveRates} min="0" step="0.01" /></label>
+            <label><span>USDT</span><input type="number" className="form-input" value={usdtRate} onChange={e => setUsdtRate(e.target.value)} onBlur={handleSaveRates} min="0" step="0.01" /></label>
           </div>
           <div className="converter-flow">
             <select className="form-input" value={convFrom} onChange={e => setConvFrom(e.target.value)}>{BANKS.map(b => <option key={b.id} value={b.id}>{b.label}</option>)}</select>
             <span className="converter-arrow">→</span>
             <select className="form-input" value={convTo} onChange={e => setConvTo(e.target.value)}>{BANKS.map(b => <option key={b.id} value={b.id}>{b.label}</option>)}</select>
             <input type="number" className="form-input" value={convAmount} onChange={e => setConvAmount(e.target.value)} min="0" step="0.01" placeholder="Сума" />
-            <button className="btn btn-ghost" onClick={doConversion}>Конвертація</button>
+            <button className="btn btn-ghost" onClick={handleConversion}>Конвертація</button>
           </div>
         </div>
       </div>
 
       <div className="charts-grid charts-grid--2">
         <div className="chart-card"><div className="chart-header"><h3 className="chart-title">Дохід по місяцях</h3></div><IncomeChart labels={chartData.labels} data={chartData.income} /></div>
-        <div className="chart-card"><div className="chart-header"><h3 className="chart-title">Активи по банках</h3></div><BankBalancesChart balances={balances} usdtRate={Number(usdtRate) || Number(usdRate) || 41} /></div>
+        <div className="chart-card"><div className="chart-header"><h3 className="chart-title">Активи по банках</h3></div><BankBalancesChart balances={balances} usdtRate={financeSettings.usdtRate ?? financeSettings.usdRate} /></div>
       </div>
 
       <div className="table-toolbar">
@@ -252,12 +248,12 @@ export default function FinancePage() {
             </optgroup>
           )}
         </select>
-        {(typeFilter || periodFilter || search) && (
-          <button className="btn btn-ghost" onClick={() => { setTypeFilter(''); setPeriodFilter(''); setSearch(''); }}>Скинути</button>
+        {hasFilters && (
+          <button className="btn btn-ghost" onClick={resetFilters}>Скинути</button>
         )}
       </div>
 
-      {(periodFilter || typeFilter) && txs.length > 0 && (
+      {hasFilters && txs.length > 0 && (
         <div className="stats-grid stats-grid--wide" style={{ marginBottom: 14 }}>
           <div className="stat-card"><div className="stat-info"><span className="stat-label">Транзакцій</span><span className="stat-value">{filteredSummary.count}</span></div></div>
           <div className="stat-card"><div className="stat-info"><span className="stat-label">Оборот</span><span className="stat-value" style={{ color: 'var(--accent-green)' }}>{formatMoney(Math.round(filteredSummary.turnover))}</span></div></div>
@@ -270,8 +266,8 @@ export default function FinancePage() {
         <table className="data-table">
           <thead><tr><th>Тип</th><th>Сума</th><th>Банк</th><th>Категорія</th><th>Опис</th><th>Дата</th><th>Дії</th></tr></thead>
           <tbody>
-            {!txs.length ? <tr className="empty-row"><td colSpan={7}><EmptyState message="Немає транзакцій" hint="Додайте дохід або витрату" /></td></tr> :
-            txs.map(t => (
+            {!visibleTxs.length ? <tr className="empty-row"><td colSpan={7}><EmptyState message="Немає транзакцій" hint="Додайте дохід або витрату" /></td></tr> :
+            visibleTxs.map(t => (
               <tr key={t.id} className={weekClass(t.date || t.plannedDate)}>
                 <td data-label="Тип">{t.type === 'transfer' ? <span className="badge badge--blue">Конвертація</span> : <FinanceTypeBadge type={t.type} />}</td>
                 {t.type === 'transfer' ? (
@@ -294,6 +290,15 @@ export default function FinancePage() {
           </tbody>
         </table>
       </div>
+
+      {txs.length > visibleTxs.length && (
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: 14 }}>
+          <button className="btn btn-ghost" onClick={showMore}>
+            Показати ще {Math.min(PAGE_SIZE, txs.length - visibleTxs.length)} з {txs.length}
+          </button>
+        </div>
+      )}
+
       <TransactionForm isOpen={formOpen} transaction={editTx} initialType={initialType} onSave={handleSave} onCancel={() => { setFormOpen(false); setEditTx(null); }} />
       <ConfirmModal isOpen={confirmOpen} title={confirmTitle} text={confirmText} onConfirm={handleConfirm} onCancel={cancel} />
     </section>
