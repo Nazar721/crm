@@ -143,6 +143,17 @@ export interface ExportPayload {
   data: ExportData;
   financeSettings: FinanceSettings;
   meta?: BackupInfo;
+  /** Проблеми локального сховища (напр. пошкоджені колекції) — без секретів. */
+  issues?: ExportIssue[];
+}
+
+export interface ExportIssue {
+  kind: string;
+  key?: string;
+  collection?: string;
+  message: string;
+  at: string;
+  preservedAt?: string;
 }
 
 /**

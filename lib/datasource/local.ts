@@ -41,6 +41,7 @@ function isQuotaError(err: unknown): boolean {
 export class LocalDataSource implements CrmDataSource {
   readonly kind = 'local' as const;
   private issues: StorageIssue[] = [];
+  private writeBlockReason: string | null = null;
 
   constructor() {
     this.issues = this.readPersistedIssues();
@@ -66,8 +67,18 @@ export class LocalDataSource implements CrmDataSource {
     }
   }
 
-  private pushIssue(kind: StorageIssueKind, message: string, key?: string, preservedAt?: string): StorageIssue {
-    const issue: StorageIssue = { id: issueId(), kind, key, message, at: new Date().toISOString(), preservedAt };
+  writeBlockedReason(): string | null {
+    return this.writeBlockReason;
+  }
+
+  private pushIssue(
+    kind: StorageIssueKind,
+    message: string,
+    key?: string,
+    preservedAt?: string,
+    collection?: CollectionKey,
+  ): StorageIssue {
+    const issue: StorageIssue = { id: issueId(), kind, key, collection, message, at: new Date().toISOString(), preservedAt };
     this.issues = [...this.issues.filter(i => !(i.kind === kind && i.key === key)), issue].slice(-20);
     this.persistIssues();
     return issue;
@@ -82,19 +93,46 @@ export class LocalDataSource implements CrmDataSource {
     this.persistIssues();
   }
 
+  clearCollectionIssue(collection: CollectionKey): void {
+    this.issues = this.issues.filter(i => !(i.collection === collection && i.kind === 'corrupt_json'));
+    this.persistIssues();
+  }
+
   /**
-   * Читання всього сховища. Непридатний JSON не підміняється мовчки
-   * порожнім масивом: сирий вміст ізольовується в `crm_corrupt_<key>`,
-   * фіксується issue, а колекція повертається порожньою лише для розрахунків.
+   * Читання всього сховища.
+   *
+   * - Непридатний JSON не підміняється мовчки порожнім масивом: сирий
+   *   вміст ізольовується в `crm_corrupt_<key>`, фіксується issue, а
+   *   колекція позначається пошкодженою (запис у неї блокується);
+   * - Неможливість ЗАПИСУ (перевищено ліміт) не заважає читанню та
+   *   експорту: фіксується `writeBlockedReason()`;
+   * - Виняток кидається лише коли читання неможливе.
    */
   async load(): Promise<{ data: import('@/types').DataSnapshot; issues: StorageIssue[] }> {
     if (typeof window === 'undefined') {
       throw new Error('Локальне сховище недоступне поза браузером');
     }
-    // Якщо localStorage взагалі недоступний (privacy mode) — явна помилка.
-    const probe = '__crm_probe__';
-    localStorage.setItem(probe, '1');
-    localStorage.removeItem(probe);
+
+    // 1. Чи доступне сховище взагалі (читання).
+    try {
+      void localStorage.length;
+    } catch (err) {
+      throw new Error(`Локальне сховище недоступне для читання: ${String(err)}`);
+    }
+
+    // 2. Чи доступний запис. Відмова запису НЕ блокує читання/експорт.
+    this.writeBlockReason = null;
+    try {
+      const probe = '__crm_probe__';
+      localStorage.setItem(probe, '1');
+      localStorage.removeItem(probe);
+    } catch (err) {
+      const quota = isQuotaError(err);
+      this.writeBlockReason = quota
+        ? 'Перевищено ліміт локального сховища: дані доступні для перегляду та експорту, але запис заблоковано.'
+        : `Запис у локальне сховище заблоковано: ${String(err)}. Дані доступні для перегляду та експорту.`;
+      this.pushIssue(quota ? 'quota_exceeded' : 'write_failed', this.writeBlockReason);
+    }
 
     const data = {} as Record<CollectionKey, unknown[]> & { financeSettings: FinanceSettings; meta: BackupInfo };
 
@@ -113,7 +151,7 @@ export class LocalDataSource implements CrmDataSource {
     try {
       raw = localStorage.getItem(storageKey);
     } catch (err) {
-      this.pushIssue('read_failed', `Не вдалося прочитати «${storageKey}»: ${String(err)}`, storageKey);
+      this.pushIssue('read_failed', `Не вдалося прочитати «${storageKey}»: ${String(err)}`, storageKey, undefined, collection);
       return [];
     }
     if (raw === null) return [];
@@ -125,11 +163,16 @@ export class LocalDataSource implements CrmDataSource {
       return parsed;
     } catch (err) {
       const preservedAt = this.quarantine(storageKey, raw);
+      const note = preservedAt
+        ? `Оригінал збережено окремо: «${preservedAt}».`
+        : 'Оригінал зберегти не вдалося (перевищено ліміт) — він залишається лише під цим ключем до явного відновлення.';
       this.pushIssue(
         'corrupt_json',
-        `Пошкоджений JSON у «${collection}» (${storageKey}): ${String(err)}. Оригінал збережено окремо.`,
+        `Пошкоджений JSON у «${collection}» (${storageKey}): ${String(err)}. ${note} ` +
+        'Запис у цю колекцію заблоковано до відновлення через імпорт.',
         storageKey,
         preservedAt,
+        collection,
       );
       return [];
     }
@@ -150,7 +193,7 @@ export class LocalDataSource implements CrmDataSource {
       const raw = localStorage.getItem(META_STORAGE_KEYS.financeSettings);
       return raw ? normalizeSettings(JSON.parse(raw)) : normalizeSettings(null);
     } catch (err) {
-      this.pushIssue('corrupt_json', `Пошкоджений JSON у налаштуваннях фінансів: ${String(err)}`, META_STORAGE_KEYS.financeSettings);
+      this.pushIssue('corrupt_json', `Пошкоджений JSON у налаштуваннях фінансів: ${String(err)} — використано типові значення.`, META_STORAGE_KEYS.financeSettings);
       return normalizeSettings(null);
     }
   }

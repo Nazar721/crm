@@ -34,7 +34,7 @@ function payloadWith(clients: ReturnType<typeof makeClient>[], extra: Partial<Ex
 test('невдалий імпорт відновлює попередній стан і не вимикає резервування', async () => {
   clearAll();
   const inner = new LocalDataSource();
-  const flaky = new FlakyDataSource(inner, (key, call) => key === 'transactions' && call === 1);
+  const flaky = new FlakyDataSource(inner, (kind, key, call) => kind === 'collection' && key === 'transactions' && call === 1);
   await bootStore(flaky);
 
   const original = makeClient({ name: 'Оригінальний' });
@@ -68,7 +68,8 @@ test('невдалий імпорт відновлює попередній ст
 test('якщо відновлення не вдалося — явний стан помилки + копія попереднього стану', async () => {
   clearAll();
   const inner = new LocalDataSource();
-  const flaky = new FlakyDataSource(inner, (key, call) => {
+  const flaky = new FlakyDataSource(inner, (kind, key, call) => {
+    if (kind !== 'collection') return false;
     if (key === 'transactions' && call === 1) return true;
     if (key === 'projectsActive' && call >= 2) return true;
     return false;

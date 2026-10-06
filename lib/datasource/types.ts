@@ -32,6 +32,8 @@ export interface StorageIssue {
   id: string;
   kind: StorageIssueKind;
   key?: string;
+  /** Колекція даних, до якої відноситься проблема (для коректних ключів). */
+  collection?: CollectionKey;
   message: string;
   at: string;
   /** Дані збережено в резервному ключі (для corrupt_json). */
@@ -51,8 +53,12 @@ export interface DataSnapshotPayload {
  * Асинхронне джерело даних.
  *
  * Гарантії локального адаптера:
- * - `load()` ніколи не викидає виняток на непридатному JSON: пошкоджений
- *   ключ ізольовується (кварантується) і потрапляє в `issues`;
+ * - `load()` НЕ кидає виняток через непридатний JSON: пошкоджений ключ
+ *   ізольовується (кварантується) і потрапляє в `issues`;
+ * - `load()` НЕ кидає виняток, якщо сховище читається, але не пишеться
+ *   (перевищено ліміт): такий стан оголошується через
+ *   `writeBlockedReason()`, дані доступні для перегляду та експорту;
+ * - `load()` кидає виняток лише тоді, коли читання неможливе;
  * - `saveCollection()` НЕ атомарний: окремий запис може впасти після
  *   успішних попередніх (localStorage не має транзакцій);
  * - міжвкладинкова консистентність не гарантується — реальна
@@ -61,6 +67,11 @@ export interface DataSnapshotPayload {
 export interface CrmDataSource {
   readonly kind: 'local' | 'remote';
   load(): Promise<DataSnapshotPayload>;
+  /**
+   * Причина, чому ЗАПИС недоступний (наприклад, перевищено ліміт),
+   * а читання працює. `null` — запис дозволений.
+   */
+  writeBlockedReason(): string | null;
   saveCollection(key: CollectionKey, value: unknown[]): Promise<WriteOutcome>;
   saveSettings(settings: FinanceSettings): Promise<WriteOutcome>;
   saveMeta(patch: Partial<BackupInfo>): Promise<WriteOutcome>;
@@ -68,4 +79,6 @@ export interface CrmDataSource {
   saveBackupCopy(serialized: string): Promise<WriteOutcome>;
   listIssues(): StorageIssue[];
   clearIssues(): void;
+  /** Прибрати issue про пошкодження конкретної колекції (після успішного відновлення). */
+  clearCollectionIssue(collection: CollectionKey): void;
 }

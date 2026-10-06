@@ -1,10 +1,11 @@
 'use client';
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import Link from 'next/link';
 import type { ReactNode } from 'react';
 import type { DataSnapshot } from '@/types';
 import type { StorageIssue } from '@/lib/datasource/types';
 import * as store from '@/lib/store';
-import { migrate, type MigrationReport } from '@/lib/migrations';
+import { runMigrations, type MigrationReport } from '@/lib/migrations';
 import { emitToast } from '@/lib/toast-bus';
 
 interface BadgeCounts {
@@ -22,6 +23,8 @@ interface AppContextType {
   /** Актуальний snapshot даних у пам'яті (порожній, поки status !== 'ready'). */
   snapshot: DataSnapshot;
   storageIssues: StorageIssue[];
+  /** Якщо запис заблоковано (ліміт сховища / незавершені міграції) — показується банер. */
+  writeBlock: string | null;
   badges: BadgeCounts;
   refreshBadges: () => void;
   refreshKey: number;
@@ -63,6 +66,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<DataSnapshot>(EMPTY_SNAPSHOT);
   const [storageIssues, setStorageIssues] = useState<StorageIssue[]>([]);
+  const [writeBlock, setWriteBlock] = useState<string | null>(null);
   const [badges, setBadges] = useState<BadgeCounts>(countBadges(EMPTY_SNAPSHOT));
   const [refreshKey, setRefreshKey] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -76,6 +80,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setSnapshot(store.getSnapshot());
       setBadges(countBadges(store.getSnapshot()));
       setStorageIssues(store.getIssues());
+      setWriteBlock(store.getWriteBlock());
       setRefreshKey(k => k + 1);
     };
     sync();
@@ -103,11 +108,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return;
       }
       // Міграції виконуються до того, як дані стають доступними для редагування.
-      await migrate();
+      // Якщо якась не виконалася — запис даних блокується (див. runMigrations).
+      const report = await runMigrations();
       await store.reloadStore();
       setSnapshot(store.getSnapshot());
       setBadges(countBadges(store.getSnapshot()));
       setStorageIssues(store.getIssues());
+      setWriteBlock(store.getWriteBlock());
+      if (report.failed.length) {
+        emitToast(`Міграції не застосовано: ${report.failed.join(', ')}. Редагування даних заблоковано.`, 'error');
+      }
       setStatus('ready');
     } catch (err) {
       setStatus('error');
@@ -122,11 +132,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const reinitialize = useCallback(async () => {
     try {
-      const report = await migrate();
+      const report = await runMigrations();
       await store.reloadStore();
       setSnapshot(store.getSnapshot());
       setBadges(countBadges(store.getSnapshot()));
       setStorageIssues(store.getIssues());
+      setWriteBlock(store.getWriteBlock());
       setRefreshKey(k => k + 1);
       return report;
     } catch (err) {
@@ -155,6 +166,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     error,
     snapshot,
     storageIssues,
+    writeBlock,
     badges,
     refreshBadges,
     refreshKey,
@@ -164,11 +176,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     sidebarOpen,
     setSidebarOpen,
     closeSidebar,
-  }), [status, error, snapshot, storageIssues, badges, refreshBadges, refreshKey, triggerRefresh, reinitialize, retry, sidebarOpen, closeSidebar]);
+  }), [status, error, snapshot, storageIssues, writeBlock, badges, refreshBadges, refreshKey, triggerRefresh, reinitialize, retry, sidebarOpen, closeSidebar]);
 
   return (
     <AppContext.Provider value={value}>
-      {status === 'ready' ? children : (
+      {status === 'ready' ? (
+        <>
+          {writeBlock && (
+            <div className="write-block-banner" role="alert">
+              <strong>Запис даних заблоковано.</strong>
+              <span>{writeBlock}</span>
+              <Link className="btn btn-ghost btn--sm" href="/settings">Налаштування / експорт</Link>
+            </div>
+          )}
+          {children}
+        </>
+      ) : (
         <div className="app-shell-state" role="status" aria-live="polite">
           {status === 'loading' ? (
             <>

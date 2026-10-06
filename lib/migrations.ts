@@ -3,6 +3,7 @@ import { generateId } from '@/lib/utils';
 import * as store from '@/lib/store';
 import { isMigrationApplied, markMigrationApplied } from '@/lib/migration-flags';
 import type { Client, Project, Saving, Specialist, Transaction } from '@/types';
+import type { CollectionKey } from '@/lib/datasource/types';
 
 // ============================================================
 // Міграції виконуються ОДИН РАЗ на версію (прапорець у localStorage).
@@ -15,6 +16,15 @@ export interface Migration {
   id: string;
   title: string;
   run: () => void | Promise<void>;
+}
+
+/**
+ * Запис під час міграції. Відмова НЕ є винятком іззовні — тому тут вона
+ * перетворюється на виняток, щоб міграція НЕ позначилась виконаною.
+ */
+async function saveOrThrow(key: CollectionKey, value: unknown[]): Promise<void> {
+  const result = await store.saveCollection(key, value, 'system');
+  if (!result.ok) throw new Error(result.issue.message);
 }
 
 function stripProject(p: Project): Project {
@@ -52,7 +62,7 @@ export const MIGRATIONS: Migration[] = [
         if (raw.debt != null) delete raw.debt;
         return raw as unknown as Specialist;
       });
-      await store.saveCollection('specialists', list);
+      await saveOrThrow('specialists', list);
     },
   },
   {
@@ -60,9 +70,9 @@ export const MIGRATIONS: Migration[] = [
     title: 'Нормалізація проєктів та партнерів (один раз)',
     run: async () => {
       const snap = store.getSnapshot();
-      await store.saveCollection('projectsActive', snap.projectsActive.map(stripProject));
-      await store.saveCollection('projectsCompleted', snap.projectsCompleted.map(stripProject));
-      await store.saveCollection('partners', snap.partners.map(p => ({
+      await saveOrThrow('projectsActive', snap.projectsActive.map(stripProject));
+      await saveOrThrow('projectsCompleted', snap.projectsCompleted.map(stripProject));
+      await saveOrThrow('partners', snap.partners.map(p => ({
         ...p,
         givenProjectsCount: p.givenProjectsCount ?? 0,
         givenProjectsPrice: p.givenProjectsPrice ?? 0,
@@ -77,8 +87,8 @@ export const MIGRATIONS: Migration[] = [
     run: async () => {
       const snap = store.getSnapshot();
       const mapType = (p: Project) => (p.type && TYPE_MAP[p.type] ? { ...p, type: TYPE_MAP[p.type] } : p);
-      await store.saveCollection('projectsActive', snap.projectsActive.map(mapType));
-      await store.saveCollection('projectsCompleted', snap.projectsCompleted.map(mapType));
+      await saveOrThrow('projectsActive', snap.projectsActive.map(mapType));
+      await saveOrThrow('projectsCompleted', snap.projectsCompleted.map(mapType));
     },
   },
   {
@@ -86,8 +96,8 @@ export const MIGRATIONS: Migration[] = [
     title: 'Нормалізація рахунків',
     run: async () => {
       const snap = store.getSnapshot();
-      await store.saveCollection('transactions', snap.transactions.map((t: Transaction) => ({ ...t, bank: normalizeBank(t.bank) || t.bank })));
-      await store.saveCollection('savings', snap.savings.map((s: Saving) => ({ ...s, bank: normalizeBank(s.bank) || s.bank })));
+      await saveOrThrow('transactions', snap.transactions.map((t: Transaction) => ({ ...t, bank: normalizeBank(t.bank) || t.bank })));
+      await saveOrThrow('savings', snap.savings.map((s: Saving) => ({ ...s, bank: normalizeBank(s.bank) || s.bank })));
     },
   },
   {
@@ -95,7 +105,7 @@ export const MIGRATIONS: Migration[] = [
     title: 'Статуси доходів',
     run: async () => {
       const cutoff = new Date('2026-07-01');
-      await store.saveCollection('transactions', store.getSnapshot().transactions.map(t => {
+      await saveOrThrow('transactions', store.getSnapshot().transactions.map(t => {
         if (t.type === 'income' && !t.incomeStatus) {
           const d = new Date(t.date || t.plannedDate || '');
           if (!isNaN(d.getTime()) && d < cutoff) return { ...t, incomeStatus: 'earned' as const };
@@ -118,8 +128,8 @@ export const MIGRATIONS: Migration[] = [
         return p;
       };
       const snap = store.getSnapshot();
-      await store.saveCollection('projectsActive', snap.projectsActive.map(convert));
-      await store.saveCollection('projectsCompleted', snap.projectsCompleted.map(convert));
+      await saveOrThrow('projectsActive', snap.projectsActive.map(convert));
+      await saveOrThrow('projectsCompleted', snap.projectsCompleted.map(convert));
     },
   },
   {
@@ -145,9 +155,9 @@ export const MIGRATIONS: Migration[] = [
         changed = true;
         return { ...p, clientId: created.id };
       };
-      await store.saveCollection('projectsActive', snap.projectsActive.map(link));
-      await store.saveCollection('projectsCompleted', snap.projectsCompleted.map(link));
-      if (changed) await store.saveCollection('clients', clients);
+      await saveOrThrow('projectsActive', snap.projectsActive.map(link));
+      await saveOrThrow('projectsCompleted', snap.projectsCompleted.map(link));
+      if (changed) await saveOrThrow('clients', clients);
     },
   },
   {
@@ -167,8 +177,8 @@ export const MIGRATIONS: Migration[] = [
         return raw as unknown as Project;
       };
       const snap = store.getSnapshot();
-      await store.saveCollection('projectsActive', snap.projectsActive.map(migrateWorkStart));
-      await store.saveCollection('projectsCompleted', snap.projectsCompleted.map(migrateWorkStart));
+      await saveOrThrow('projectsActive', snap.projectsActive.map(migrateWorkStart));
+      await saveOrThrow('projectsCompleted', snap.projectsCompleted.map(migrateWorkStart));
     },
   },
   {
@@ -200,7 +210,7 @@ export const MIGRATIONS: Migration[] = [
         changed = true;
         return { ...c, createdAt: earliest || new Date().toISOString() };
       });
-      if (changed) await store.saveCollection('clients', clients);
+      if (changed) await saveOrThrow('clients', clients);
     },
   },
 ];
@@ -208,17 +218,23 @@ export const MIGRATIONS: Migration[] = [
 export interface MigrationReport {
   applied: string[];
   skipped: string[];
+  /** Міграції, що НЕ виконалися. Прапорці для них не ставляться. */
+  failed: string[];
 }
 
 /**
  * Запускає лише ті міграції, які ще не застосовані до поточної версії.
- * Повторний виклик нічого не переписує. Асинхронний: чекає записів,
- * щоб споживачі одразу бачили актуальні дані.
+ *
+ * - прапорець версії ставиться ТІЛЬКИ після успішного виконання;
+ * - після першої відмови ланцюжок зупиняється (подальші міграції можуть
+ *   спиратися на невиконану), невиконані потрапляють у `failed`;
+ * - асинхронний: чекає записів, щоб споживачі бачили актуальні дані.
  */
 export async function migrate(): Promise<MigrationReport> {
   const applied: string[] = [];
   const skipped: string[] = [];
-  if (typeof window === 'undefined') return { applied, skipped };
+  const failed: string[] = [];
+  if (typeof window === 'undefined') return { applied, skipped, failed };
 
   for (const migration of MIGRATIONS) {
     if (isMigrationApplied(migration.id)) {
@@ -231,8 +247,24 @@ export async function migrate(): Promise<MigrationReport> {
       applied.push(migration.id);
     } catch (err) {
       console.error(`Міграція ${migration.id} не виконалася:`, err);
-      // Прапорець не ставимо — спробуємо на наступному старті.
+      failed.push(migration.id);
+      // Прапорець не ставимо; подальші міграції не запускаємо.
+      break;
     }
   }
-  return { applied, skipped };
+  return { applied, skipped, failed };
+}
+
+/**
+ * Запуск міграцій із синхронізацією блокування запису:
+ * допоки потрібна міграція не виконалася, редагування даних заблоковане.
+ */
+export async function runMigrations(): Promise<MigrationReport> {
+  const report = await migrate();
+  store.setMigrationBlock(
+    report.failed.length
+      ? `Міграції не застосовано: ${report.failed.join(', ')}. Запис даних заблоковано до виправлення.`
+      : null,
+  );
+  return report;
 }

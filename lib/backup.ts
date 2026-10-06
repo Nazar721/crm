@@ -22,6 +22,8 @@ export interface BackupRuntimeStatus {
 }
 
 let lastRotationAt = 0;
+/** Час ОСТАННЬОЇ СПРОБИ (успішної чи ні) — для коректного backoff. */
+let lastAttemptAt = 0;
 let scheduled: ReturnType<typeof setTimeout> | null = null;
 let rotating = false;
 
@@ -47,11 +49,22 @@ function writeFlag(key: string, value: string): void {
   }
 }
 
+/**
+ * Мітка часу зберігається epoch-мілісекундами; старі значення могли бути
+ * ISO-рядком. Читаємо обидва формати, інакше час «останньої копії» і
+ * обмеження частоти губляться між перезапусками.
+ */
+function parseRotationStamp(raw: string): number {
+  if (!raw) return 0;
+  const asNumber = Number(raw);
+  if (Number.isFinite(asNumber) && asNumber > 0) return asNumber;
+  const parsed = Date.parse(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
 function initRotationClock(): void {
   if (lastRotationAt) return;
-  const raw = readFlag(LAST_ROTATION_KEY);
-  const parsed = raw ? Date.parse(raw) : 0;
-  lastRotationAt = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+  lastRotationAt = parseRotationStamp(readFlag(LAST_ROTATION_KEY));
   if (readFlag(PENDING_KEY)) {
     // Зміни, не встигнуті у backup перед закриттям вкладки — фіксуємо.
     pending = true;
@@ -105,7 +118,8 @@ export function markSnapshotDirty(): void {
 
 function scheduleRotation(): void {
   if (scheduled || rotating) return;
-  const delay = Math.max(0, ROTATION_INTERVAL_MS - (nowMs() - lastRotationAt));
+  const sinceAttempt = nowMs() - (lastAttemptAt || lastRotationAt);
+  const delay = Math.max(0, ROTATION_INTERVAL_MS - sinceAttempt);
   const run = () => {
     scheduled = null;
     const cb = (window as unknown as { requestIdleCallback?: (fn: () => void, opts?: unknown) => void }).requestIdleCallback;
@@ -131,6 +145,7 @@ export function rotateBackups(snapshot: DataSnapshot, force = false): { ok: bool
     if (elapsed < ROTATION_INTERVAL_MS) return { ok: true };
   }
 
+  lastAttemptAt = nowMs();
   rotating = true;
   try {
     const payload = { createdAt: new Date().toISOString(), payload: buildExportPayload(snapshot) };
@@ -156,10 +171,23 @@ export function rotateBackups(snapshot: DataSnapshot, force = false): { ok: bool
   }
 }
 
+/**
+ * Викликати після завантаження сховища: якщо прапорець відкладеного
+ * backup пережив закриття вкладки, копія має виконатися сама —
+ * без необхідності нової зміни даних.
+ */
+export function resumePendingBackup(): void {
+  initRotationClock();
+  if (pending) scheduleRotation();
+}
+
 function flushBackup(): void {
   if (!pending) return;
   const snapshot = readSnapshot?.();
-  if (snapshot) rotateBackups(snapshot);
+  if (!snapshot) return;
+  rotateBackups(snapshot);
+  // Досі позначено як «незавершене» (тротлінг або збій) — плануємо повтор.
+  if (pending) scheduleRotation();
 }
 
 // Легасі-зв'язок, щоб backup.ts не імпортував store (уникаємо циклу).
@@ -194,6 +222,7 @@ export function getBackupRuntimeStatus(): BackupRuntimeStatus {
 export function resetBackupRuntime(): void {
   pending = false;
   lastRotationAt = 0;
+  lastAttemptAt = 0;
   if (scheduled) {
     clearTimeout(scheduled);
     scheduled = null;

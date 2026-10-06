@@ -14,6 +14,21 @@ export function clearAll(): void {
   store.resetStoreForTests();
 }
 
+/** Відбиток даних для повної звірки після збою (колекції + налаштування). */
+export function snapshotFingerprint(value: DataSnapshot = store.getSnapshot()): string {
+  return JSON.stringify({
+    projectsActive: value.projectsActive,
+    projectsCompleted: value.projectsCompleted,
+    clients: value.clients,
+    specialists: value.specialists,
+    partners: value.partners,
+    transactions: value.transactions,
+    personalDebts: value.personalDebts,
+    savings: value.savings,
+    financeSettings: value.financeSettings,
+  });
+}
+
 export async function bootStore(source?: CrmDataSource): Promise<void> {
   await store.initStore(source ?? new LocalDataSource());
 }
@@ -86,36 +101,83 @@ export function makeTransaction(overrides: Partial<Transaction> = {}): Transacti
  * Адаптер, що може зазнавати збою запису для окремої колекції —
  * для перевірки відновлення під час імпорту.
  */
+export type FlakyKind = 'collection' | 'settings' | 'backupCopy';
+export type FlakyPredicate = (kind: FlakyKind, key: string, callNumber: number) => boolean;
+
+/**
+ * Адаптер, що може зазнавати збою запису — для перевірки відновлення
+ * під час імпорту, міграцій та фіналізації.
+ *
+ * - `shouldFail(kind, key, perKeyCall)` — постійне правило (наприклад,
+ *   «завжди відмовляти specialists»);
+ * - `failNextOn(keys, minTotalCollectionCalls)` — ОДИН збій на першому
+ *   записі вказаних ключів, коли вже зроблено `minTotalCollectionCalls`
+ *   записів колекцій. Зручно для того, щоб зламати саме фіналізацію.
+ */
 export class FlakyDataSource implements CrmDataSource {
   readonly kind = 'local' as const;
+  collectionCalls = 0;
+  shouldFail: FlakyPredicate = () => false;
+  private oneShot: { keys: CollectionKey[]; minCalls: number } | null = null;
   private counts: Record<string, number> = {};
   private issueId = 0;
 
-  constructor(
-    private readonly inner: LocalDataSource,
-    private readonly shouldFail: (key: CollectionKey, callNumber: number) => boolean,
-  ) {}
+  constructor(private readonly inner: LocalDataSource, shouldFail?: FlakyPredicate) {
+    if (shouldFail) this.shouldFail = shouldFail;
+  }
+
+  failNextOn(keys: CollectionKey[], minTotalCollectionCalls: number): void {
+    this.oneShot = { keys, minCalls: minTotalCollectionCalls };
+  }
 
   load() { return this.inner.load(); }
+  writeBlockedReason() { return this.inner.writeBlockedReason(); }
+  clearCollectionIssue(c: CollectionKey) { this.inner.clearCollectionIssue(c); }
+
+  private next(kind: FlakyKind, key: string): number {
+    const id = `${kind}:${key}`;
+    this.counts[id] = (this.counts[id] || 0) + 1;
+    return this.counts[id];
+  }
+
+  private fail(kind: FlakyKind, key: string): WriteOutcome {
+    return {
+      ok: false,
+      issue: {
+        id: `flaky_${++this.issueId}`,
+        kind: 'write_failed',
+        key,
+        collection: kind === 'collection' ? (key as CollectionKey) : undefined,
+        message: `Симуляція збою запису «${key}» (${kind})`,
+        at: new Date().toISOString(),
+      },
+    };
+  }
 
   async saveCollection(key: CollectionKey, value: unknown[]): Promise<WriteOutcome> {
-    this.counts[key] = (this.counts[key] || 0) + 1;
-    if (this.shouldFail(key, this.counts[key])) {
-      const issue: StorageIssue = {
-        id: `flaky_${++this.issueId}`,
-        kind: 'quota_exceeded',
-        key,
-        message: `Симуляція збою запису «${key}»`,
-        at: new Date().toISOString(),
-      };
-      return { ok: false, issue };
+    this.collectionCalls += 1;
+    const call = this.next('collection', key);
+    if (this.oneShot && this.oneShot.keys.includes(key) && this.collectionCalls >= this.oneShot.minCalls) {
+      this.oneShot = null;
+      return this.fail('collection', key);
     }
+    if (this.shouldFail('collection', key, call)) return this.fail('collection', key);
     return this.inner.saveCollection(key, value);
   }
 
-  saveSettings(s: Parameters<CrmDataSource['saveSettings']>[0]) { return this.inner.saveSettings(s); }
+  async saveSettings(s: Parameters<CrmDataSource['saveSettings']>[0]): Promise<WriteOutcome> {
+    const call = this.next('settings', 'financeSettings');
+    if (this.shouldFail('settings', 'financeSettings', call)) return this.fail('settings', 'financeSettings');
+    return this.inner.saveSettings(s);
+  }
+
+  async saveBackupCopy(value: string): Promise<WriteOutcome> {
+    const call = this.next('backupCopy', 'crm_import_previous');
+    if (this.shouldFail('backupCopy', 'crm_import_previous', call)) return this.fail('backupCopy', 'crm_import_previous');
+    return this.inner.saveBackupCopy(value);
+  }
+
   saveMeta(m: Parameters<CrmDataSource['saveMeta']>[0]) { return this.inner.saveMeta(m); }
-  saveBackupCopy(s: string) { return this.inner.saveBackupCopy(s); }
   listIssues() { return this.inner.listIssues(); }
   clearIssues() { this.inner.clearIssues(); }
 }

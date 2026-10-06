@@ -32,6 +32,14 @@ export interface CollectionSample {
 
 export type BackupContent = Omit<DataSnapshot, 'financeSettings' | 'meta'>;
 
+export interface ValidateBackupOptions {
+  /**
+   * Строгий режим (для фінальної міграції на етапі 2): жоден запис
+   * не пропускається автоматично — будь-яка помилка запису блокує імпорт.
+   */
+  strict?: boolean;
+}
+
 export interface BackupValidation {
   ok: boolean;
   format: BackupFormat;
@@ -143,6 +151,19 @@ function baseRecordChecks(rec: unknown, ctx: Ctx, acc: Acc): Record<string, unkn
   return rec;
 }
 
+/**
+ * Комісія партнеру: старі дані зберігали її СУМОЮ, нові — відсотком.
+ * Нормалізація ідентична міграції v16 і виконується ДО остаточної
+ * валідації, щоб legacy-записи не відкидалися до міграції.
+ * Повертає `null`, якщо одиницю визначити неможливо.
+ */
+function normalizeCommissionPercent(value: number, budget: number): number | null {
+  if (value <= 0) return 0;
+  if (value <= 100) return value;
+  if (budget > 0 && value <= budget) return Math.round(value / budget * 100);
+  return null;
+}
+
 function validateProject(rec: unknown, ctx: Ctx, acc: Acc): Project | null {
   const r = baseRecordChecks(rec, ctx, acc);
   if (!r) return null;
@@ -161,7 +182,15 @@ function validateProject(rec: unknown, ctx: Ctx, acc: Acc): Project | null {
   const myPercent = readNumber(r, 'myPercent', ctx, { min: 0, max: 100, label: 'мій %' }, acc);
   const profitTaken = readNumber(r, 'profitTaken', ctx, { min: 0, label: 'забрав собі' }, acc);
   const fop = readNumber(r, 'fop', ctx, { min: 0, max: 100, label: 'ФОП %' }, acc);
-  const partnerCommission = readNumber(r, 'partnerCommission', ctx, { min: 0, max: 100, label: 'комісія партнера %' }, acc);
+  const partnerCommissionRaw = readNumber(r, 'partnerCommission', ctx, { min: 0, label: 'комісія партнеру' }, acc);
+  const partnerCommission = normalizeCommissionPercent(partnerCommissionRaw, budget);
+  if (partnerCommission === null) {
+    acc.errors.push({
+      ...ctx,
+      message: `комісія партнеру «${partnerCommissionRaw}» при бюджеті ${budget}: не вдалося визначити одиницю (відсоток або сума)`,
+    });
+    return null;
+  }
 
   const startDate = readDate(r, 'startDate', ctx, acc);
   const endDate = readDate(r, 'endDate', ctx, acc);
@@ -330,7 +359,7 @@ function detectFormat(raw: Record<string, unknown>): { format: BackupFormat; ver
 /**
  * Повна перевірка backup без жодного запису в сховище.
  */
-export function validateBackup(raw: unknown): BackupValidation {
+export function validateBackup(raw: unknown, options: ValidateBackupOptions = {}): BackupValidation {
   const errors: BackupIssue[] = [];
   const recordIssues: BackupIssue[] = [];
   const warnings: BackupIssue[] = [];
@@ -438,6 +467,47 @@ export function validateBackup(raw: unknown): BackupValidation {
     }
   });
 
+  // Унікальність ID: порушення ламає адресацію редагування, Map-індекси,
+  // React-ключі та первинні ключі БД на етапі 2. Відхиляється весь імпорт.
+  const seenIds = new Map<CollectionKey, Map<string, number>>();
+  for (const key of COLLECTION_KEYS) {
+    const seen = seenIds.get(key) ?? new Map<string, number>();
+    content[key].forEach((record, index) => {
+      const id = String((record as { id?: unknown }).id ?? '');
+      const first = seen.get(id);
+      if (first !== undefined) {
+        errors.push({
+          collection: key,
+          index,
+          id,
+          message: `дублікат id «${id}» у колекції «${key}» (перший запис — індекс ${first})`,
+        });
+      } else {
+        seen.set(id, index);
+      }
+    });
+    seenIds.set(key, seen);
+  }
+
+  // Проєкти адресуються через один id у двох списках — перевіряємо разом.
+  const projectIds = new Map<string, string>();
+  (['projectsActive', 'projectsCompleted'] as const).forEach(key => {
+    content[key].forEach((project, index) => {
+      const id = String(project.id);
+      const where = projectIds.get(id);
+      if (where) {
+        errors.push({
+          collection: key,
+          index,
+          id,
+          message: `дублікат id «${id}» у проєктах: уже є у «${where}» (активні та завершені — одна адресація)`,
+        });
+      } else {
+        projectIds.set(id, key);
+      }
+    });
+  });
+
   const totalRecords = Object.values(counts).reduce((a, b) => a + b, 0);
   const totalSkipped = Object.values(skipped).reduce((a, b) => a + b, 0);
   if (totalSkipped > 0) {
@@ -448,6 +518,17 @@ export function validateBackup(raw: unknown): BackupValidation {
   }
   if (format === 'legacy-flat') {
     warnings.push({ message: 'Старий формат без метаданих (legacy-flat): версія та час експорту відсутні' });
+  }
+
+  if (errors.length) {
+    return { ok: false, format, version, exportedAt, errors, recordIssues, counts, skipped, warnings, content: null, settings };
+  }
+
+  if (options.strict && recordIssues.length > 0) {
+    errors.push({
+      message: `Строгий режим: ${recordIssues.length} записів містять помилки — імпорт відхилено, дані не замінено`,
+    });
+    return { ok: false, format, version, exportedAt, errors, recordIssues, counts, skipped, warnings, content: null, settings };
   }
 
   return {

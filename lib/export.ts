@@ -1,4 +1,4 @@
-import type { DataSnapshot, ExportPayload } from '@/types';
+import type { DataSnapshot, ExportIssue, ExportPayload } from '@/types';
 import { EXPORT_FORMAT_ID, EXPORT_SCHEMA_VERSION } from '@/types';
 
 const SECRET_KEY_RE = /(api[_-]?key|apikey|secret|token|password|passwd|authorization|credential|private[_-]?key)/i;
@@ -24,7 +24,7 @@ export function stripSecrets<T>(value: T, depth = 0): T {
  */
 export function buildExportPayload(
   snapshot: DataSnapshot,
-  options: { includeMeta?: boolean; exportedAt?: string } = {},
+  options: { includeMeta?: boolean; exportedAt?: string; issues?: ExportIssue[] } = {},
 ): ExportPayload {
   const payload: ExportPayload = {
     app: EXPORT_FORMAT_ID,
@@ -43,6 +43,7 @@ export function buildExportPayload(
     financeSettings: stripSecrets(snapshot.financeSettings),
   };
   if (options.includeMeta !== false && snapshot.meta) payload.meta = stripSecrets(snapshot.meta);
+  if (options.issues && options.issues.length) payload.issues = stripSecrets(options.issues);
   return payload;
 }
 

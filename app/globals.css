@@ -2658,3 +2658,29 @@ tr.week-b .week-dot {
   .ai-composer { flex-wrap: wrap; }
   .ai-composer-input { order: 3; flex: 1 1 100%; }
 }
+
+/* =============================================
+   БАНЕР «ЗАПИС ЗАБЛОКОВАНО» (ліміт сховища / невдалі міграції)
+   ============================================= */
+.write-block-banner {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: -34px -34px 18px;
+  padding: 10px 34px;
+  background: var(--danger-dim);
+  border-bottom: 1px solid rgba(255, 69, 58, 0.35);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+}
+
+.write-block-banner strong { color: var(--danger); }
+.write-block-banner span { color: var(--text-secondary); flex: 1; min-width: 200px; }
+
+@media (max-width: 768px) {
+  .write-block-banner { margin: -16px -12px 14px; padding: 10px 12px; }
+}

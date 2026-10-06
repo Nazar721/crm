@@ -49,7 +49,10 @@ export function saveFinanceSettings(settings: FinanceSettings) {
 
 /** Повний JSON-експорт зі snapshot (незалежно від пагінації/фільтрів). */
 export function exportData(includeMeta = true): ExportPayload {
-  return buildExportPayload(store.getSnapshot(), { includeMeta });
+  return buildExportPayload(store.getSnapshot(), {
+    includeMeta,
+    issues: store.getIssues(),
+  });
 }
 
 /**

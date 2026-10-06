@@ -5,6 +5,7 @@ import { getBackupInfo, shouldShowBackupReminder, snoozeBackupReminder, exportDa
 import { previewImport, applyImport, type ImportPreview, type ImportReport } from '@/lib/importer';
 import { getBackupRuntimeStatus, type BackupRuntimeStatus } from '@/lib/backup';
 import { setDisplayCurrency } from '@/lib/actions';
+import * as store from '@/lib/store';
 import { clearIssues } from '@/lib/store';
 import { emitToast } from '@/lib/toast-bus';
 import { formatDateTime } from '@/lib/utils';
@@ -33,6 +34,7 @@ export default function SettingsPage() {
   const [rawPayload, setRawPayload] = useState<unknown>(null);
   const [fileName, setFileName] = useState('');
   const [importing, setImporting] = useState(false);
+  const [ackSkipped, setAckSkipped] = useState(false);
   const [issues, setIssues] = useState<StorageIssue[]>(storageIssues);
 
   const refreshStatuses = () => {
@@ -66,6 +68,9 @@ export default function SettingsPage() {
       await markManualBackup();
       refreshStatuses();
       triggerRefresh();
+      if (store.getWriteBlock()) {
+        emitToast(`Файл експортовано, але мітку «остання резервна копія» не вдалося зберегти: ${store.getWriteBlock()}`, 'info');
+      }
     } catch (err) {
       emitToast(`Не вдалося створити резервну копію: ${String(err)}`, 'error');
     }
@@ -88,6 +93,7 @@ export default function SettingsPage() {
         const message = `Некоректний JSON: ${String(err)}`;
         emitToast(message, 'error');
         setRawPayload(null);
+        setAckSkipped(false);
         setPreview({
           validation: {
             ok: false, format: 'unknown', version: null, exportedAt: null,
@@ -102,6 +108,7 @@ export default function SettingsPage() {
         return;
       }
       setRawPayload(parsed);
+      setAckSkipped(false);
       setPreview(previewImport(parsed));
     };
     reader.readAsText(file);
@@ -310,6 +317,18 @@ export default function SettingsPage() {
                       ))}
                       {preview.validation.recordIssues.length > 10 && <li>… ще {preview.validation.recordIssues.length - 10}</li>}
                     </ul>
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 10, cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={ackSkipped}
+                        onChange={e => setAckSkipped(e.target.checked)}
+                        style={{ marginTop: 3 }}
+                      />
+                      <span>
+                        Я розумію, що ці {preview.validation.recordIssues.length} записів НЕ буде імпортовано,
+                        і даю згоду на заміну поточних даних без них.
+                      </span>
+                    </label>
                   </div>
                 )}
 
@@ -330,7 +349,7 @@ export default function SettingsPage() {
               <button
                 className="btn btn-primary"
                 onClick={confirmImport}
-                disabled={!preview.validation.ok || importing}
+                disabled={!preview.validation.ok || importing || (preview.validation.recordIssues.length > 0 && !ackSkipped)}
               >
                 {importing ? 'Імпортую…' : 'Імпортувати'}
               </button>
