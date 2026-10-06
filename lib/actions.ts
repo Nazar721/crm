@@ -553,6 +553,11 @@ export const applyAssistantPlan=(plan:Plan):Promise<ActionResult<unknown>>=>stor
   const old=id?records(plan.domain,store.getSnapshot()).find(x=>x.id===id):undefined;
   const input={...old,...fields};const remove=plan.action==='delete';
   switch(plan.domain){
+    case 'settings': {
+      const next={...store.getSnapshot().financeSettings,...fields};
+      const currencyErrors=validateEnum(next.displayCurrency,['UAH','USD','EUR'],'displayCurrency','Валюта відображення');
+      return currencyErrors.length?fail(currencyErrors):_saveRates(next);
+    }
     case 'clients':return remove?_deleteClient(id!):edit?_updateClient(edit,input):_createClient(fields);
     case 'projects':return remove?_deleteProject(id!,store.getSnapshot().projectsCompleted.some(p=>p.id===id)):_saveProject(input,edit);
     case 'finance':return remove?_deleteTransaction(id!):_saveTransaction(input,edit);

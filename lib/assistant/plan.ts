@@ -12,6 +12,7 @@ const date=(label:string):Spec=>({label,kind:'date'});
 const currency=select('Валюта',['UAH','USD','EUR','USDT']);
 const bank=select('Рахунок',BANKS.map(b=>b.id));
 export const schemas:Partial<Record<AssistantDomain,Record<string,Spec>>>={
+ settings:{usdRate:number('Курс USD'),eurRate:number('Курс EUR'),usdtRate:number('Курс USDT'),displayCurrency:select('Валюта відображення',['UAH','USD','EUR'])},
  clients:{name:text('Ім’я клієнта'),telegram:text('Telegram'),source:text('Джерело'),isRegular:{label:'Постійний клієнт',kind:'boolean'}},
  projects:{name:text('Назва проєкту'),type:select('Тип',['IT','Design','Video']),status:select('Статус',['Очікування оплати','В роботі','На паузі','Завершено']),clientName:text('Клієнт'),clientTelegram:text('Telegram клієнта'),clientSource:text('Джерело клієнта'),budget:number('Бюджет'),currency,bank,prepayment:number('Загалом сплатив клієнт'),paidToSpecialist:number('Виплачено фахівцю'),myPercent:number('Мій %'),fop:number('ФОП %'),partnerCommission:number('Комісія партнеру %'),profitTaken:number('Забрав собі'),developerId:text('ID фахівця'),partnerId:text('ID партнера'),startDate:date('Дата початку'),endDate:date('Дата завершення'),deadlineDays:number('Дедлайн, днів'),description:text('Опис')},
  finance:{type:select('Тип',['income','expense']),amount:number('Сума у валюті рахунку'),bank,date:date('Дата'),description:text('Опис'),category:text('Категорія'),incomeStatus:select('Статус доходу',['earned','incoming']),projectId:text('ID проєкту'),hidden:{label:'Прихований у підсумках',kind:'boolean'}},
@@ -52,9 +53,10 @@ export function normalizePlan(raw:unknown,s:DataSnapshot):Omit<Plan,'base'>{
  if(!raw||typeof raw!=='object')throw new Error('Непридатна чернетка');
  const r=raw as Record<string,unknown>,domain=r.domain as AssistantDomain,action=r.action as AssistantActionType;
  if(!Object.prototype.hasOwnProperty.call(schemas,domain)||!['create','update','delete'].includes(action))throw new Error('Непідтримувана дія');
+ if(domain==='settings'&&action!=='update')throw new Error('Налаштування можна лише змінювати');
  if(domain==='payments'&&action!=='update')throw new Error('Оплата потребує конкретного проєкту');
  const recordId=typeof r.recordId==='string'?r.recordId:undefined;
- if(action!=='create'&&!records(domain,s).some(x=>x.id===recordId))throw new Error('Запис не знайдено. Уточни назву або ID');
+ if(domain!=='settings'&&action!=='create'&&!records(domain,s).some(x=>x.id===recordId))throw new Error('Запис не знайдено. Уточни назву або ID');
  const fields=cleanFields(domain,r.fields||{});
  if(action==='create'){
   const defaults:Partial<Record<AssistantDomain,Plan['fields']>>={projects:{status:'Очікування оплати',currency:'UAH',prepayment:0,paidToSpecialist:0,myPercent:0,fop:0,partnerCommission:0,profitTaken:0,startDate:today()},finance:{date:today(),hidden:false},clients:{isRegular:false,source:'Інше'},debts:{currency:'UAH',date:today()},savings:{currency:'UAH',amount:0,date:today()},partners:{currency:'UAH'}};
@@ -70,13 +72,13 @@ export function normalizePlan(raw:unknown,s:DataSnapshot):Omit<Plan,'base'>{
  return {domain,action,recordId,fields};
 }
 export function draftReply(plan:Plan,s:DataSnapshot,id:string):AssistantReply{
- const specs=schemas[plan.domain]!,prev=records(plan.domain,s).find(x=>x.id===plan.recordId);
+ const specs=schemas[plan.domain]!,prev=plan.domain==='settings'?s.financeSettings as unknown as Record<string,unknown>:records(plan.domain,s).find(x=>x.id===plan.recordId);
  const fields=Object.entries(plan.fields).map(([key,value])=>({key,...specs[key],value}));
  const changes=fields.map(f=>({key:f.key,label:f.label,before:String(prev?.[f.key]??'—'),after:String(f.value??'—')}));
  if(plan.domain==='payments'&&prev)changes.push({key:'totalPayment',label:'Загальна оплата проєкту',before:String(prev.prepayment||0),after:String(Number(prev.prepayment||0)+Number(plan.fields.amount||0))});
  if(plan.action==='delete')changes.push({key:'record',label:'Видалити запис',before:String(prev?.name||prev?.person||prev?.description||plan.recordId),after:'Буде видалено'});
- const routes:Partial<Record<AssistantDomain,string>>={payments:'/projects',projects:'/projects',finance:'/finance',clients:'/clients',specialists:'/specialists',partners:'/partners',debts:'/debts',savings:'/savings'};
- const target=String(prev?.name||prev?.person||prev?.description||plan.fields.name||plan.recordId||'');
+ const routes:Partial<Record<AssistantDomain,string>>={settings:'/settings',payments:'/projects',projects:'/projects',finance:'/finance',clients:'/clients',specialists:'/specialists',partners:'/partners',debts:'/debts',savings:'/savings'};
+ const target=plan.domain==='settings'?'Фінансові налаштування':String(prev?.name||prev?.person||prev?.description||plan.fields.name||plan.recordId||'');
  return {kind:'draft',draft:{id,domain:plan.domain,action:plan.action,title:`${plan.action==='delete'?'Видалити':plan.action==='create'?'Створити':'Змінити'}: ${target}`,fields,changes,questions:[],recordId:plan.recordId,route:routes[plan.domain]}};
 }
 export function modelContext(s:DataSnapshot){

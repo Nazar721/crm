@@ -69,3 +69,15 @@ test('free-tier denial is explained as provider restriction, not invalid key',as
   const denied=(async()=>new Response(JSON.stringify({error:{type:'FreeTierError',message:'Free tier restricted'}}),{status:403})) as typeof fetch;
   await assert.rejects(askZen([],'synthetic',undefined,denied),e=>(e as {code:string}).code==='model_incompatible');
 });
+
+test('assistant settings updates preserve other rates and display currency',async()=>{
+ clearAll();const db=database();await store.initStore(new SupabaseDataSource(db.rpc));
+ const before={...store.getSnapshot().financeSettings};const p:Plan={domain:'settings',action:'update',fields:{usdRate:42},base:await fingerprint(store.getSnapshot())};
+ assert.equal((await executePlan(p)).kind,'applied');assert.equal(db.snap.financeSettings.usdRate,42);assert.equal(db.snap.financeSettings.usdtRate,before.usdtRate);assert.equal(db.snap.financeSettings.eurRate,before.eurRate);assert.equal(db.snap.financeSettings.displayCurrency,before.displayCurrency);
+ const invalid:Plan={domain:'settings',action:'update',fields:{usdRate:0},base:await fingerprint(store.getSnapshot())};assert.equal((await executePlan(invalid)).kind,'error');assert.equal(db.snap.financeSettings.usdRate,42);
+});
+
+test('settings permissions permit only update and require no record ID',()=>{
+ const s=emptySnapshot();assert.equal(normalizePlan({domain:'settings',action:'update',fields:{displayCurrency:'USD'}},s).action,'update');
+ assert.throws(()=>normalizePlan({domain:'settings',action:'delete',fields:{}},s));assert.throws(()=>normalizePlan({domain:'settings',action:'create',fields:{usdRate:42}},s));
+});
