@@ -109,7 +109,20 @@ test('broken, truncated or empty model responses cannot masquerade as chat or ex
  assert.throws(()=>parseAssistantContent('x'.repeat(16001)));
  const draft={kind:'draft',domain:'clients',action:'create',fields:{name:'Synthetic'}};assert.deepEqual(parseAssistantContent(JSON.stringify(draft)),draft);
 });
-test('free chat request retains JSON action format and leaves room for visible reply',async()=>{
- const fake=(async(_url:unknown,init:RequestInit)=>{const body=JSON.parse(String(init.body));assert.equal(body.max_tokens,6000);assert.deepEqual(body.reasoning,{enabled:false,exclude:true});assert.equal(body.response_format.type,'json_object');assert.equal(body.provider.max_price.completion,0);return new Response(JSON.stringify({choices:[{message:{content:'Привіт!'}}]}));}) as typeof fetch;
+test('free chat request accepts natural text and leaves room for visible reply',async()=>{
+ const fake=(async(_url:unknown,init:RequestInit)=>{const body=JSON.parse(String(init.body));assert.equal(body.max_tokens,6000);assert.deepEqual(body.reasoning,{enabled:false,exclude:true});assert.equal(body.response_format,undefined);assert.equal(body.provider.max_price.completion,0);return new Response(JSON.stringify({choices:[{message:{content:'Привіт!'}}]}));}) as typeof fetch;
  assert.deepEqual(await askProvider([], {...resolveProvider('openrouter',OPENROUTER_MODEL),key:'synthetic'},undefined,fake),{kind:'text',text:'Привіт!'});
+});
+
+
+test('chat accepts text envelopes without interpreting unknown action envelopes',()=>{
+ assert.deepEqual(parseAssistantContent('{"message":"Привіт"}'),{kind:'text',text:'Привіт'});
+ const unsupported={action:'delete',message:'Видалено'};assert.deepEqual(parseAssistantContent(JSON.stringify(unsupported)),unsupported);
+});
+test('project context identifies actual active collection and exposes exact mixed currency budget',()=>{
+ const s=emptySnapshot();s.financeSettings={usdRate:40,eurRate:50,usdtRate:45,displayCurrency:'UAH'};
+ s.projectsActive=[makeProject({budget:10000,currency:'UAH',status:'Очікування оплати'}),makeProject({budget:1000,currency:'USD',status:'На паузі'})];s.projectsCompleted=[makeProject({budget:500,currency:'EUR',status:'Завершено'})];
+ const c=modelContext(s);assert.equal(c.projectSummary.active.count,2);assert.deepEqual(c.projectSummary.active.budget,{amount:50000,currency:'UAH'});assert.deepEqual(c.projectSummary.completed.budget,{amount:25000,currency:'UAH'});
+ assert.deepEqual(c.projects.map(p=>p.collection),['active','active','completed']);assert.equal(c.stats.totalBudget,25000);assert.deepEqual(c.projects[1].displayBudget,{amount:40000,currency:'UAH'});
+ s.financeSettings.displayCurrency='USD';assert.deepEqual(modelContext(s).projectSummary.active.budget,{amount:1250,currency:'USD'});
 });

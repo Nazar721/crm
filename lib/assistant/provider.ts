@@ -22,7 +22,14 @@ export function parseAssistantContent(content:unknown,finishReason?:string):unkn
  try {
   const parsed=JSON.parse(candidate);
   if(typeof parsed==='string'&&parsed.trim())return {kind:'text',text:parsed};
-  if(parsed&&typeof parsed==='object'&&!Array.isArray(parsed))return parsed;
+  if(parsed&&typeof parsed==='object'&&!Array.isArray(parsed)){
+   // Tolerate text envelopes used by chat models, without weakening action validation.
+   if(!('kind' in parsed)&&!('action' in parsed)&&!('domain' in parsed)&&!('fields' in parsed)){
+    const body=parsed.text??parsed.message??parsed.content;
+    if(typeof body==='string'&&body.trim())return {kind:'text',text:body};
+   }
+   return parsed;
+  }
   throw new ProviderError('invalid_response','Непідтримуваний формат відповіді');
  }catch(e){
   if(e instanceof ProviderError)throw e;
@@ -36,7 +43,7 @@ export async function askProvider(messages:{role:string;content:string}[],config
  const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),45000);
  const abort=()=>controller.abort();signal?.addEventListener('abort',abort,{once:true});if(signal?.aborted)abort();
  try {
-  const res=await fetcher(url,{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({model,messages,...(config.kind==='openrouter'?{provider:{require_parameters:true,max_price:{prompt:0,completion:0}}}:{}),max_tokens:6000,...(config.kind==='openrouter'?{reasoning:{enabled:false,exclude:true}}:{}),response_format:{type:'json_object'},temperature:0.2}),signal:controller.signal});
+  const res=await fetcher(url,{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({model,messages,...(config.kind==='openrouter'?{provider:{require_parameters:true,max_price:{prompt:0,completion:0}}}:{}),max_tokens:6000,...(config.kind==='openrouter'?{reasoning:{enabled:false,exclude:true}}:{}),temperature:0.4}),signal:controller.signal});
   if(!res.ok){
    const detail=(await res.text()).slice(0,10000);
    if(res.status===403&&detail.includes('FreeTierError'))throw new ProviderError('model_incompatible','Безкоштовна MiMo доступна лише всередині OpenCode. Прямий API-запит із CRM провайдер відхилив.');
