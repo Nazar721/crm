@@ -157,10 +157,11 @@ export const ASSISTANT_ERROR_MESSAGES: Record<AssistantErrorCode, { message: str
 // Провайдер і модель (без ключів)
 // ------------------------------------------------------------
 
-export const PROVIDERS = ['opencode', 'openai', 'anthropic', 'google', 'custom'] as const;
+export const PROVIDERS = ['openrouter', 'opencode', 'openai', 'anthropic', 'google', 'custom'] as const;
 export type ProviderId = (typeof PROVIDERS)[number];
 
 export const PROVIDER_LABELS: Record<ProviderId, string> = {
+  openrouter: 'OpenRouter',
   opencode: 'OpenCode Zen',
   openai: 'OpenAI',
   anthropic: 'Anthropic',
@@ -174,6 +175,7 @@ export interface ProviderModel {
 }
 
 export const PROVIDER_MODELS: Record<ProviderId, ProviderModel[]> = {
+  openrouter: [{id:'openrouter/free',label:'Free Models Router'}],
   opencode: [{id:'mimo-v2.6-flash-free',label:'MiMo V2.6 Flash Free'}],
   openai: [
     { id: 'gpt-4o-mini', label: 'GPT-4o mini' },
@@ -199,8 +201,8 @@ export interface ProviderSettings {
 }
 
 export const DEFAULT_PROVIDER_SETTINGS: ProviderSettings = {
-  provider: 'opencode',
-  model: 'mimo-v2.6-flash-free',
+  provider: 'openrouter',
+  model: 'openrouter/free',
   demo: false,
 };
 

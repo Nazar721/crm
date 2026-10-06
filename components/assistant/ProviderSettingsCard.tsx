@@ -67,7 +67,7 @@ export default function ProviderSettingsCard({ settings, onSave }: ProviderSetti
             <input className="form-input" value={baseUrl} onChange={e => setBaseUrl(e.target.value)} placeholder="https://…" />
           </div>
         )}
-        {provider !== 'opencode' && <div className="form-group form-group--full">
+        {!['opencode','openrouter'].includes(provider) && <div className="form-group form-group--full">
           <label className="form-label">API-ключ (перевірка формату)</label>
           <div className="ai-key-row">
             <input
@@ -91,6 +91,7 @@ export default function ProviderSettingsCard({ settings, onSave }: ProviderSetti
           </small>
         </div>
         }
+        {provider === 'openrouter' && <p className="settings-text">Ключ OpenRouter зберігається на сервері. Free Models Router обирає безкоштовну модель; платні моделі заблоковані. Перед записом перевірте чернетку.</p>}
         {provider === 'opencode' && <p className="settings-text">OpenCode Zen використовує ключ на сервері. Ключ налаштований на сервері. MiMo Free відхиляє прямий API-доступ із CRM; для робочого чату потрібно обрати іншу API-доступну модель.</p>}
         <div className="form-group form-group--full">
           <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>

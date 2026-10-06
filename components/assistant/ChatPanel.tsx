@@ -79,7 +79,7 @@ export default function ChatPanel(props: ChatPanelProps) {
           {settings.demo && <span className="badge badge--orange">DEMO</span>}
         </div>
         {!settings.demo && settings.provider === 'opencode' && <span className="ai-not-connected">MiMo Free: прямий API недоступний</span>}
-        {!settings.demo && settings.provider !== 'opencode' && (
+        {!settings.demo && !['opencode','openrouter'].includes(settings.provider) && (
           <span className="ai-not-connected">Помічник ще не підключений</span>
         )}
       </div>

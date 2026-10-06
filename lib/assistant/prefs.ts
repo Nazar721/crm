@@ -50,6 +50,7 @@ export function saveProviderSettings(settings: ProviderSettings): ProviderSettin
 }
 
 const KEY_PATTERNS: Record<ProviderId, RegExp> = {
+  openrouter: /^sk-or-v1-[A-Za-z0-9_\-]{12,}$/,
   opencode: /^oc_sk_[A-Za-z0-9_\-]{12,}$/,
   openai: /^sk-[A-Za-z0-9_\-]{8,}$/,
   anthropic: /^sk-ant-[A-Za-z0-9_\-]{8,}$/,

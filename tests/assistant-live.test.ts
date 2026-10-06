@@ -1,9 +1,9 @@
 import './setup';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {normalizePlan,cleanFields,fingerprint,modelContext,draftReply,type Plan} from '@/lib/assistant/plan';
+import {normalizePlan,missingQuestions,cleanFields,fingerprint,modelContext,draftReply,type Plan} from '@/lib/assistant/plan';
 import {signPlan,verifyPlan} from '@/lib/assistant/signing';
-import {askZen,ZEN_MODEL} from '@/lib/assistant/provider';
+import {askZen,askProvider,resolveProvider,ZEN_MODEL,OPENROUTER_MODEL} from '@/lib/assistant/provider';
 import {SupabaseDataSource} from '@/lib/datasource/supabase';
 import {executePlan} from '@/lib/assistant/executor';
 import {clearAll,emptySnapshot,makeProject} from './helpers';
@@ -80,4 +80,18 @@ test('assistant settings updates preserve other rates and display currency',asyn
 test('settings permissions permit only update and require no record ID',()=>{
  const s=emptySnapshot();assert.equal(normalizePlan({domain:'settings',action:'update',fields:{displayCurrency:'USD'}},s).action,'update');
  assert.throws(()=>normalizePlan({domain:'settings',action:'delete',fields:{}},s));assert.throws(()=>normalizePlan({domain:'settings',action:'create',fields:{usdRate:42}},s));
+});
+
+test('OpenRouter allows only free router, enforces zero price and parses reply',async()=>{
+ let called=0;const fake=(async(url:unknown,init:RequestInit)=>{called++;assert.equal(url,'https://openrouter.ai/api/v1/chat/completions');const body=JSON.parse(String(init.body));assert.equal(body.model,'openrouter/free');assert.deepEqual(body.provider.max_price,{prompt:0,completion:0});assert.equal(body.provider.require_parameters,true);assert.equal(body.models,undefined);return new Response(JSON.stringify({choices:[{message:{content:'{"kind":"text","text":"Synthetic"}'}}]}));}) as typeof fetch;
+ const config={...resolveProvider('openrouter',OPENROUTER_MODEL),key:'synthetic'};
+ assert.deepEqual(await askProvider([],config,undefined,fake),{kind:'text',text:'Synthetic'});assert.equal(called,1);
+ assert.throws(()=>resolveProvider('openrouter','openrouter/auto'));assert.throws(()=>resolveProvider('custom','paid'));assert.throws(()=>resolveProvider('openrouter','openai/gpt-4o'));
+});
+
+test('missing required data triggers clarification rather than incomplete draft',()=>{
+ const s=emptySnapshot();const p=normalizePlan({domain:'projects',action:'create',fields:{name:'Synthetic',type:'IT'}},s);
+ assert.deepEqual(missingQuestions(p,s).map(q=>q.key),['clientName','budget']);
+ const project=makeProject({bank:'mono'});s.projectsActive=[project];const payment=normalizePlan({domain:'payments',action:'update',recordId:project.id,fields:{amount:10}},s);
+ assert.deepEqual(missingQuestions(payment,s).map(q=>q.key),['bank']);
 });

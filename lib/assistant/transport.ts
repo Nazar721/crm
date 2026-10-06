@@ -195,5 +195,5 @@ export function createDemoTransport(): AssistantTransport {
 }
 
 export function getTransport(settings: ProviderSettings): AssistantTransport {
-  return settings.demo ? createDemoTransport() : settings.provider === 'opencode' ? createRemoteTransport() : createNotConnectedTransport();
+  return settings.demo ? createDemoTransport() : ['opencode','openrouter'].includes(settings.provider) ? createRemoteTransport() : createNotConnectedTransport();
 }
