@@ -174,7 +174,9 @@ export default function SettingsPage() {
           ? ` Не відновлено колекції: ${report.restoreSkipped.map(c => COLLECTION_LABELS[c] || c).join(', ')}.`
           : '';
         emitToast(
-          report.recovered === false
+          store.remoteEnabled()
+            ? `Імпорт не підтверджено: ${report.issue || report.errors.map(e => e.message).join('; ') || 'помилка з’єднання'}. Перевір дані після оновлення перед повторною спробою.`
+            : report.recovered === false
             ? `Імпорт не завершено (${report.stage}): ${report.issue || 'помилка'}. Попередній стан відновити не вдалося — копію збережено у «${preview.safetyCopyKey}». Запис даних заблоковано до відновлення.${skippedNote}`
             : `Імпорт не завершено (${report.stage}): ${report.issue || 'помилка'}. Попередній стан відновлено.${skippedNote}`,
           'error',
@@ -397,8 +399,10 @@ export default function SettingsPage() {
 
                 <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: 12 }}>
                   Поточні дані ({preview.previousTotal} записів) будуть замінені. Перед записом буде створено
-                  копію попереднього стану в «{preview.safetyCopyKey}». Операція не є атомарною: при збої
-                  виконується відновлення, а якщо й воно не вдасться — ви отримаєте явний стан помилки.
+                  копію попереднього стану в «{preview.safetyCopyKey}».{' '}
+                  {store.remoteEnabled()
+                    ? 'У базі всі колекції та налаштування зберігаються однією операцією. Якщо зв’язок перерветься, перевір результат після оновлення сторінки перед повторною спробою.'
+                    : 'Операція не є атомарною: при збої виконується відновлення, а якщо й воно не вдасться — ви отримаєте явний стан помилки.'}
                 </p>
 
                 {preview.validation.recordIssues.length > 0 && (

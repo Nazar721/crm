@@ -1,6 +1,5 @@
 {
   "sourceBytes": 346399,
-  "sourceSha256": "98e719023626fcfa4da3a4357e98fdb5b9c55d1dda176f77fece7efdd7f09b7a",
   "counts": {
     "projectsActive": 14,
     "projectsCompleted": 179,
@@ -15,5 +14,7 @@
   "unassignedTransactions": 5,
   "unresolvedSpecialistLinks": 10,
   "unresolvedProjectLinks": 1,
-  "cloudImportExecuted": false
+  "cloudImportExecuted": false,
+  "sourceDataSha256": "98e719023626fcfa4da3a4357e98fdb5b9c55d1dda176f77fece7efdd7f09b7a",
+  "sourceFileSha256": "57104b8d18b654d711f38ea278db4ce2e40d8e37d34e8a77071e02cf2adda729"
 }
