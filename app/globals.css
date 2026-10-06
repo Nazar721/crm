@@ -2641,7 +2641,7 @@ tr.week-b .week-dot {
 .ai-composer {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: end;
+  align-items: center;
   gap: 8px;
 }
 
@@ -2649,6 +2649,7 @@ tr.week-b .week-dot {
   min-width: 0;
   width: 100%;
   resize: vertical;
+  height: 48px;
   min-height: 48px;
   max-height: 140px;
   line-height: 1.5;
@@ -2755,3 +2756,8 @@ tr.week-b .week-dot {
 .cloud-access-form .form-input { font-size: 16px; min-height: 48px; }
 .cloud-access-form .btn { width: 100%; min-height: 48px; }
 .cloud-access-form .cloud-access-error { color: var(--accent-red, #ff453a); font-size: 0.9rem; }
+
+/* Equal composer control heights on desktop and mobile. */
+.ai-composer > .btn, .ai-composer > .btn-icon { height: 48px; min-height: 48px; margin: 0; justify-content: center; align-self: center; box-sizing: border-box; }
+.ai-composer > .btn-icon { width: 48px; }
+.ai-composer-input { box-sizing: border-box; }

@@ -90,6 +90,7 @@ export interface AssistantMessage {
   draftId?: string;
   /** Повідомлення про помилку транспорту. */
   errorCode?: AssistantErrorCode;
+  errorHint?: string;
 }
 
 export type AssistantErrorCode =

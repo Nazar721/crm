@@ -1,13 +1,10 @@
+import {requestWithSession} from './session-request';
 import type {AssistantTransport,AssistantReply,AssistantConfirmResult,AssistantConfirmRequest,AssistantSendRequest,AssistantClarifyRequest} from './contract';
 import {supabase} from '@/lib/supabase/client';
 import {executePlan} from './executor';
 import type {Plan} from './plan';
-async function request(body:unknown,signal?:AbortSignal):Promise<unknown>{
- const {data}=await supabase().auth.getSession();if(!data.session)throw new Error('Увійди в CRM');
- const res=await fetch('/api/assistant',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${data.session.access_token}`},body:JSON.stringify(body),signal});
- const result=await res.json();if(!res.ok&&result.kind!=='error')throw new Error('Не вдалося зв’язатися з сервером');return result;
-}
-const failure=(e:unknown):AssistantReply=>({kind:'error',error:{code:e instanceof Error&&e.name==='AbortError'?'cancelled':'unavailable',message:e instanceof Error&&e.message==='Увійди в CRM'?e.message:'Запит не завершено. Спробуй ще раз.'}});
+const request=(body:unknown,signal?:AbortSignal)=>requestWithSession(supabase().auth,body,signal);
+const failure=(e:unknown):AssistantReply=>({kind:'error',error:{code:e instanceof Error&&e.name==='AbortError'?'cancelled':'unavailable',message:e instanceof Error&&e.message==='Увійди в CRM'?e.message:'Запит не завершено. Спробуй ще раз.',hint:e instanceof Error&&e.message==='Увійди в CRM'?'Онови сторінку та увійди в CRM повторно.':undefined}});
 export function createRemoteTransport():AssistantTransport {
  let confirming=false;
  const send=async(r:AssistantSendRequest|AssistantClarifyRequest,signal?:AbortSignal):Promise<AssistantReply>=>{try{return await request({...r,mode:'send'},signal) as AssistantReply;}catch(e){return failure(e);}};

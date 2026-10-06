@@ -93,7 +93,7 @@ export default function AssistantPage() {
       pushMessage({ role: 'assistant', text: reply.text });
       return;
     }
-    pushMessage({ role: 'assistant', text: reply.error.message, errorCode: reply.error.code });
+    pushMessage({ role: 'assistant', text: reply.error.message, errorCode: reply.error.code, errorHint: reply.error.hint });
   }, [pushMessage]);
 
   const sendCommand = useCallback(async (text: string) => {
@@ -194,7 +194,7 @@ export default function AssistantPage() {
       } else if (outcome.kind === 'demo') {
         pushMessage({ role: 'assistant', text: `DEMO: ${outcome.summary}` });
       } else {
-        pushMessage({ role: 'assistant', text: outcome.error.message, errorCode: outcome.error.code });
+        pushMessage({ role: 'assistant', text: outcome.error.message, errorCode: outcome.error.code, errorHint: outcome.error.hint });
       }
       if (outcome.kind === 'applied' || outcome.kind === 'demo') setDraft(null);
     } finally {

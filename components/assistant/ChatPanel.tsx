@@ -99,7 +99,7 @@ export default function ChatPanel(props: ChatPanelProps) {
           <div key={m.id} className={`ai-msg ai-msg--${m.role}${m.errorCode ? ' ai-msg--error' : ''}`}>
             <div className="ai-msg-text">{m.role === 'assistant' && !m.errorCode ? <MarkdownMessage text={m.text} /> : m.text}</div>
             {m.errorCode && ASSISTANT_ERROR_MESSAGES[m.errorCode] && (
-              <div className="ai-msg-hint">{ASSISTANT_ERROR_MESSAGES[m.errorCode].hint}</div>
+              <div className="ai-msg-hint">{(m.errorHint || ASSISTANT_ERROR_MESSAGES[m.errorCode].hint)}</div>
             )}
           </div>
         ))}
@@ -248,7 +248,7 @@ export default function ChatPanel(props: ChatPanelProps) {
               <label className="form-label">Транскрипція (перегляньте та відредагуйте)</label>
               <textarea
                 className="form-input form-textarea"
-                rows={2}
+                rows={1}
                 value={voicePreview}
                 onChange={e => setVoicePreview(e.target.value)}
               />
@@ -277,7 +277,7 @@ export default function ChatPanel(props: ChatPanelProps) {
         </button>
         <textarea
           className="form-input ai-composer-input"
-          rows={2}
+          rows={1}
           aria-label="Повідомлення помічнику"
           placeholder="Напишіть команду помічнику…"
           value={text}
