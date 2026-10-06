@@ -1,4 +1,4 @@
- 'use client';
+'use client';
 import { useEffect, useState, type ReactNode } from 'react';
 import { cloudEnabled, supabase } from '@/lib/supabase/client';
 export default function CloudAccess({ children }: { children: ReactNode }) {
@@ -21,9 +21,9 @@ export default function CloudAccess({ children }: { children: ReactNode }) {
     return () => { live = false; data.subscription.unsubscribe(); };
   }, []);
   if (!cloudEnabled()) return children;
-  if (!ready) return <div className="app-shell-state">Перевірка входу…</div>;
+  if (!ready) return <div className="app-shell-state cloud-access">Перевірка входу…</div>;
   if (signedIn) return <>{children}<button className="btn btn-ghost" style={{position:'fixed',right:16,bottom:80,zIndex:50}} onClick={() => { void supabase().auth.signOut(); }}>Вийти</button></>;
-  return <main className="app-shell-state"><form style={{maxWidth:400,width:'100%'}} onSubmit={async event => {
+  return <main className="app-shell-state cloud-access"><form className="cloud-access-form" onSubmit={async event => {
     event.preventDefault(); if (busy) return; setBusy(true); setError('');
     try {
       const result = await supabase().auth.signInWithPassword({email:email.trim(),password});
@@ -31,8 +31,8 @@ export default function CloudAccess({ children }: { children: ReactNode }) {
       else setPassword('');
     } catch { setError('Немає з’єднання. Спробуй ще раз.'); } finally { setBusy(false); }
   }}><h1>Вхід у CRM</h1><p>Твої дані на ноутбуці та iPhone</p>
-    <label>Email<input className="form-input" type="email" autoComplete="username" required value={email} onChange={e=>setEmail(e.target.value)}/></label>
-    <label>Пароль<input className="form-input" type="password" autoComplete="current-password" required value={password} onChange={e=>setPassword(e.target.value)}/></label>
-    {error && <p role="alert">{error}</p>}<button className="btn btn-primary" type="submit" disabled={busy}>{busy ? 'Вхід…':'Увійти'}</button>
+    <label className="form-group"><span className="form-label">Email</span><input className="form-input" type="email" autoComplete="username" required value={email} onChange={e=>setEmail(e.target.value)}/></label>
+    <label className="form-group"><span className="form-label">Пароль</span><input className="form-input" type="password" autoComplete="current-password" required value={password} onChange={e=>setPassword(e.target.value)}/></label>
+    {error && <p className="cloud-access-error" role="alert">{error}</p>}<button className="btn btn-primary" type="submit" disabled={busy}>{busy ? 'Вхід…':'Увійти'}</button>
   </form></main>;
 }

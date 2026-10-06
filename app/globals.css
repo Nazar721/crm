@@ -2684,3 +2684,25 @@ tr.week-b .week-dot {
 @media (max-width: 768px) {
   .write-block-banner { margin: -16px -12px 14px; padding: 10px 12px; }
 }
+
+/* The login is a direct child of the flex body, without the CRM sidebar. */
+.cloud-access {
+  flex: 1 1 100%;
+  width: 100%;
+  min-width: 0;
+  min-height: 100dvh;
+  padding: max(24px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+}
+.cloud-access-form {
+  width: 100%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.cloud-access-form h1 { line-height: 1.2; }
+.cloud-access-form > p { color: var(--text-secondary); }
+.cloud-access-form .form-group { text-align: left; gap: 8px; }
+.cloud-access-form .form-input { font-size: 16px; min-height: 48px; }
+.cloud-access-form .btn { width: 100%; min-height: 48px; }
+.cloud-access-form .cloud-access-error { color: var(--accent-red, #ff453a); font-size: 0.9rem; }
