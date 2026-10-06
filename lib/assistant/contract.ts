@@ -157,10 +157,11 @@ export const ASSISTANT_ERROR_MESSAGES: Record<AssistantErrorCode, { message: str
 // Провайдер і модель (без ключів)
 // ------------------------------------------------------------
 
-export const PROVIDERS = ['openai', 'anthropic', 'google', 'custom'] as const;
+export const PROVIDERS = ['opencode', 'openai', 'anthropic', 'google', 'custom'] as const;
 export type ProviderId = (typeof PROVIDERS)[number];
 
 export const PROVIDER_LABELS: Record<ProviderId, string> = {
+  opencode: 'OpenCode Zen',
   openai: 'OpenAI',
   anthropic: 'Anthropic',
   google: 'Google',
@@ -173,6 +174,7 @@ export interface ProviderModel {
 }
 
 export const PROVIDER_MODELS: Record<ProviderId, ProviderModel[]> = {
+  opencode: [{id:'mimo-v2.6-flash-free',label:'MiMo V2.6 Flash Free'}],
   openai: [
     { id: 'gpt-4o-mini', label: 'GPT-4o mini' },
     { id: 'gpt-4o', label: 'GPT-4o' },
@@ -197,8 +199,8 @@ export interface ProviderSettings {
 }
 
 export const DEFAULT_PROVIDER_SETTINGS: ProviderSettings = {
-  provider: 'openai',
-  model: 'gpt-4o-mini',
+  provider: 'opencode',
+  model: 'mimo-v2.6-flash-free',
   demo: false,
 };
 
@@ -256,7 +258,7 @@ export type AssistantConfirmResult =
  * Реалізації: `not-connected` (типова) та `demo` (лише явний demo-режим).
  */
 export interface AssistantTransport {
-  readonly id: 'not-connected' | 'demo';
+  readonly id: 'not-connected' | 'demo' | 'remote';
   readonly label: string;
   send(request: AssistantSendRequest, signal?: AbortSignal): Promise<AssistantReply>;
   clarify(request: AssistantClarifyRequest, signal?: AbortSignal): Promise<AssistantReply>;

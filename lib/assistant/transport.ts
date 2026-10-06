@@ -1,3 +1,4 @@
+import {createRemoteTransport} from './remote';
 import type {
   AssistantConfirmRequest,
   AssistantConfirmResult,
@@ -194,5 +195,5 @@ export function createDemoTransport(): AssistantTransport {
 }
 
 export function getTransport(settings: ProviderSettings): AssistantTransport {
-  return settings.demo ? createDemoTransport() : createNotConnectedTransport();
+  return settings.demo ? createDemoTransport() : settings.provider === 'opencode' ? createRemoteTransport() : createNotConnectedTransport();
 }

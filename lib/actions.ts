@@ -1,3 +1,4 @@
+import {fingerprint,records,type Plan} from '@/lib/assistant/plan';
 import type {
   Client, FinanceSettings, Partner, PersonalDebt, Project, Saving, Specialist, Transaction,
 } from '@/types';
@@ -526,3 +527,40 @@ export const saveSaving = (...args: Parameters<typeof _saveSaving>) => store.ato
 export const deleteSaving = (...args: Parameters<typeof _deleteSaving>) => store.atomicAction(() => _deleteSaving(...args));
 export const saveRates = (...args: Parameters<typeof _saveRates>) => store.atomicAction(() => _saveRates(...args));
 export const setDisplayCurrency = (...args: Parameters<typeof _setDisplayCurrency>) => store.atomicAction(() => _setDisplayCurrency(...args));
+
+async function _recordProjectPayment(id:string,input:{amount:number;bank:string;date:string;description?:string}):Promise<ActionResult<Project>> {
+  const p=[...Storage.getProjects(),...Storage.getCompleted()].find(p=>p.id===id);
+  if(!p)return fail([{field:'id',message:'Проєкт не знайдено'}]);
+  const errors=validateTransactionInput({type:'income',...input});
+  if(bankCurrencyLocal(input.bank)!==(p.currency||'UAH'))errors.push({field:'bank',message:'Валюта рахунку має відповідати валюті проєкту'});
+  const paid=Number(p.prepayment||0)+Number(input.amount);
+  if(paid>Number(p.budget))errors.push({field:'amount',message:'Оплата перевищує залишок бюджету проєкту'});
+  if(errors.length)return fail(errors);
+  const next={...p,prepayment:paid};
+  const active=Storage.getProjects();
+  const saved=active.some(p=>p.id===id)
+    ? await persist(Storage.saveProjects(active.map(p=>p.id===id?next:p)))
+    : await persist(Storage.saveCompleted(Storage.getCompleted().map(p=>p.id===id?next:p)));
+  if(!saved.ok)return saved;
+  const transaction=await _saveTransaction({type:'income',amount:Number(input.amount),bank:input.bank,date:input.date,projectId:id,incomeStatus:'earned',description:input.description||`Оплата: ${p.name}`});
+  return transaction.ok?ok(next):transaction;
+}
+export const recordProjectPayment=(...args:Parameters<typeof _recordProjectPayment>)=>store.atomicAction(()=>_recordProjectPayment(...args));
+
+export const applyAssistantPlan=(plan:Plan):Promise<ActionResult<unknown>>=>store.atomicAction(async()=>{
+  if(plan.base!==await fingerprint(store.getSnapshot()))return fail([{field:'storage',message:'Дані змінилися. Онови CRM й створи нову чернетку.'}]);
+  const id=plan.recordId,fields=plan.fields,edit=plan.action==='update'?id:undefined;
+  const old=id?records(plan.domain,store.getSnapshot()).find(x=>x.id===id):undefined;
+  const input={...old,...fields};const remove=plan.action==='delete';
+  switch(plan.domain){
+    case 'clients':return remove?_deleteClient(id!):edit?_updateClient(edit,input):_createClient(fields);
+    case 'projects':return remove?_deleteProject(id!,store.getSnapshot().projectsCompleted.some(p=>p.id===id)):_saveProject(input,edit);
+    case 'finance':return remove?_deleteTransaction(id!):_saveTransaction(input,edit);
+    case 'payments':return _recordProjectPayment(id!,fields as {amount:number;bank:string;date:string;description?:string});
+    case 'specialists':return remove?_deleteSpecialist(id!):_saveSpecialist(input,edit);
+    case 'partners':return remove?_deletePartner(id!):_savePartner(input,edit);
+    case 'debts':return remove?_deleteDebt(id!):_saveDebt(input,edit);
+    case 'savings':return remove?_deleteSaving(id!):_saveSaving(input,edit);
+    default:return fail([{field:'action',message:'Дія не підтримується'}]);
+  }
+});

@@ -67,7 +67,7 @@ export default function ProviderSettingsCard({ settings, onSave }: ProviderSetti
             <input className="form-input" value={baseUrl} onChange={e => setBaseUrl(e.target.value)} placeholder="https://…" />
           </div>
         )}
-        <div className="form-group form-group--full">
+        {provider !== 'opencode' && <div className="form-group form-group--full">
           <label className="form-label">API-ключ (перевірка формату)</label>
           <div className="ai-key-row">
             <input
@@ -90,6 +90,8 @@ export default function ProviderSettingsCard({ settings, onSave }: ProviderSetti
             Захищене серверне сховище ключів додається на етапі 2 (див. .env.example).
           </small>
         </div>
+        }
+        {provider === 'opencode' && <p className="settings-text">OpenCode Zen використовує ключ на сервері. Ключ налаштований на сервері. MiMo Free відхиляє прямий API-доступ із CRM; для робочого чату потрібно обрати іншу API-доступну модель.</p>}
         <div className="form-group form-group--full">
           <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
             <input type="checkbox" checked={demo} onChange={e => { setDemo(e.target.checked); setSaved(false); }} />

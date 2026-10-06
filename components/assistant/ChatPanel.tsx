@@ -78,7 +78,8 @@ export default function ChatPanel(props: ChatPanelProps) {
           <span className="ai-provider-model">{settings.model}</span>
           {settings.demo && <span className="badge badge--orange">DEMO</span>}
         </div>
-        {!settings.demo && (
+        {!settings.demo && settings.provider === 'opencode' && <span className="ai-not-connected">MiMo Free: прямий API недоступний</span>}
+        {!settings.demo && settings.provider !== 'opencode' && (
           <span className="ai-not-connected">Помічник ще не підключений</span>
         )}
       </div>
@@ -88,7 +89,7 @@ export default function ChatPanel(props: ChatPanelProps) {
           <div className="ai-empty">
             <p>Напишіть команду: «покажи борги», «створи клієнта», «який баланс».</p>
             <p className="ai-empty-hint">
-              На етапі 1 це інтерфейс і контракти. Реальні дії з даними підключаються на етапі 2.
+              Зміни спочатку з’являться як чернетка. Перевірте поля й підтвердьте запис.
             </p>
           </div>
         )}
@@ -105,7 +106,7 @@ export default function ChatPanel(props: ChatPanelProps) {
         {pending && (
           <div className="ai-msg ai-msg--assistant ai-msg--pending">
             <span className="ai-typing"><i /><i /><i /></span>
-            <button className="btn btn-ghost btn--sm" onClick={props.onCancel}>Скасувати</button>
+            {!draft && <button className="btn btn-ghost btn--sm" onClick={props.onCancel}>Скасувати</button>}
           </div>
         )}
 
@@ -180,7 +181,7 @@ export default function ChatPanel(props: ChatPanelProps) {
               {draft.fields.map(f => (
                 <div className="ai-field" key={f.key}>
                   <label className="form-label">{f.label}</label>
-                  {f.kind === 'select' && f.options ? (
+                  {f.kind === 'boolean' ? (<input type="checkbox" checked={f.value === true} disabled={pending} onChange={e=>props.onCorrect(f.key,e.target.checked)}/>) : f.kind === 'select' && f.options ? (
                     <select
                       className="form-input"
                       value={String(f.value ?? '')}
@@ -192,6 +193,7 @@ export default function ChatPanel(props: ChatPanelProps) {
                   ) : (
                     <input
                       className="form-input"
+                      disabled={pending}
                       type={f.kind === 'number' || f.kind === 'currency' || f.kind === 'percent' ? 'number' : f.kind === 'date' ? 'date' : 'text'}
                       value={f.value === null || f.value === undefined ? '' : String(f.value)}
                       onChange={e => props.onCorrect(f.key, e.target.value)}
@@ -216,8 +218,8 @@ export default function ChatPanel(props: ChatPanelProps) {
             </div>
 
             <div className="ai-actions">
-              <button className="btn btn-primary" onClick={props.onConfirm}>Підтвердити</button>
-              <button className="btn btn-ghost" onClick={props.onDiscard}>Скасувати</button>
+              <button className="btn btn-primary" disabled={pending} onClick={props.onConfirm}>Підтвердити</button>
+              <button className="btn btn-ghost" disabled={pending} onClick={props.onDiscard}>Скасувати</button>
             </div>
           </div>
         )}

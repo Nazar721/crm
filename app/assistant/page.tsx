@@ -97,6 +97,7 @@ export default function AssistantPage() {
   }, [pushMessage]);
 
   const sendCommand = useCallback(async (text: string) => {
+    setDraft(null);
     pushMessage({ role: 'user', text });
     setClarify({ text: '', questions: [], source: text });
     setResult(null);
@@ -115,7 +116,7 @@ export default function AssistantPage() {
         provider: settings.provider,
         model: settings.model,
       }, controller.signal);
-      handleReply(reply);
+      if (requestIdRef.current === requestId) handleReply(reply);
     } catch (err) {
       pushMessage({
         role: 'assistant',
@@ -124,12 +125,12 @@ export default function AssistantPage() {
       });
       void err;
     } finally {
-      setPending(false);
-      abortRef.current = null;
+      if (requestIdRef.current === requestId) { setPending(false); abortRef.current = null; }
     }
   }, [handleReply, messages, pushMessage, settings.model, settings.provider, transport]);
 
   const cancelPending = useCallback(() => {
+    requestIdRef.current = '';
     abortRef.current?.abort();
     transport.cancel(requestIdRef.current);
     setPending(false);
@@ -155,10 +156,9 @@ export default function AssistantPage() {
         model: settings.model,
         answers,
       }, controller.signal);
-      handleReply(reply);
+      if (requestIdRef.current === requestId) handleReply(reply);
     } finally {
-      setPending(false);
-      abortRef.current = null;
+      if (requestIdRef.current === requestId) { setPending(false); abortRef.current = null; }
     }
   }, [clarify.questions, clarify.source, handleReply, messages, settings.model, settings.provider, transport]);
 
@@ -170,6 +170,10 @@ export default function AssistantPage() {
       const changes = prev.changes.some(c => c.key === key)
         ? prev.changes.map(c => (c.key === key ? { ...c, after: value === null || value === '' ? '—' : String(value) } : c))
         : [...prev.changes, { key, label, before: '—', after: value === null || value === '' ? '—' : String(value) }];
+      if (prev.domain === 'payments' && key === 'amount') {
+        const total = changes.find(c => c.key === 'totalPayment');
+        if (total) total.after = String(Number(total.before || 0) + Number(value || 0));
+      }
       return { ...prev, fields, changes };
     });
   }, []);
@@ -177,6 +181,7 @@ export default function AssistantPage() {
   const confirmDraft = useCallback(async () => {
     if (!draft) return;
     const requestId = newId('req');
+    requestIdRef.current = requestId;
     const controller = new AbortController();
     abortRef.current = controller;
     setPending(true);
@@ -191,7 +196,7 @@ export default function AssistantPage() {
       } else {
         pushMessage({ role: 'assistant', text: outcome.error.message, errorCode: outcome.error.code });
       }
-      setDraft(null);
+      if (outcome.kind === 'applied' || outcome.kind === 'demo') setDraft(null);
     } finally {
       setPending(false);
       abortRef.current = null;
@@ -231,7 +236,7 @@ export default function AssistantPage() {
           <button className={`btn ${tab === 'chat' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab('chat')}>Чат</button>
           <button className={`btn ${tab === 'settings' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab('settings')}>Налаштування</button>
           {tab === 'chat' && (
-            <button className="btn btn-ghost" onClick={clearHistory}>Очистити історію</button>
+            <button className="btn btn-ghost" disabled={pending} onClick={clearHistory}>Очистити історію</button>
           )}
         </div>
       </div>
@@ -269,8 +274,7 @@ export default function AssistantPage() {
               <li>Голосовий ввід: запис/зупинка, перегляд транскрипції, відмова доступу, відсутність підтримки браузера</li>
             </ul>
             <p className="settings-text" style={{ marginTop: 10 }}>
-              Не підключено на етапі 1: реальний провайдер, серверні функції, збереження API-ключів,
-              виконання фінансових дій через AI.
+              OpenCode Zen підключається через сервер. Чернетки створення, редагування та видалення виконуються лише після підтвердження. Оплата проєкту також додає дохід у фінанси. Ключі інших провайдерів та їх перемикання підключаються окремо.
             </p>
           </div>
         </div>

@@ -50,6 +50,7 @@ export function saveProviderSettings(settings: ProviderSettings): ProviderSettin
 }
 
 const KEY_PATTERNS: Record<ProviderId, RegExp> = {
+  opencode: /^oc_sk_[A-Za-z0-9_\-]{12,}$/,
   openai: /^sk-[A-Za-z0-9_\-]{8,}$/,
   anthropic: /^sk-ant-[A-Za-z0-9_\-]{8,}$/,
   google: /^AIza[A-Za-z0-9_\-]{10,}$/,
@@ -95,7 +96,7 @@ export function assertNoStoredSecrets(): string[] {
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
       if (!key) continue;
-      if (/(api[_-]?key|secret|token|password|credential)/i.test(key)) found.push(key);
+      if (!/^sb-[a-z0-9]+-auth-token(?:-code-verifier)?$/i.test(key) && /(api[_-]?key|secret|token|password|credential)/i.test(key)) found.push(key);
     }
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw && /(api[_-]?key|secret|token|password|credential)/i.test(raw)) found.push(STORAGE_KEY);
