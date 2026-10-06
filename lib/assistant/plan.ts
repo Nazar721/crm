@@ -1,7 +1,8 @@
+import {accountBalances} from './balance-report';
 import type {DataSnapshot} from '@/types';
 import type {AssistantActionType,AssistantDomain,AssistantField,AssistantReply} from './contract';
 import {BANKS} from '@/lib/banks';
-import {dashboardStats,bankBalances,project} from '@/lib/calc';
+import {dashboardStats,project} from '@/lib/calc';
 import {today} from '@/lib/utils';
 export type Plan={domain:AssistantDomain;action:AssistantActionType;recordId?:string;fields:Record<string,string|number|boolean|null>;base:string};
 type Spec={label:string;kind:AssistantField['kind'];options?:string[]};
@@ -89,7 +90,7 @@ export function draftReply(plan:Plan,s:DataSnapshot,id:string):AssistantReply{
  return {kind:'draft',draft:{id,domain:plan.domain,action:plan.action,title:`${plan.action==='delete'?'Видалити':plan.action==='create'?'Створити':'Змінити'}: ${target}`,fields,changes,questions:[],recordId:plan.recordId,route:routes[plan.domain]}};
 }
 export function modelContext(s:DataSnapshot){
- return {date:today(),settings:s.financeSettings,stats:dashboardStats(s),bankBalances:bankBalances(s.transactions,s.financeSettings),
+ return {date:today(),settings:s.financeSettings,stats:dashboardStats(s),bankBalances:accountBalances(s),
  clients:s.clients,specialists:s.specialists,partners:s.partners,debts:s.personalDebts,savings:s.savings,
  projects:[...s.projectsActive,...s.projectsCompleted].map(p=>({id:p.id,name:p.name,clientName:p.clientName,status:p.status,currency:p.currency||'UAH',developerId:p.developerId,partnerId:p.partnerId,startDate:p.startDate,endDate:p.endDate,...project(p)})),
  transactions:s.transactions.map(t=>({id:t.id,type:t.type,amount:t.amount,bank:t.bank,date:t.date,category:t.category,description:t.description,projectId:t.projectId,hidden:t.hidden,incomeStatus:t.incomeStatus,toBank:t.toBank,targetAmount:t.targetAmount,rate:t.rate,status:t.status})),banks:BANKS.map(({id,label,currency})=>({id,label,currency}))};

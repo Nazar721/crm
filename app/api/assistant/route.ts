@@ -1,3 +1,4 @@
+import {currentBalanceReply} from '@/lib/assistant/balance-report';
 import {assistantInstructions} from '@/lib/assistant/instructions';
 import {createClient} from '@supabase/supabase-js';
 import {NextResponse} from 'next/server';
@@ -37,6 +38,8 @@ export async function POST(req:Request){
   const config=resolveProvider(body.provider,body.model);
   if(!config.key)return error('not_connected','Для обраного провайдера не налаштований серверний ключ');
   if(typeof body.text!=='string'||!body.text.trim()||body.text.length>8000)return error('invalid_response','Команда порожня або надто довга');
+  const balanceReply=currentBalanceReply(body.text,s);
+  if(balanceReply)return NextResponse.json(balanceReply,{headers:{'Cache-Control':'no-store'}});
   const now=Date.now(),previous=buckets.get(userId),bucket=previous&&now-previous.at<60000?previous:{at:now,count:0,busy:false};
   if(bucket.busy||bucket.count>=12)return error('quota_exceeded','Зачекай завершення запиту або хвилину перед наступним');
   bucket.count++;bucket.busy=true;buckets.set(userId,bucket);released=true;
