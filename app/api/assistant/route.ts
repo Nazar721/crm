@@ -61,6 +61,6 @@ export async function POST(req:Request){
    return NextResponse.json({kind:'clarify',text:parsed.text.slice(0,4000),questions});
   }
   return error('invalid_response');
- }catch(e){if(e instanceof ProviderError)return error(e.code,e.code==='model_incompatible'?e.message:undefined);return error('invalid_response',e instanceof Error&&e.message.length<250?e.message:undefined);}
+ }catch(e){if(e instanceof ProviderError)return error(e.code,['model_incompatible','invalid_response'].includes(e.code)?e.message:undefined);return error('invalid_response',e instanceof Error&&e.message.length<250?e.message:undefined);}
  finally{if(released){const bucket=buckets.get(userId);if(bucket)bucket.busy=false;}}
 }

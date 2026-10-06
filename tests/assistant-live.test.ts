@@ -3,7 +3,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {normalizePlan,missingQuestions,cleanFields,fingerprint,modelContext,draftReply,type Plan} from '@/lib/assistant/plan';
 import {signPlan,verifyPlan} from '@/lib/assistant/signing';
-import {askZen,askProvider,resolveProvider,ZEN_MODEL,OPENROUTER_MODEL} from '@/lib/assistant/provider';
+import {askZen,askProvider,parseAssistantContent,resolveProvider,ZEN_MODEL,OPENROUTER_MODEL} from '@/lib/assistant/provider';
 import {SupabaseDataSource} from '@/lib/datasource/supabase';
 import {executePlan} from '@/lib/assistant/executor';
 import {clearAll,emptySnapshot,makeProject} from './helpers';
@@ -94,4 +94,22 @@ test('missing required data triggers clarification rather than incomplete draft'
  assert.deepEqual(missingQuestions(p,s).map(q=>q.key),['clientName','budget']);
  const project=makeProject({bank:'mono'});s.projectsActive=[project];const payment=normalizePlan({domain:'payments',action:'update',recordId:project.id,fields:{amount:10}},s);
  assert.deepEqual(missingQuestions(payment,s).map(q=>q.key),['bank']);
+});
+
+
+test('natural conversation accepts plain text, JSON text and text content blocks',()=>{
+ assert.deepEqual(parseAssistantContent('Привіт 🙂 Чим допомогти?'),{kind:'text',text:'Привіт 🙂 Чим допомогти?'});
+ assert.deepEqual(parseAssistantContent('"Привіт"'),{kind:'text',text:'Привіт'});
+ assert.deepEqual(parseAssistantContent([{type:'reasoning',text:'private'},{type:'text',text:'Мені винні 100 UAH.'}]),{kind:'text',text:'Мені винні 100 UAH.'});
+ assert.deepEqual(parseAssistantContent('```json\n{"kind":"text","text":"Привіт"}\n```'),{kind:'text',text:'Привіт'});
+});
+test('broken, truncated or empty model responses cannot masquerade as chat or execute',()=>{
+ for(const content of ['',null,'{"kind":"draft","fields":','```json\n{"kind":"draft"}'])assert.throws(()=>parseAssistantContent(content));
+ assert.throws(()=>parseAssistantContent('{"kind":"draft","fields":{}}','length'));
+ assert.throws(()=>parseAssistantContent('x'.repeat(16001)));
+ const draft={kind:'draft',domain:'clients',action:'create',fields:{name:'Synthetic'}};assert.deepEqual(parseAssistantContent(JSON.stringify(draft)),draft);
+});
+test('free chat request retains JSON action format and leaves room for visible reply',async()=>{
+ const fake=(async(_url:unknown,init:RequestInit)=>{const body=JSON.parse(String(init.body));assert.equal(body.max_tokens,6000);assert.deepEqual(body.reasoning,{enabled:false,exclude:true});assert.equal(body.response_format.type,'json_object');assert.equal(body.provider.max_price.completion,0);return new Response(JSON.stringify({choices:[{message:{content:'Привіт!'}}]}));}) as typeof fetch;
+ assert.deepEqual(await askProvider([], {...resolveProvider('openrouter',OPENROUTER_MODEL),key:'synthetic'},undefined,fake),{kind:'text',text:'Привіт!'});
 });
