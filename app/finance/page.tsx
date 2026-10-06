@@ -1,7 +1,7 @@
 'use client';
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useApp } from '@/context/AppContext';
-import { monthIncome, financeBalance, bankBalances, bankCurrencyLocal, bankAmountToDisplay, summarizeTransactions } from '@/lib/calc';
+import { monthIncome, financeBalance, bankBalances, bankCurrencyLocal, summarizeTransactions } from '@/lib/calc';
 import { formatMoney, formatDate, today, getMonthKey, getMonthLabel } from '@/lib/utils';
 import { BANKS, normalizeBank, bankLabel } from '@/lib/banks';
 import { saveTransaction, deleteTransaction, saveRates, convertCurrency } from '@/lib/actions';
