@@ -2405,6 +2405,7 @@ tr.week-b .week-dot {
 }
 
 .ai-chat {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -2423,6 +2424,8 @@ tr.week-b .week-dot {
 }
 
 .ai-provider-badge {
+  flex-wrap: wrap;
+  min-width: 0;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -2460,8 +2463,11 @@ tr.week-b .week-dot {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  max-height: 56vh;
-  min-height: 220px;
+  height: clamp(260px, 56dvh, 720px);
+  min-height: 0;
+  min-width: 0;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
   overflow-y: auto;
   padding-right: 4px;
   -webkit-overflow-scrolling: touch;
@@ -2478,14 +2484,20 @@ tr.week-b .week-dot {
 .ai-empty p { margin: 0 0 6px; }
 .ai-empty-hint { font-size: 0.8rem; color: var(--text-tertiary); }
 
+.ai-messages > * { flex-shrink: 0; min-width: 0; }
+
 .ai-msg {
-  max-width: 82%;
+  max-width: min(82%, 880px);
+  min-width: 0;
+  overflow-wrap: anywhere;
   padding: 10px 13px;
   border-radius: 14px;
   font-size: 0.9rem;
   line-height: 1.5;
-  word-break: break-word;
+  word-break: normal;
 }
+
+.ai-msg-text { white-space: pre-wrap; }
 
 .ai-msg--user {
   align-self: flex-end;
@@ -2627,16 +2639,19 @@ tr.week-b .week-dot {
 .ai-voice-preview { display: flex; flex-direction: column; gap: 6px; }
 
 .ai-composer {
-  display: flex;
-  align-items: flex-end;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: end;
   gap: 8px;
 }
 
 .ai-composer-input {
-  flex: 1;
-  resize: none;
-  min-height: 42px;
+  min-width: 0;
+  width: 100%;
+  resize: vertical;
+  min-height: 48px;
   max-height: 140px;
+  line-height: 1.5;
 }
 
 .ai-key-row { display: flex; gap: 8px; align-items: center; }
@@ -2653,10 +2668,15 @@ tr.week-b .week-dot {
 }
 
 @media (max-width: 768px) {
-  .ai-messages { max-height: 52vh; }
-  .ai-msg { max-width: 92%; }
-  .ai-composer { flex-wrap: wrap; }
-  .ai-composer-input { order: 3; flex: 1 1 100%; }
+  .ai-chat { padding: 12px; gap: 12px; }
+  .ai-messages { height: clamp(240px, 52dvh, 580px); }
+  .ai-msg { max-width: 96%; padding: 10px 12px; }
+  .ai-composer { grid-template-columns: auto minmax(0, 1fr); }
+  .ai-composer-input { grid-column: 1 / -1; grid-row: 1; }
+  .ai-composer > .btn-icon { grid-column: 1; grid-row: 2; }
+  .ai-composer > .btn { grid-column: 2; grid-row: 2; justify-self: end; }
+  .ai-draft-fields { grid-template-columns: minmax(0, 1fr); }
+  .ai-draft-changes li { flex-wrap: wrap; gap: 4px; }
 }
 
 /* =============================================
@@ -2684,6 +2704,35 @@ tr.week-b .week-dot {
 @media (max-width: 768px) {
   .write-block-banner { margin: -16px -12px 14px; padding: 10px 12px; }
 }
+
+
+/* Structured assistant answers stay readable without affecting other CRM tables. */
+.ai-markdown { white-space: normal; line-height: 1.65; min-width: 0; }
+.ai-markdown > :first-child { margin-top: 0; }
+.ai-markdown > :last-child { margin-bottom: 0; }
+.ai-markdown p { margin: 0 0 12px; }
+.ai-markdown h1, .ai-markdown h2, .ai-markdown h3,
+.ai-markdown h4, .ai-markdown h5, .ai-markdown h6 {
+  font-size: 1rem; line-height: 1.4; margin: 18px 0 8px; font-weight: 700;
+}
+.ai-markdown ul, .ai-markdown ol { margin: 8px 0 12px; padding-left: 22px; }
+.ai-markdown li { margin: 4px 0; }
+.ai-markdown li > p { margin-bottom: 4px; }
+.ai-markdown strong { font-weight: 700; color: var(--text-primary); }
+.ai-markdown a { color: var(--accent-blue); text-decoration: underline; text-underline-offset: 3px; }
+.ai-markdown a:focus-visible, .ai-table-scroll:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 3px; }
+.ai-markdown blockquote { margin: 12px 0; padding-left: 12px; border-left: 2px solid var(--accent-blue); color: var(--text-secondary); }
+.ai-markdown code { font-family: ui-monospace, monospace; font-size: .86em; background: rgba(255,255,255,.07); padding: 2px 5px; border-radius: 4px; }
+.ai-markdown pre { max-width: 100%; overflow-x: auto; padding: 12px; border-radius: 8px; background: rgba(0,0,0,.25); }
+.ai-markdown pre code { background: none; padding: 0; white-space: pre; }
+.ai-markdown hr { border: 0; border-top: 1px solid rgba(255,255,255,.12); margin: 16px 0; }
+.ai-table-scroll { max-width: 100%; overflow-x: auto; margin: 12px 0; border: 1px solid rgba(255,255,255,.12); border-radius: 8px; -webkit-overflow-scrolling: touch; }
+.ai-markdown table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+.ai-markdown th, .ai-markdown td { padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,.1); text-align: left; white-space: nowrap; }
+.ai-markdown th { font-weight: 600; background: rgba(255,255,255,.06); }
+.ai-markdown tr:last-child td { border-bottom: 0; }
+.ai-markdown .contains-task-list { list-style: none; padding-left: 0; }
+@media (prefers-reduced-motion: reduce) { .ai-typing i { animation: none; opacity: .65; } }
 
 /* The login is a direct child of the flex body, without the CRM sidebar. */
 .cloud-access {

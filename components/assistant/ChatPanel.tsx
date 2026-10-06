@@ -7,6 +7,7 @@ import type {
 } from '@/lib/assistant/contract';
 import { ACTION_LABELS, DOMAIN_LABELS, PROVIDER_LABELS, ASSISTANT_ERROR_MESSAGES } from '@/lib/assistant/contract';
 import { useVoiceInput } from '@/hooks/useVoiceInput';
+import MarkdownMessage from './MarkdownMessage';
 
 interface ChatPanelProps {
   messages: AssistantMessage[];
@@ -84,7 +85,7 @@ export default function ChatPanel(props: ChatPanelProps) {
         )}
       </div>
 
-      <div className="ai-messages" ref={listRef}>
+      <div className="ai-messages" ref={listRef} role="log" aria-label="Історія розмови" aria-live="polite" aria-relevant="additions">
         {messages.length === 0 && (
           <div className="ai-empty">
             <p>Напишіть команду: «покажи борги», «створи клієнта», «який баланс».</p>
@@ -96,7 +97,7 @@ export default function ChatPanel(props: ChatPanelProps) {
 
         {messages.map(m => (
           <div key={m.id} className={`ai-msg ai-msg--${m.role}${m.errorCode ? ' ai-msg--error' : ''}`}>
-            <div className="ai-msg-text">{m.text}</div>
+            <div className="ai-msg-text">{m.role === 'assistant' && !m.errorCode ? <MarkdownMessage text={m.text} /> : m.text}</div>
             {m.errorCode && ASSISTANT_ERROR_MESSAGES[m.errorCode] && (
               <div className="ai-msg-hint">{ASSISTANT_ERROR_MESSAGES[m.errorCode].hint}</div>
             )}
@@ -112,7 +113,7 @@ export default function ChatPanel(props: ChatPanelProps) {
 
         {clarifyQuestions.length > 0 && !draft && (
           <div className="ai-clarify">
-            <div className="ai-msg-text">{clarifyText}</div>
+            <div className="ai-msg-text"><MarkdownMessage text={clarifyText} /></div>
             {clarifyQuestions.map(q => (
               <div className="ai-field" key={q.key}>
                 <label className="form-label">{q.prompt}</label>
@@ -269,18 +270,20 @@ export default function ChatPanel(props: ChatPanelProps) {
         <button
           className="btn-icon"
           title="Голосовий ввід"
+          aria-label="Голосовий ввід"
           onClick={() => (showVoice && voice.state.status === 'idle' ? setShowVoice(false) : startVoice())}
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" stroke="currentColor" strokeWidth="2"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
         </button>
         <textarea
           className="form-input ai-composer-input"
-          rows={1}
+          rows={2}
+          aria-label="Повідомлення помічнику"
           placeholder="Напишіть команду помічнику…"
           value={text}
           onChange={e => setText(e.target.value)}
           onKeyDown={e => {
-            if (e.key === 'Enter' && !e.shiftKey) {
+            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
               send();
             }

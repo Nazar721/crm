@@ -1,4 +1,5 @@
 'use client';
+import {incomeForMonth} from '@/lib/income-report';
 import { useState, useMemo, type ReactNode } from 'react';
 import { useApp } from '@/context/AppContext';
 import { dashboardStats, project as calcProject, savingsSummary, bankBalances, toDisplay, bankAmountToDisplay } from '@/lib/calc';
@@ -97,10 +98,7 @@ export default function DashboardPage() {
     const srcColors: Record<string, string> = { Telegram: '#0A84FF', Instagram: '#FF375F', YouTube: '#FF9F0A', 'Реклама': '#BF5AF2', 'Сайт': '#64D2FF', 'Сарафанне радіо': '#30D158', 'Інше': '#555a70' };
 
     const amd = last12Months() as Record<string, { income: number }>;
-    completed.forEach(p => {
-      const key = getMonthKey((p as any).endDate || (p as any).finishDate || '');
-      if (key && amd[key]) amd[key].income += toDisplay(calcProject(p as any).myIncome, itemCurrency(p), snapshot.financeSettings);
-    });
+    for (const key of Object.keys(amd)) amd[key].income = incomeForMonth(snapshot, key).agencyIncome;
     const agencyLabels = Object.keys(amd).map(k => getMonthLabel(k));
     const agencyIncome = Object.values(amd).map(d => d.income);
     const cmKey = getMonthKey(today());

@@ -1,7 +1,7 @@
 'use client';
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useApp } from '@/context/AppContext';
-import { financeBalance, bankBalances, bankCurrencyLocal, bankAmountToDisplay, summarizeTransactions } from '@/lib/calc';
+import { monthIncome, financeBalance, bankBalances, bankCurrencyLocal, bankAmountToDisplay, summarizeTransactions } from '@/lib/calc';
 import { formatMoney, formatDate, today, getMonthKey, getMonthLabel } from '@/lib/utils';
 import { BANKS, normalizeBank, bankLabel } from '@/lib/banks';
 import { saveTransaction, deleteTransaction, saveRates, convertCurrency } from '@/lib/actions';
@@ -106,16 +106,7 @@ export default function FinancePage() {
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       md[key] = 0;
     }
-    allTxs.forEach(t => {
-      if (t.hidden) return;
-      if (t.source && String(t.source).startsWith('project_')) return;
-      if (t.type !== 'income') return;
-      if (t.incomeStatus === 'incoming') return;
-      const key = getMonthKey(t.date || t.plannedDate);
-      if (key && md[key] !== undefined) {
-        md[key] += bankAmountToDisplay(t.amount, t.bank, financeSettings);
-      }
-    });
+    for (const key of Object.keys(md)) md[key] = monthIncome(allTxs, key, financeSettings);
     return { labels: Object.keys(md).map(k => getMonthLabel(k)), income: Object.values(md) };
   }, [allTxs, financeSettings]);
 

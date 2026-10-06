@@ -1,3 +1,4 @@
+import {incomeHistory} from '@/lib/income-report';
 import {accountBalances} from './balance-report';
 import type {DataSnapshot} from '@/types';
 import type {AssistantActionType,AssistantDomain,AssistantField,AssistantReply} from './contract';
@@ -101,8 +102,8 @@ export function projectSummary(s:DataSnapshot){
  return {active:group(s.projectsActive),completed:group(s.projectsCompleted)};
 }
 export function modelContext(s:DataSnapshot){
- return {date:today(),settings:s.financeSettings,stats:dashboardStats(s),projectSummary:projectSummary(s),bankBalances:accountBalances(s),
+ return {date:today(),settings:s.financeSettings,stats:dashboardStats(s),monthlyIncome:incomeHistory(s),projectSummary:projectSummary(s),bankBalances:accountBalances(s),
  clients:s.clients,specialists:s.specialists,partners:s.partners,debts:s.personalDebts,savings:s.savings,
  projects:[...s.projectsActive.map(p=>({...p,collection:'active'})),...s.projectsCompleted.map(p=>({...p,collection:'completed'}))].map(p=>({id:p.id,collection:p.collection,name:p.name,clientName:p.clientName,status:p.status,currency:p.currency||'UAH',displayBudget:{amount:toDisplay(Number(p.budget)||0,p.currency||'UAH',s.financeSettings),currency:s.financeSettings.displayCurrency||'UAH'},developerId:p.developerId,partnerId:p.partnerId,startDate:p.startDate,endDate:p.endDate,...project(p)})),
- transactions:s.transactions.map(t=>({id:t.id,type:t.type,amount:t.amount,bank:t.bank,date:t.date,category:t.category,description:t.description,projectId:t.projectId,hidden:t.hidden,incomeStatus:t.incomeStatus,toBank:t.toBank,targetAmount:t.targetAmount,rate:t.rate,status:t.status})),banks:BANKS.map(({id,label,currency})=>({id,label,currency}))};
+ transactions:s.transactions.map(t=>({id:t.id,type:t.type,amount:t.amount,bank:t.bank,date:t.date,category:t.category,description:t.description,projectId:t.projectId,hidden:t.hidden,incomeStatus:t.incomeStatus,source:t.source,plannedDate:t.plannedDate,toBank:t.toBank,targetAmount:t.targetAmount,rate:t.rate,status:t.status})),banks:BANKS.map(({id,label,currency})=>({id,label,currency}))};
 }

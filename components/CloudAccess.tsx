@@ -22,7 +22,7 @@ export default function CloudAccess({ children }: { children: ReactNode }) {
   }, []);
   if (!cloudEnabled()) return children;
   if (!ready) return <div className="app-shell-state cloud-access">Перевірка входу…</div>;
-  if (signedIn) return <>{children}<button className="btn btn-ghost" style={{position:'fixed',right:16,bottom:80,zIndex:50}} onClick={() => { void supabase().auth.signOut(); }}>Вийти</button></>;
+  if (signedIn) return children;
   return <main className="app-shell-state cloud-access"><form className="cloud-access-form" onSubmit={async event => {
     event.preventDefault(); if (busy) return; setBusy(true); setError('');
     try {
