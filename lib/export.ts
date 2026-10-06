@@ -24,7 +24,7 @@ export function stripSecrets<T>(value: T, depth = 0): T {
  */
 export function buildExportPayload(
   snapshot: DataSnapshot,
-  options: { includeMeta?: boolean; exportedAt?: string; issues?: ExportIssue[] } = {},
+  options: { includeMeta?: boolean; exportedAt?: string; issues?: ExportIssue[]; corruptRaw?: Record<string, string> } = {},
 ): ExportPayload {
   const payload: ExportPayload = {
     app: EXPORT_FORMAT_ID,
@@ -44,6 +44,9 @@ export function buildExportPayload(
   };
   if (options.includeMeta !== false && snapshot.meta) payload.meta = stripSecrets(snapshot.meta);
   if (options.issues && options.issues.length) payload.issues = stripSecrets(options.issues);
+  if (options.corruptRaw && Object.keys(options.corruptRaw).length) {
+    payload.corruptRaw = { ...options.corruptRaw };
+  }
   return payload;
 }
 

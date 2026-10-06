@@ -101,7 +101,7 @@ export function makeTransaction(overrides: Partial<Transaction> = {}): Transacti
  * Адаптер, що може зазнавати збою запису для окремої колекції —
  * для перевірки відновлення під час імпорту.
  */
-export type FlakyKind = 'collection' | 'settings' | 'backupCopy';
+export type FlakyKind = 'collection' | 'settings' | 'backupCopy' | 'restoreRaw';
 export type FlakyPredicate = (kind: FlakyKind, key: string, callNumber: number) => boolean;
 
 /**
@@ -133,6 +133,14 @@ export class FlakyDataSource implements CrmDataSource {
   load() { return this.inner.load(); }
   writeBlockedReason() { return this.inner.writeBlockedReason(); }
   clearCollectionIssue(c: CollectionKey) { this.inner.clearCollectionIssue(c); }
+  collectionHealth() { return this.inner.collectionHealth(); }
+  markCollectionHealth(c: CollectionKey, state: 'corrupt' | 'ok') { this.inner.markCollectionHealth(c, state); }
+
+  async restoreRaw(collection: CollectionKey, raw: string): Promise<WriteOutcome> {
+    const call = this.next('restoreRaw', collection);
+    if (this.shouldFail('restoreRaw', collection, call)) return this.fail('restoreRaw', collection);
+    return this.inner.restoreRaw(collection, raw);
+  }
 
   private next(kind: FlakyKind, key: string): number {
     const id = `${kind}:${key}`;
@@ -145,9 +153,9 @@ export class FlakyDataSource implements CrmDataSource {
       ok: false,
       issue: {
         id: `flaky_${++this.issueId}`,
-        kind: 'write_failed',
+        kind: kind === 'restoreRaw' ? 'restore_failed' : 'write_failed',
         key,
-        collection: kind === 'collection' ? (key as CollectionKey) : undefined,
+        collection: kind === 'collection' || kind === 'restoreRaw' ? (key as CollectionKey) : undefined,
         message: `Симуляція збою запису «${key}» (${kind})`,
         at: new Date().toISOString(),
       },
@@ -178,6 +186,7 @@ export class FlakyDataSource implements CrmDataSource {
   }
 
   saveMeta(m: Parameters<CrmDataSource['saveMeta']>[0]) { return this.inner.saveMeta(m); }
+  loadBackupCopy() { return this.inner.loadBackupCopy(); }
   listIssues() { return this.inner.listIssues(); }
   clearIssues() { this.inner.clearIssues(); }
 }

@@ -114,11 +114,25 @@ export interface FinanceSettings {
   displayCurrency?: 'UAH' | 'USD' | 'EUR';
 }
 
+/**
+ * Інцидент незавершеного імпорту / невдалого відновлення.
+ * Зберігається стійко (в метаданих сховища) і НЕ знімається
+ * повторною ініціалізацією, міграціями чи очищенням журналу.
+ */
+export interface ImportIncident {
+  at: string;
+  reason: string;
+  stage?: string;
+  recovered?: boolean;
+}
+
 // Backup info
 export interface BackupInfo {
   lastSavedAt: string;
   lastManualBackupAt: string;
   backupSnoozedUntil: string;
+  /** Активний інцидент імпорту; null/відсутній — інцидентів немає. */
+  importIncident?: ImportIncident | null;
 }
 
 // Export data
@@ -145,6 +159,11 @@ export interface ExportPayload {
   meta?: BackupInfo;
   /** Проблеми локального сховища (напр. пошкоджені колекції) — без секретів. */
   issues?: ExportIssue[];
+  /**
+   * Сирий вміст пошкоджених колекцій на момент експорту — щоб відновлення
+   * не залежало від того, чи вдалося записати карантинну копію.
+   */
+  corruptRaw?: Record<string, string>;
 }
 
 export interface ExportIssue {

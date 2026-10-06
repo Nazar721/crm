@@ -165,7 +165,10 @@ test('невдала міграція під час імпорту залиша�
   assert.equal(report.recovered, false, 'відновлення невдале — це має бути видно');
   assert.ok(report.restoreSkipped !== undefined);
   assert.ok(store.getWriteBlock(), 'після невідновленого збою запис має бути заблоковано');
-  assert.ok(store.getWriteBlock()!.includes('Не вдалося відновити'));
+  const blocks = store.getWriteBlocks();
+  assert.ok(blocks.importIncident, 'інцидент має бути стійким (окремим від міграцій)');
+  assert.ok(blocks.importIncident!.reason.includes('Імпорт не завершено'), blocks.importIncident!.reason);
+  assert.ok(localStorage.getItem('crm_import_incomplete'), 'мітка має лишитися в сховищі');
 });
 
 // ------------------------------------------------------------

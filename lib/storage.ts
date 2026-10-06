@@ -52,6 +52,7 @@ export function exportData(includeMeta = true): ExportPayload {
   return buildExportPayload(store.getSnapshot(), {
     includeMeta,
     issues: store.getIssues(),
+    corruptRaw: store.getCorruptRaw(),
   });
 }
 

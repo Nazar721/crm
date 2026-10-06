@@ -1,5 +1,5 @@
 import type { BackupInfo, FinanceSettings } from '@/types';
-import type { CollectionKey, CrmDataSource, StorageIssue, StorageIssueKind, WriteOutcome } from './types';
+import type { CollectionHealth, CollectionKey, CrmDataSource, DataSnapshotPayload, StorageIssue, StorageIssueKind, WriteOutcome } from './types';
 import { COLLECTION_KEYS } from './types';
 import { normalizeSettings } from '@/lib/settings';
 
@@ -16,6 +16,7 @@ export const COLLECTION_STORAGE_KEYS: Record<CollectionKey, string> = {
 
 export const META_STORAGE_KEYS = {
   lastSavedAt: 'crm_last_saved_at',
+  importIncident: 'crm_import_incomplete',
   lastManualBackupAt: 'crm_last_manual_backup_at',
   backupSnoozedUntil: 'crm_backup_snoozed_until',
   financeSettings: 'crm_finance_settings',
@@ -26,6 +27,8 @@ export const META_STORAGE_KEYS = {
 export const BACKUP_KEYS = ['crm_backup_1', 'crm_backup_2', 'crm_backup_3', 'crm_backup_4', 'crm_backup_5'];
 const ISSUES_KEY = 'crm_storage_issues';
 const CORRUPT_PREFIX = 'crm_corrupt_';
+/** Стан здоров'я даних — живе окремо від журналу повідомлень. */
+const HEALTH_KEY = 'crm_data_health';
 
 function issueId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -42,9 +45,38 @@ export class LocalDataSource implements CrmDataSource {
   readonly kind = 'local' as const;
   private issues: StorageIssue[] = [];
   private writeBlockReason: string | null = null;
+  private health: Partial<Record<CollectionKey, CollectionHealth>> = {};
+  private corruptRaw: Partial<Record<CollectionKey, string>> = {};
 
   constructor() {
     this.issues = this.readPersistedIssues();
+    this.health = this.readPersistedHealth();
+  }
+
+  private readPersistedHealth(): Partial<Record<CollectionKey, CollectionHealth>> {
+    try {
+      if (typeof window === 'undefined') return {};
+      const raw = localStorage.getItem(HEALTH_KEY);
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (!parsed || typeof parsed !== 'object') return {};
+      const out: Partial<Record<CollectionKey, CollectionHealth>> = {};
+      for (const key of COLLECTION_KEYS) {
+        if ((parsed as Record<string, unknown>)[key] === 'corrupt') out[key] = 'corrupt';
+      }
+      return out;
+    } catch {
+      return {};
+    }
+  }
+
+  private persistHealth(): void {
+    try {
+      if (typeof window === 'undefined') return;
+      localStorage.setItem(HEALTH_KEY, JSON.stringify(this.health));
+    } catch {
+      // Запис стану здоров'я не вдався — чинним лишається стан у пам'яті,
+      // а під час наступного читання стан відновиться з реальної помилки JSON.
+    }
   }
 
   private readPersistedIssues(): StorageIssue[] {
@@ -98,6 +130,40 @@ export class LocalDataSource implements CrmDataSource {
     this.persistIssues();
   }
 
+  collectionHealth(): Partial<Record<CollectionKey, CollectionHealth>> {
+    return { ...this.health };
+  }
+
+  markCollectionHealth(collection: CollectionKey, state: CollectionHealth | 'ok'): void {
+    if (state === 'ok') {
+      if (this.health[collection] === undefined) return;
+      delete this.health[collection];
+    } else {
+      if (this.health[collection] === state) return;
+      this.health[collection] = state;
+    }
+    this.persistHealth();
+  }
+
+  /**
+   * Повертає сирий вміст колекції з головного ключа — відновлення не
+   * залежить від того, чи вдалося раніше записати карантинну копію.
+   */
+  async restoreRaw(collection: CollectionKey, raw: string): Promise<WriteOutcome> {
+    const outcome = this.write(COLLECTION_STORAGE_KEYS[collection], raw);
+    if (outcome.ok) {
+      this.markCollectionHealth(collection, 'corrupt');
+      this.pushIssue(
+        'corrupt_json',
+        `Колекція «${collection}» відновлена до пошкодженого оригіналу — запис у неї заблоковано.`,
+        COLLECTION_STORAGE_KEYS[collection],
+        CORRUPT_PREFIX + COLLECTION_STORAGE_KEYS[collection],
+        collection,
+      );
+    }
+    return outcome;
+  }
+
   /**
    * Читання всього сховища.
    *
@@ -108,7 +174,7 @@ export class LocalDataSource implements CrmDataSource {
    *   експорту: фіксується `writeBlockedReason()`;
    * - Виняток кидається лише коли читання неможливе.
    */
-  async load(): Promise<{ data: import('@/types').DataSnapshot; issues: StorageIssue[] }> {
+  async load(): Promise<DataSnapshotPayload> {
     if (typeof window === 'undefined') {
       throw new Error('Локальне сховище недоступне поза браузером');
     }
@@ -135,6 +201,7 @@ export class LocalDataSource implements CrmDataSource {
     }
 
     const data = {} as Record<CollectionKey, unknown[]> & { financeSettings: FinanceSettings; meta: BackupInfo };
+    this.corruptRaw = {};
 
     for (const key of COLLECTION_KEYS) {
       data[key] = this.readCollection(COLLECTION_STORAGE_KEYS[key], key) as never;
@@ -143,7 +210,7 @@ export class LocalDataSource implements CrmDataSource {
     data.financeSettings = this.readSettings();
     data.meta = this.readMeta();
 
-    return { data: data as never, issues: this.listIssues() };
+    return { data: data as never, issues: this.listIssues(), corruptRaw: { ...this.corruptRaw } };
   }
 
   private readCollection(storageKey: string, collection: CollectionKey): unknown[] {
@@ -166,6 +233,10 @@ export class LocalDataSource implements CrmDataSource {
       const note = preservedAt
         ? `Оригінал збережено окремо: «${preservedAt}».`
         : 'Оригінал зберегти не вдалося (перевищено ліміт) — він залишається лише під цим ключем до явного відновлення.';
+      // Сирий оригінал тримаємо в пам'яті для відновлення і фіксуємо
+      // здоров'я даних (окремо від журналу повідомлень).
+      this.corruptRaw[collection] = raw;
+      this.markCollectionHealth(collection, 'corrupt');
       this.pushIssue(
         'corrupt_json',
         `Пошкоджений JSON у «${collection}» (${storageKey}): ${String(err)}. ${note} ` +
@@ -200,13 +271,26 @@ export class LocalDataSource implements CrmDataSource {
 
   private readMeta(): BackupInfo {
     try {
+      let importIncident: BackupInfo['importIncident'] = null;
+      const rawIncident = localStorage.getItem(META_STORAGE_KEYS.importIncident);
+      if (rawIncident) {
+        try {
+          const parsed = JSON.parse(rawIncident);
+          if (parsed && typeof parsed === 'object' && typeof parsed.reason === 'string') {
+            importIncident = parsed as NonNullable<BackupInfo['importIncident']>;
+          }
+        } catch {
+          importIncident = { at: '', reason: 'Незавершений імпорт (стан пошкоджено)' };
+        }
+      }
       return {
         lastSavedAt: localStorage.getItem(META_STORAGE_KEYS.lastSavedAt) || '',
         lastManualBackupAt: localStorage.getItem(META_STORAGE_KEYS.lastManualBackupAt) || '',
         backupSnoozedUntil: localStorage.getItem(META_STORAGE_KEYS.backupSnoozedUntil) || '',
+        importIncident,
       };
     } catch {
-      return { lastSavedAt: '', lastManualBackupAt: '', backupSnoozedUntil: '' };
+      return { lastSavedAt: '', lastManualBackupAt: '', backupSnoozedUntil: '', importIncident: null };
     }
   }
 
@@ -228,7 +312,15 @@ export class LocalDataSource implements CrmDataSource {
   }
 
   async saveCollection(key: CollectionKey, value: unknown[]): Promise<WriteOutcome> {
-    return this.write(COLLECTION_STORAGE_KEYS[key], value);
+    const wasCorrupt = this.health[key] === 'corrupt';
+    const outcome = this.write(COLLECTION_STORAGE_KEYS[key], value);
+    if (outcome.ok && wasCorrupt) {
+      // Фактичне валідне відновлення — саме воно знімає блокування.
+      this.markCollectionHealth(key, 'ok');
+      this.clearCollectionIssue(key);
+      delete this.corruptRaw[key];
+    }
+    return outcome;
   }
 
   async saveSettings(settings: FinanceSettings): Promise<WriteOutcome> {
@@ -240,11 +332,27 @@ export class LocalDataSource implements CrmDataSource {
     if (patch.lastSavedAt !== undefined) ok = this.write(META_STORAGE_KEYS.lastSavedAt, patch.lastSavedAt).ok && ok;
     if (patch.lastManualBackupAt !== undefined) ok = this.write(META_STORAGE_KEYS.lastManualBackupAt, patch.lastManualBackupAt).ok && ok;
     if (patch.backupSnoozedUntil !== undefined) ok = this.write(META_STORAGE_KEYS.backupSnoozedUntil, patch.backupSnoozedUntil).ok && ok;
+    if ('importIncident' in patch) {
+      const incident = patch.importIncident;
+      if (incident) ok = this.write(META_STORAGE_KEYS.importIncident, incident).ok && ok;
+      else {
+        try { localStorage.removeItem(META_STORAGE_KEYS.importIncident); } catch { ok = false; }
+      }
+    }
     return ok ? { ok: true } : { ok: false, issue: this.pushIssue('write_failed', 'Не вдалося оновити службові мітки сховища') };
   }
 
   async saveBackupCopy(serialized: string): Promise<WriteOutcome> {
     return this.write('crm_import_previous', serialized);
+  }
+
+  async loadBackupCopy(): Promise<string | null> {
+    try {
+      return localStorage.getItem('crm_import_previous');
+    } catch (err) {
+      this.pushIssue('read_failed', `Не вдалося прочитати копію попереднього стану: ${String(err)}`, 'crm_import_previous');
+      return null;
+    }
   }
 
   /** Службовий запис поза контрактом (заглушки міграцій, кварантина тощо). */

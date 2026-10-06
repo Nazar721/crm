@@ -47,7 +47,15 @@ export type WriteOutcome =
 export interface DataSnapshotPayload {
   data: DataSnapshot;
   issues: StorageIssue[];
+  /**
+   * Сирий вміст пошкоджених колекцій (ті, для яких JSON не розібрався).
+   * Використовується для відновлення БЕЗ залежності від карантинної копії.
+   */
+  corruptRaw: Partial<Record<CollectionKey, string>>;
 }
+
+/** Стан здоров'я даних колекції — незалежний від журналу повідомлень. */
+export type CollectionHealth = 'corrupt';
 
 /**
  * Асинхронне джерело даних.
@@ -77,8 +85,18 @@ export interface CrmDataSource {
   saveMeta(patch: Partial<BackupInfo>): Promise<WriteOutcome>;
   /** Окрема важка копія (наприклад, попередній стан перед імпортом). */
   saveBackupCopy(serialized: string): Promise<WriteOutcome>;
+  /** Прочитати копію попереднього стану (null — копії немає або вона непридатна). */
+  loadBackupCopy(): Promise<string | null>;
   listIssues(): StorageIssue[];
   clearIssues(): void;
   /** Прибрати issue про пошкодження конкретної колекції (після успішного відновлення). */
   clearCollectionIssue(collection: CollectionKey): void;
+  /**
+   * Стан здоров'я колекцій ('corrupt' — дані непридатні, запис заблоковано).
+   * Це НЕ журнал повідомлень: очищення журналу не змінює здоров'я.
+   */
+  collectionHealth(): Partial<Record<CollectionKey, CollectionHealth>>;
+  markCollectionHealth(collection: CollectionKey, state: CollectionHealth | 'ok'): void;
+  /** Повернути сирий вміст колекції (для відновлення пошкоджених даних). */
+  restoreRaw(collection: CollectionKey, raw: string): Promise<WriteOutcome>;
 }

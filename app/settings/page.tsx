@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
 import { getBackupInfo, shouldShowBackupReminder, snoozeBackupReminder, exportData, markManualBackup } from '@/lib/storage';
-import { previewImport, applyImport, type ImportPreview, type ImportReport } from '@/lib/importer';
+import { previewImport, applyImport, restoreFromPreviousCopy, type ImportPreview, type ImportReport } from '@/lib/importer';
 import { getBackupRuntimeStatus, type BackupRuntimeStatus } from '@/lib/backup';
 import { setDisplayCurrency } from '@/lib/actions';
 import * as store from '@/lib/store';
@@ -10,6 +10,8 @@ import { clearIssues } from '@/lib/store';
 import { emitToast } from '@/lib/toast-bus';
 import { formatDateTime } from '@/lib/utils';
 import Modal from '@/components/ui/Modal';
+import ConfirmModal from '@/components/ui/ConfirmModal';
+import { useConfirm } from '@/hooks/useConfirm';
 import type { StorageIssue } from '@/lib/datasource/types';
 
 const COLLECTION_LABELS: Record<string, string> = {
@@ -36,6 +38,8 @@ export default function SettingsPage() {
   const [importing, setImporting] = useState(false);
   const [ackSkipped, setAckSkipped] = useState(false);
   const [issues, setIssues] = useState<StorageIssue[]>(storageIssues);
+  const [corrupt, setCorrupt] = useState<string[]>([]);
+  const { isOpen: confirmOpen, title: confirmTitle, text: confirmText, confirm, handleConfirm, cancel } = useConfirm();
 
   const refreshStatuses = () => {
     setInfo(getBackupInfo());
@@ -52,8 +56,54 @@ export default function SettingsPage() {
       usdtRate: snapshot.financeSettings.usdtRate ?? snapshot.financeSettings.usdRate,
     });
     setIssues(storageIssues);
+    setCorrupt(store.getCorruptCollections());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshKey]);
+
+  const incident = snapshot.meta.importIncident ?? null;
+
+  const doRestoreCopy = () => {
+    confirm(
+      'Відновити попередній стан?',
+      'Поточні дані буде замінено копією, знятою перед останнім імпортом. Дію не можна скасувати.',
+      () => {
+        void (async () => {
+          const report = await restoreFromPreviousCopy();
+          if (!report.ok) {
+            emitToast(
+              `Відновлення не завершено (${report.stage}): ${report.issue || 'помилка'}` +
+              (report.restoreSkipped?.length ? ` Не відновлено: ${report.restoreSkipped.join(', ')}.` : ''),
+              'error',
+            );
+          } else {
+            emitToast('Попередній стан відновлено з копії', 'success');
+          }
+          await reinitialize();
+          refreshStatuses();
+          triggerRefresh();
+        })();
+      },
+    );
+  };
+
+  const doAcknowledgeIncident = () => {
+    confirm(
+      'Підтвердити відновлення?',
+      'Блокування запису буде знято. Переконайтеся, що дані справді відновлені: змішаний стан можна звірити через експорт JSON.',
+      () => {
+        void (async () => {
+          const ok = await store.acknowledgeImportIncident();
+          if (!ok) {
+            emitToast('Не вдалося зняти позначку (ліміт сховища)', 'error');
+          } else {
+            emitToast('Позначку знято — запис даних дозволено', 'success');
+          }
+          refreshStatuses();
+          triggerRefresh();
+        })();
+      },
+    );
+  };
 
   const doBackup = async () => {
     try {
@@ -120,10 +170,13 @@ export default function SettingsPage() {
     try {
       const report: ImportReport = await applyImport(rawPayload);
       if (!report.ok) {
+        const skippedNote = report.restoreSkipped?.length
+          ? ` Не відновлено колекції: ${report.restoreSkipped.map(c => COLLECTION_LABELS[c] || c).join(', ')}.`
+          : '';
         emitToast(
           report.recovered === false
-            ? `Імпорт не завершено (${report.stage}): ${report.issue || 'помилка'}. Попередній стан відновити не вдалося — копію збережено у «${preview.safetyCopyKey}».`
-            : `Імпорт не завершено (${report.stage}): ${report.issue || 'помилка'}. Попередній стан відновлено.`,
+            ? `Імпорт не завершено (${report.stage}): ${report.issue || 'помилка'}. Попередній стан відновити не вдалося — копію збережено у «${preview.safetyCopyKey}». Запис даних заблоковано до відновлення.${skippedNote}`
+            : `Імпорт не завершено (${report.stage}): ${report.issue || 'помилка'}. Попередній стан відновлено.${skippedNote}`,
           'error',
         );
         await reinitialize();
@@ -217,6 +270,36 @@ export default function SettingsPage() {
           )}
         </div>
 
+        {incident && (
+          <div className="settings-card" style={{ gridColumn: '1 / -1', border: '1px solid rgba(255,69,58,0.45)' }}>
+            <h3 className="settings-title" style={{ color: 'var(--danger)' }}>Незавершений імпорт</h3>
+            <p className="settings-text">{incident.reason}</p>
+            <div className="settings-info-row">
+              <span>Зафіксовано</span>
+              <strong>{incident.at ? formatDateTime(incident.at) : '—'}</strong>
+            </div>
+            {incident.stage && (
+              <div className="settings-info-row"><span>Етап</span><strong>{incident.stage}</strong></div>
+            )}
+            <div className="settings-info-row">
+              <span>Стан</span>
+              <strong style={{ color: incident.recovered === false ? 'var(--danger)' : 'var(--accent-orange)' }}>
+                {incident.recovered === false ? 'відновлення не вдалося — дані можуть бути змішаними' : 'стан не підтверджено'}
+              </strong>
+            </div>
+            <p className="settings-text" style={{ fontSize: '0.82rem' }}>
+              Перегляд і експорт JSON доступні. Запис даних заблоковано, допоки стан не відновлено
+              через копію або не підтверджено вручну. Повторна ініціалізація та перезапуск
+              цю позначку не знімають.
+            </p>
+            <div className="header-actions" style={{ marginTop: 10 }}>
+              <button className="btn btn-primary" onClick={doRestoreCopy}>Відновити з копії</button>
+              <button className="btn btn-ghost" onClick={doAcknowledgeIncident}>Підтвердити відновлення</button>
+              <button className="btn btn-ghost" onClick={doBackup}>Експортувати JSON</button>
+            </div>
+          </div>
+        )}
+
         <div className="settings-card" style={{ gridColumn: '1 / -1' }}>
           <h3 className="settings-title">Стан збереження</h3>
           <div className="settings-info-row"><span>Останнє збереження</span><strong>{info.lastSavedAt ? `${formatDateTime(info.lastSavedAt)} ✓` : '—'}</strong></div>
@@ -224,6 +307,18 @@ export default function SettingsPage() {
           <div className="settings-info-row"><span>Записів у базі</span><strong>
             {snapshot.projectsActive.length + snapshot.projectsCompleted.length} проєктів · {snapshot.clients.length} клієнтів · {snapshot.transactions.length} транзакцій
           </strong></div>
+          <div className="settings-info-row">
+            <span>Колекції з пошкодженими даними</span>
+            <strong style={{ color: corrupt.length ? 'var(--danger)' : 'var(--accent-green)' }}>
+              {corrupt.length
+                ? `${corrupt.map(c => COLLECTION_LABELS[c] || c).join(', ')} — запис заблоковано до відновлення`
+                : 'немає'}
+            </strong>
+          </div>
+          <p className="settings-text" style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>
+            Стан даних не залежить від журналу нижче: очищення журналу прибирає лише повідомлення,
+            а не робить пошкоджені дані валідними.
+          </p>
           {issues.length > 0 && (
             <div className="backup-warning" style={{ marginTop: 12 }}>
               <strong>Проблеми з локальним сховищем ({issues.length})</strong>
@@ -357,6 +452,7 @@ export default function SettingsPage() {
           </>
         )}
       </Modal>
+      <ConfirmModal isOpen={confirmOpen} title={confirmTitle} text={confirmText} onConfirm={handleConfirm} onCancel={cancel} />
     </section>
   );
 }

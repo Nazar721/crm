@@ -1,4 +1,4 @@
-import type { BackupInfo, DataSnapshot, FinanceSettings } from '@/types';
+import type { BackupInfo, DataSnapshot, FinanceSettings, ImportIncident } from '@/types';
 import { COLLECTION_KEYS, type CollectionKey, type CrmDataSource, type StorageIssue, type WriteOutcome } from '@/lib/datasource/types';
 import { localDataSource } from '@/lib/datasource/local';
 import { normalizeSettings, primeSettings } from '@/lib/settings';
@@ -25,6 +25,8 @@ const listeners = new Set<() => void>();
 
 /** Колекції, у яких виявлено непридатний JSON (запис до них заблоковано). */
 let corruptCollections = new Set<CollectionKey>();
+/** Сирий вміст пошкоджених колекцій — для відновлення без карантину. */
+let corruptRaw: Partial<Record<CollectionKey, string>> = {};
 /** Запис заблоковано самим сховищем (ліміт/політика). */
 let storageWriteBlock: string | null = null;
 /** Запис заблоковано незавершеними міграціями. */
@@ -99,20 +101,74 @@ export function isCollectionCorrupt(key: CollectionKey): boolean {
   return corruptCollections.has(key);
 }
 
-/** Причина, чому запис користувача заблоковано (banner + помилки дій). */
+/**
+ * Причина, чому запис користувача заблоковано (banner + помилки дій).
+ * Порядок: ліміт сховища → стійкий інцидент імпорту → незавершені міграції.
+ * Інцидент імпорту живе в метаданих сховища: його НЕ знімають
+ * reinitialize, runMigrations, очищення журналу чи перезапуск.
+ */
 export function getWriteBlock(): string | null {
-  return storageWriteBlock || migrationWriteBlock;
+  return storageWriteBlock || importIncidentReason() || migrationWriteBlock;
 }
 
+/** Детальний стан блокування — для діагностики та тестів. */
+export function getWriteBlocks(): {
+  storage: string | null;
+  importIncident: ImportIncident | null;
+  migration: string | null;
+} {
+  return {
+    storage: storageWriteBlock,
+    importIncident: snapshot.meta.importIncident ?? null,
+    migration: migrationWriteBlock,
+  };
+}
+
+export function getImportIncident(): ImportIncident | null {
+  return snapshot.meta.importIncident ?? null;
+}
+
+/** Блок через незавершені міграції (тимчасовий, не плутати з інцидентом). */
 export function setMigrationBlock(reason: string | null): void {
   migrationWriteBlock = reason;
   notify();
 }
 
+function importIncidentReason(): string | null {
+  const incident = snapshot.meta.importIncident;
+  return incident && incident.reason ? incident.reason : null;
+}
+
+/**
+ * Встановити/зняти стійкий інцидент незавершеного імпорту.
+ * Запис іде поза логічними блоками (інцидент і є блоком).
+ * Якщо запис метаданих не вдався — стан у пам'яті НЕ змінюється
+ * (безпечніший напрямок: краще лишитися заблокованим).
+ */
+export async function setImportIncident(incident: ImportIncident | null): Promise<boolean> {
+  const outcome = await dataSource.saveMeta({ importIncident: incident });
+  if (!outcome.ok) {
+    notify();
+    return false;
+  }
+  snapshot = { ...snapshot, meta: { ...snapshot.meta, importIncident: incident } };
+  notify();
+  return true;
+}
+
+/** Явне підтвердження відновлення користувачем (кнопка в Налаштуваннях). */
+export async function acknowledgeImportIncident(): Promise<boolean> {
+  return setImportIncident(null);
+}
+
+/**
+ * Стан здоров'я даних читається з джерела даних, а НЕ з журналу
+ * повідомлень: очищення журналу не робить непридатні дані валідними.
+ */
 function refreshHealth(): void {
-  const issues = dataSource.listIssues();
+  const health = dataSource.collectionHealth();
   corruptCollections = new Set(
-    issues.filter(i => i.kind === 'corrupt_json' && i.collection).map(i => i.collection!),
+    (Object.keys(health) as CollectionKey[]).filter(k => health[k] === 'corrupt'),
   );
 }
 
@@ -126,17 +182,20 @@ export async function initStore(source: CrmDataSource = localDataSource): Promis
   loadError = null;
   migrationWriteBlock = null;
   notify();
+  let resultCorruptRaw: Partial<Record<CollectionKey, string>> = {};
   try {
     const result = await dataSource.load();
     snapshot = result.data as DataSnapshot;
     primeSettings(snapshot.financeSettings);
     status = 'ready';
     loadError = null;
+    resultCorruptRaw = result.corruptRaw;
   } catch (err) {
     status = 'error';
     loadError = err instanceof Error ? err.message : String(err);
   }
   storageWriteBlock = status === 'ready' ? dataSource.writeBlockedReason() : null;
+  corruptRaw = status === 'ready' ? { ...resultCorruptRaw } : {};
   refreshHealth();
   if (!initialized) {
     initialized = true;
@@ -162,6 +221,7 @@ export async function reloadStore(): Promise<void> {
   status = 'ready';
   loadError = null;
   storageWriteBlock = dataSource.writeBlockedReason();
+  corruptRaw = { ...result.corruptRaw };
   refreshHealth();
   notify();
 }
@@ -187,7 +247,13 @@ function guard(key: CollectionKey | undefined, scope: WriteScope): WriteOutcome 
       key,
     );
   }
-  if (scope === 'user' && migrationWriteBlock) return failIssue(migrationWriteBlock, key);
+  if (scope === 'user') {
+    // Стійкий інцидент незавершеного імпорту: блокує саме ДІЇ КОРИСТУВАЧА.
+    // Міграції (`system`) і відновлення (`import`) виконуються попри нього.
+    const incident = importIncidentReason();
+    if (incident) return failIssue(incident, key);
+    if (migrationWriteBlock) return failIssue(migrationWriteBlock, key);
+  }
   return null;
 }
 
@@ -216,13 +282,32 @@ export async function saveCollection(
     notify();
     return outcome;
   }
-  if (corruptCollections.has(key)) {
-    // Успішний явний запис відновлює колекцію — прибираємо мітку пошкодження.
-    corruptCollections.delete(key);
-    dataSource.clearCollectionIssue(key);
-  }
+  // Успішний валідний запис відновлює колекцію — здоров'я оновлює джерело даних.
+  refreshHealth();
   commit({ ...snapshot, [key]: value } as DataSnapshot);
   return { ok: true };
+}
+
+/**
+ * Повернути сирий вміст пошкодженої колекції (відновлення незалежно від
+ * того, чи вдалося записати карантинну копію). Після успіху колекція знову
+ * вважається пошкодженою — здоров'я, а не лише журнал.
+ */
+export async function restoreRawCollection(key: CollectionKey, raw: string): Promise<WriteOutcome> {
+  const outcome = await dataSource.restoreRaw(key, raw);
+  refreshHealth();
+  corruptRaw = { ...corruptRaw, [key]: raw };
+  if (outcome.ok) {
+    // Дані знову непридатні для розбору — у пам'яті порожній список.
+    snapshot = { ...snapshot, [key]: [] } as DataSnapshot;
+  }
+  notify();
+  return outcome;
+}
+
+/** Сирий вміст пошкоджених колекцій на момент останнього читання. */
+export function getCorruptRaw(): Partial<Record<CollectionKey, string>> {
+  return { ...corruptRaw };
 }
 
 export async function saveSettings(settings: FinanceSettings, scope: WriteScope = 'user'): Promise<WriteOutcome> {
@@ -264,12 +349,21 @@ export async function saveBackupCopy(serialized: string): Promise<WriteOutcome> 
   return outcome;
 }
 
+/** Копія попереднього стану (null — немає або непридатна). */
+export function loadBackupCopy(): Promise<string | null> {
+  return dataSource.loadBackupCopy();
+}
+
 /** Замінити snapshot після того, як імпорт уже записав дані у сховище. */
 export function replaceSnapshot(next: DataSnapshot): void {
   commit(next);
   primeSettings(next.financeSettings);
 }
 
+/**
+ * Очищення ЖУРНАЛУ повідомлень. НЕ впливає на здоров'я даних:
+ * пошкоджена колекція лишається заблокованою до фактичного відновлення.
+ */
 export function clearIssues(): void {
   dataSource.clearIssues();
   refreshHealth();
@@ -283,6 +377,7 @@ export function resetStoreForTests(): void {
   initialized = false;
   listeners.clear();
   corruptCollections = new Set();
+  corruptRaw = {};
   storageWriteBlock = null;
   migrationWriteBlock = null;
   primeSettings(null);
