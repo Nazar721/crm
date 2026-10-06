@@ -10,3 +10,5 @@ test('failed refresh preserves auth rejection and never sends another request',a
 test('success and non-auth failures do not refresh or duplicate requests',async()=>{for(const status of [200,429,500]){const f=fixture([status]);await requestWithSession(f.auth,{},undefined,f.fetcher);assert.equal(f.tokens.length,1);assert.equal(f.refreshes,0);assert.equal(f.signouts,0);}});
 
 test('auth failure classification distinguishes session, key configuration and network outage',()=>{assert.equal(classifyAuthFailure({status:401,code:'bad_jwt'}).status,401);assert.equal(classifyAuthFailure(null).status,401);for(const error of [{status:401,message:'Invalid API key'},{status:503,name:'AuthRetryableFetchError'},{status:0,name:'AuthRetryableFetchError'},{status:403,code:'unexpected_failure'}]){const f=classifyAuthFailure(error);assert.equal(f.status,503);assert.ok(!f.message.includes('повторно увійти'));}});
+
+test('Supabase remapped session_not_found is a missing-session error even at status 400 without code',()=>{const f=classifyAuthFailure({name:'AuthSessionMissingError',status:400});assert.equal(f.status,401);assert.equal(f.reason,'session_rejected');});
