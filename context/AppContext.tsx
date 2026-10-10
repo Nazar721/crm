@@ -182,13 +182,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     <AppContext.Provider value={value}>
       {status === 'ready' ? (
         <>
-          {writeBlock && (
-            <div className="write-block-banner" role="alert">
-              <strong>Запис даних заблоковано.</strong>
-              <span>{writeBlock}</span>
-              <Link className="btn btn-ghost btn--sm" href="/settings">Налаштування / експорт</Link>
-            </div>
-          )}
           {children}
         </>
       ) : (
@@ -222,4 +215,18 @@ export function useApp() {
   const context = useContext(AppContext);
   if (!context) throw new Error('useApp must be used within AppProvider');
   return context;
+}
+
+
+/** Банер живе всередині main, а не стає ще одним елементом flex-body. */
+export function StorageWriteBanner() {
+  const { writeBlock } = useApp();
+  if (!writeBlock) return null;
+  return (
+    <div className="write-block-banner" role="alert">
+      <strong>Запис даних заблоковано.</strong>
+      <span>{writeBlock}</span>
+      <Link className="btn btn-ghost btn--sm" href="/settings">Налаштування / експорт</Link>
+    </div>
+  );
 }

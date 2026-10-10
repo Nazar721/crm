@@ -580,11 +580,12 @@ export const deleteSaving = (...args: Parameters<typeof _deleteSaving>) => store
 export const saveRates = (...args: Parameters<typeof _saveRates>) => store.atomicAction(() => _saveRates(...args));
 export const setDisplayCurrency = (...args: Parameters<typeof _setDisplayCurrency>) => store.atomicAction(() => _setDisplayCurrency(...args));
 
-async function _recordProjectPayment(id:string,input:{amount:number;bank:string;date:string;description?:string}):Promise<ActionResult<Project>> {
+async function _recordProjectPayment(id:string,input:{amount:number;bank?:string;date?:string;description?:string}):Promise<ActionResult<Project>> {
   const p=[...Storage.getProjects(),...Storage.getCompleted()].find(p=>p.id===id);
   if(!p)return fail([{field:'id',message:'Проєкт не знайдено'}]);
-  const errors=validateTransactionInput({type:'income',...input});
-  if(bankCurrencyLocal(input.bank)!==(p.currency||'UAH'))errors.push({field:'bank',message:'Валюта рахунку має відповідати валюті проєкту'});
+  // Оплата проєкту змінює тільки картку, не фінансовий журнал.
+  const errors=[...validatePositiveNumber(input.amount,'amount','Сума доплати'),...validateDate(input.date),...validateBank(input.bank,'bank','Рахунок',false)];
+  if(input.bank&&bankCurrencyLocal(input.bank)!==(p.currency||'UAH'))errors.push({field:'bank',message:'Валюта рахунку має відповідати валюті проєкту'});
   const paid=Number(p.prepayment||0)+Number(input.amount);
   if(paid>Number(p.budget))errors.push({field:'amount',message:'Оплата перевищує залишок бюджету проєкту'});
   if(errors.length)return fail(errors);
@@ -594,8 +595,7 @@ async function _recordProjectPayment(id:string,input:{amount:number;bank:string;
     ? await persist(Storage.saveProjects(active.map(p=>p.id===id?next:p)))
     : await persist(Storage.saveCompleted(Storage.getCompleted().map(p=>p.id===id?next:p)));
   if(!saved.ok)return saved;
-  const transaction=await _saveTransaction({type:'income',amount:Number(input.amount),bank:input.bank,date:input.date,projectId:id,incomeStatus:'earned',description:input.description||`Оплата: ${p.name}`});
-  return transaction.ok?ok(next):transaction;
+  return ok(next);
 }
 export const recordProjectPayment=(...args:Parameters<typeof _recordProjectPayment>)=>store.atomicAction(()=>_recordProjectPayment(...args));
 
@@ -613,7 +613,7 @@ export const applyAssistantPlan=(plan:Plan):Promise<ActionResult<unknown>>=>stor
     case 'clients':return remove?_deleteClient(id!):edit?_updateClient(edit,input):_createClient(fields);
     case 'projects':return remove?_deleteProject(id!,store.getSnapshot().projectsCompleted.some(p=>p.id===id)):_saveProject(input,edit);
     case 'finance':return remove?_deleteTransaction(id!):_saveTransaction(input,edit);
-    case 'payments':return _recordProjectPayment(id!,fields as {amount:number;bank:string;date:string;description?:string});
+    case 'payments':return _recordProjectPayment(id!,fields as {amount:number;bank?:string;date?:string;description?:string});
     case 'specialists':return remove?_deleteSpecialist(id!):_saveSpecialist(input,edit);
     case 'partners':return remove?_deletePartner(id!):_savePartner(input,edit);
     case 'debts':return remove?_deleteDebt(id!):_saveDebt(input,edit);

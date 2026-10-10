@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
-import { AppProvider } from '@/context/AppContext';
+import { AppProvider, StorageWriteBanner } from '@/context/AppContext';
 import Sidebar from '@/components/layout/Sidebar';
 import TabBar from '@/components/layout/TabBar';
 import ToastContainer from '@/components/ui/Toast';
@@ -56,6 +56,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <Sidebar />
             <TabBar />
             <main className="main-content">
+              <StorageWriteBanner />
               {children}
             </main>
             <InstallBanner />

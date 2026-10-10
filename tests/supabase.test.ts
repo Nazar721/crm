@@ -59,3 +59,29 @@ test('cloud full import preserves legacy fields and writes all collections once'
 test('cloud rejects legacy-flat input instead of returning missing content',()=>{
   assert.equal(validateCloudBackup(emptySnapshot()).ok,false);
 });
+
+
+test('remote write error preserves safe diagnostic code and blocks a second write',async()=>{
+ for(const status of [401,403,503]){
+ let commits=0;
+ const rpc=async(name:string)=>name==='crm_read'
+ ? {data:{revision:0,snapshot:emptySnapshot()},error:null,status:200}
+ : (++commits,{data:null,error:{message:'private SQL or token must not leak',code:'PGRST_TEST'},status});
+ const source=new SupabaseDataSource(rpc);await source.load();
+ const result=await source.saveCollection('clients',[makeClient()]);assert.equal(result.ok,false);
+ assert.match(source.writeBlockedReason()!,new RegExp('HTTP '+status));assert.match(source.writeBlockedReason()!,/PGRST_TEST/);
+ assert.ok(!source.writeBlockedReason()!.includes('private SQL'));assert.match(source.listIssues()[0].key!,/crm_commit/);
+ await source.saveCollection('clients',[]);assert.equal(commits,1);
+ }
+});
+test('lost response may follow successful commit: never automatically resend; reload reveals saved data',async()=>{
+ let saved=emptySnapshot(),revision=0,commits=0;
+ const rpc=async(name:string,args?:Record<string,unknown>)=>{
+ if(name==='crm_read')return {data:{revision,snapshot:structuredClone(saved)},error:null};
+ commits++;saved=structuredClone(args!.p_snapshot as typeof saved);revision++;throw new Error('connection lost after commit');
+ };
+ const source=new SupabaseDataSource(rpc);await source.load();const client=makeClient();
+ assert.equal((await source.saveCollection('clients',[client])).ok,false);assert.ok(source.writeBlockedReason());
+ await source.saveCollection('clients',[client]);assert.equal(commits,1);
+ const loaded=await source.load();assert.equal(loaded.data.clients[0].id,client.id);assert.equal(source.writeBlockedReason(),null);
+});

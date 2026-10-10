@@ -3,7 +3,7 @@ import type { CollectionKey, CrmDataSource, DataSnapshotPayload, StorageIssue, W
 import { supabase } from '@/lib/supabase/client';
 import { normalizeSettings } from '@/lib/settings';
 
-type Rpc = (name: string, args?: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>;
+type Rpc = (name: string, args?: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string; code?: string } | null; status?: number }>;
 export class SupabaseDataSource implements CrmDataSource {
   readonly kind = 'remote' as const;
   private revision = 0;
@@ -11,10 +11,10 @@ export class SupabaseDataSource implements CrmDataSource {
   private blocked: string | null = null;
   private issues: StorageIssue[] = [];
   private batching = false;
-  constructor(private rpc: Rpc = async (name,args) => { const result = await supabase().rpc(name,args); return {data:result.data,error:result.error}; }) {}
-  private failure(message: string): WriteOutcome {
+  constructor(private rpc: Rpc = async (name,args) => { const result = await supabase().rpc(name,args); return {data:result.data,error:result.error,status:result.status}; }) {}
+  private failure(message: string, key?: string): WriteOutcome {
     this.blocked = message;
-    const issue: StorageIssue = {id:crypto.randomUUID(),kind:'write_failed',message,at:new Date().toISOString()};
+    const issue: StorageIssue = {id:crypto.randomUUID(),kind:'write_failed',key,message,at:new Date().toISOString()};
     this.issues = [issue]; return {ok:false,issue};
   }
   async load(): Promise<DataSnapshotPayload> {
@@ -29,9 +29,20 @@ export class SupabaseDataSource implements CrmDataSource {
     if (this.blocked) return this.failure(this.blocked);
     try {
       const result = await this.rpc('crm_commit',{p_revision:this.revision,p_request:crypto.randomUUID(),p_snapshot:next});
-      if (result.error) return this.failure(result.error.message.includes('CRM_CONFLICT')
-        ? 'Дані змінилися на іншому пристрої. Онови сторінку й повтори дію.'
-        : 'Запис у базу не підтверджено. Онови сторінку, перевір результат і лише тоді повтори дію.');
+      if (result.error) {
+        // Лише безпечні коди, без текстів SQL, snapshot або токенів.
+        const code = /^[A-Za-z0-9_]{1,40}$/.test(result.error.code || '') ? result.error.code : undefined;
+        const status = Number.isInteger(result.status) && result.status! >= 100 && result.status! <= 599 ? result.status : undefined;
+        const detail = [status ? `HTTP ${status}` : '', code || ''].filter(Boolean).join(', ');
+        const reason = result.error.message.includes('CRM_CONFLICT')
+          ? 'Дані змінилися на іншому пристрої. Онови сторінку й повтори дію.'
+          : status === 401
+            ? 'База відхилила перевірку входу. Онови сторінку та увійди повторно.'
+            : status === 403
+              ? 'База відхилила доступ до запису. Перевір доступ власника CRM.'
+              : 'Запис у базу не підтверджено. Онови сторінку, перевір результат і лише тоді повтори дію.';
+        return this.failure(reason + (detail ? ` Код: ${detail}.` : ''), `crm_commit${detail ? ':' + detail : ''}`);
+      }
       const revision = result.data as number;
       if (!Number.isSafeInteger(revision)) return this.failure('Некоректне підтвердження запису. Онови сторінку.');
       this.revision = revision; this.current = structuredClone(next); return {ok:true};

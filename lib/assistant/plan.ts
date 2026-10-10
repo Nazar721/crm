@@ -75,7 +75,7 @@ export function normalizePlan(raw:unknown,s:DataSnapshot):Omit<Plan,'base'>{
 }
 export function missingQuestions(plan:Omit<Plan,'base'>,s:DataSnapshot){
  if(plan.action==='delete')return [];
- const required:Partial<Record<AssistantDomain,string[]>>={projects:['name','type','clientName','budget'],clients:['name'],finance:['type','amount','bank'],payments:['amount','bank'],specialists:['name','specialization'],partners:['name'],debts:['type','person','amount'],savings:['bank','goal']};
+ const required:Partial<Record<AssistantDomain,string[]>>={projects:['name','type','clientName','budget'],clients:['name'],finance:['type','amount','bank'],payments:['amount'],specialists:['name','specialization'],partners:['name'],debts:['type','person','amount'],savings:['bank','goal']};
  const previous=plan.action==='update'&&plan.domain!=='payments'?records(plan.domain,s).find(x=>x.id===plan.recordId):undefined;
  const input={...previous,...plan.fields};
  return (required[plan.domain]||[]).filter(k=>input[k]===undefined||input[k]===null||input[k]==='').map(k=>({key:k,prompt:`Уточни: ${schemas[plan.domain]![k].label}`,options:schemas[plan.domain]![k].options}));

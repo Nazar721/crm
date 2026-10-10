@@ -46,11 +46,11 @@ test('simultaneous confirmations of same state are serialized; only one write',a
  const p={...plan,base:await fingerprint(store.getSnapshot())};const result=await Promise.all([executePlan(p),executePlan(p)]);
  assert.deepEqual(result.map(r=>r.kind),['applied','error']);assert.equal(db.commits,1);
 });
-test('project payment creates linked income and increases prepayment in one commit',async()=>{
+test('project payment increases prepayment without adding finance income',async()=>{
  clearAll();const db=database();await store.initStore(new SupabaseDataSource(db.rpc));
  const project=makeProject({budget:10000,prepayment:2000,currency:'UAH',clientName:'Synthetic'});await store.saveCollection('projectsActive',[project]);const before=db.commits;
  const p:Plan={domain:'payments',action:'update',recordId:project.id,fields:{amount:3000,bank:'mono',date:'2026-10-06'},base:await fingerprint(store.getSnapshot())};
- assert.equal((await executePlan(p)).kind,'applied');assert.equal(db.commits-before,1);assert.equal(db.snap.projectsActive[0].prepayment,5000);assert.equal(db.snap.transactions[0].amount,3000);assert.equal(db.snap.transactions[0].projectId,project.id);assert.equal(db.snap.clients.length,0);assert.equal(db.snap.projectsActive[0].workStartDate,project.workStartDate);
+ assert.equal((await executePlan(p)).kind,'applied');assert.equal(db.commits-before,1);assert.equal(db.snap.projectsActive[0].prepayment,5000);assert.equal(db.snap.transactions.length,0);assert.equal(db.snap.clients.length,0);assert.equal(db.snap.projectsActive[0].workStartDate,project.workStartDate);
 });
 test('payment rejects currency mismatch and failed commit leaves both collections intact',async()=>{
  clearAll();const db=database();await store.initStore(new SupabaseDataSource(db.rpc));const project=makeProject({budget:10000,prepayment:2000,currency:'UAH',clientName:'Synthetic'});await store.saveCollection('projectsActive',[project]);
@@ -93,7 +93,7 @@ test('missing required data triggers clarification rather than incomplete draft'
  const s=emptySnapshot();const p=normalizePlan({domain:'projects',action:'create',fields:{name:'Synthetic',type:'IT'}},s);
  assert.deepEqual(missingQuestions(p,s).map(q=>q.key),['clientName','budget']);
  const project=makeProject({bank:'mono'});s.projectsActive=[project];const payment=normalizePlan({domain:'payments',action:'update',recordId:project.id,fields:{amount:10}},s);
- assert.deepEqual(missingQuestions(payment,s).map(q=>q.key),['bank']);
+ assert.deepEqual(missingQuestions(payment,s),[]);
 });
 
 
@@ -125,4 +125,23 @@ test('project context identifies actual active collection and exposes exact mixe
  const c=modelContext(s);assert.equal(c.projectSummary.active.count,2);assert.deepEqual(c.projectSummary.active.budget,{amount:50000,currency:'UAH'});assert.deepEqual(c.projectSummary.completed.budget,{amount:25000,currency:'UAH'});
  assert.deepEqual(c.projects.map(p=>p.collection),['active','active','completed']);assert.equal(c.stats.totalBudget,25000);assert.deepEqual(c.projects[1].displayBudget,{amount:40000,currency:'UAH'});
  s.financeSettings.displayCurrency='USD';assert.deepEqual(modelContext(s).projectSummary.active.budget,{amount:1250,currency:'USD'});
+});
+
+
+test('payment without bank updates project only; explicit finance request is separate',async()=>{
+ clearAll();const db=database();await store.initStore(new SupabaseDataSource(db.rpc));
+ const project=makeProject({budget:10000,prepayment:2000,currency:'UAH'});await store.saveCollection('projectsActive',[project]);
+ const pay:Plan={domain:'payments',action:'update',recordId:project.id,fields:{amount:2000},base:await fingerprint(store.getSnapshot())};
+ const result=await executePlan(pay);assert.equal(result.kind,'applied');assert.equal(db.snap.projectsActive[0].prepayment,4000);assert.equal(db.snap.transactions.length,0);
+ if(result.kind==='applied')assert.match(result.summary,/не створювався/);
+ const income:Plan={domain:'finance',action:'create',fields:{type:'income',amount:2000,bank:'mono',date:'2026-10-10',incomeStatus:'earned',projectId:project.id},base:await fingerprint(store.getSnapshot())};
+ assert.equal((await executePlan(income)).kind,'applied');assert.equal(db.snap.transactions.length,1);assert.equal(db.snap.transactions[0].amount,2000);assert.equal(db.snap.projectsActive[0].prepayment,4000);
+});
+test('project payment rejects zero and overpayment without modifying data',async()=>{
+ clearAll();const db=database();await store.initStore(new SupabaseDataSource(db.rpc));
+ const project=makeProject({budget:10000,prepayment:9000});await store.saveCollection('projectsActive',[project]);
+ for(const amount of [0,-1,1001]){
+ const p:Plan={domain:'payments',action:'update',recordId:project.id,fields:{amount},base:await fingerprint(store.getSnapshot())};
+ assert.equal((await executePlan(p)).kind,'error');assert.equal(db.snap.projectsActive[0].prepayment,9000);assert.equal(db.snap.transactions.length,0);
+ }
 });
