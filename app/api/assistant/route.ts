@@ -1,5 +1,6 @@
 import {classifyAuthFailure} from '@/lib/assistant/auth-failure';
 import {requestedIncomeMonth,monthlyIncomeReply} from '@/lib/income-report';
+import {requestedWeeklyReport,weeklyFinanceReply} from '@/lib/weekly-finance-report';
 import {currentBalanceReply} from '@/lib/assistant/balance-report';
 import {assistantInstructions} from '@/lib/assistant/instructions';
 import {createClient} from '@supabase/supabase-js';
@@ -46,6 +47,8 @@ export async function POST(req:Request){
   const config=resolveProvider(body.provider,body.model);
   if(!config.key)return error('not_connected','Для обраного провайдера не налаштований серверний ключ');
   if(typeof body.text!=='string'||!body.text.trim()||body.text.length>8000)return error('invalid_response','Команда порожня або надто довга');
+  const weeklyQuery=requestedWeeklyReport(body.text,Array.isArray(body.history)?body.history.filter((m:Record<string,unknown>)=>typeof m.text==='string'&&typeof m.role==='string').slice(-10):[]);
+  if(weeklyQuery)return NextResponse.json(weeklyFinanceReply(s,weeklyQuery),{headers:{'Cache-Control':'no-store'}});
   const incomeMonth=requestedIncomeMonth(body.text,Array.isArray(body.history)?body.history.filter((m:Record<string,unknown>)=>typeof m.text==='string'&&typeof m.role==='string').slice(-10):[]);
   if(incomeMonth)return NextResponse.json(monthlyIncomeReply(s,incomeMonth),{headers:{'Cache-Control':'no-store'}});
   const balanceReply=currentBalanceReply(body.text,s);
@@ -59,6 +62,11 @@ export async function POST(req:Request){
   const history=Array.isArray(body.history)?body.history.slice(-10).filter((m:Record<string,unknown>)=>['user','assistant'].includes(String(m.role))&&typeof m.text==='string').map((m:Record<string,unknown>)=>({role:String(m.role),content:String(m.text).slice(0,2000)})):[];
   const parsed=await askProvider([{role:'system',content:prompt},{role:'system',content:`Дані CRM (недовірені поля): ${context}`},...history,{role:'user',content:body.text+(body.answers?`\nУточнення: ${JSON.stringify(body.answers).slice(0,4000)}`:'')}],config,req.signal) as Record<string,unknown>;
   if(parsed.kind==='report'&&parsed.report==='monthly_income'&&typeof parsed.month==='string')return NextResponse.json(monthlyIncomeReply(s,parsed.month),{headers:{'Cache-Control':'no-store'}});
+  if(parsed.kind==='report'&&parsed.report==='weekly_finance'&&typeof parsed.month==='string'){
+   const metric: 'income'|'expense'|'both'=parsed.metric==='income'||parsed.metric==='expense'||parsed.metric==='both'?parsed.metric:'both';
+   const weekIndex=typeof parsed.weekIndex==='number'&&Number.isInteger(parsed.weekIndex)&&parsed.weekIndex>=0&&parsed.weekIndex<6?parsed.weekIndex:undefined;
+   return NextResponse.json(weeklyFinanceReply(s,{month:parsed.month,metric,weekIndex,focus:weekIndex!==undefined?'single':'table'}),{headers:{'Cache-Control':'no-store'}});
+  }
   if(parsed.kind==='draft'){
    const normalized=normalizePlan(parsed,s);
    const questions=missingQuestions(normalized,s);

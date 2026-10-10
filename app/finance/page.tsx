@@ -2,6 +2,8 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useApp } from '@/context/AppContext';
 import { monthIncome, financeBalance, bankBalances, bankCurrencyLocal, summarizeTransactions } from '@/lib/calc';
+import { weeklyFinanceReport, currentMonthKey, monthLabel } from '@/lib/weekly-finance-report';
+import type { WeeklyChartMetric } from '@/components/charts/WeeklyFinanceChart';
 import { formatMoney, formatDate, today, getMonthKey, getMonthLabel } from '@/lib/utils';
 import { BANKS, normalizeBank, bankLabel } from '@/lib/banks';
 import { saveTransaction, deleteTransaction, saveRates, convertCurrency } from '@/lib/actions';
@@ -15,6 +17,7 @@ import { useConfirm } from '@/hooks/useConfirm';
 import { usePersistedState, useScrollRestoration, useVisibleCount } from '@/hooks/useUiState';
 import dynamic from 'next/dynamic';
 const IncomeChart = dynamic(() => import('@/components/charts/IncomeChart'), { ssr: false, loading: () => null });
+const WeeklyFinanceChart = dynamic(() => import('@/components/charts/WeeklyFinanceChart'), { ssr: false, loading: () => null });
 const BankBalancesChart = dynamic(() => import('@/components/charts/BankBalancesChart'), { ssr: false, loading: () => null });
 import type { Transaction } from '@/types';
 
@@ -36,6 +39,8 @@ export default function FinancePage() {
   const [convFrom, setConvFrom] = usePersistedState('finance:convFrom', 'mono');
   const [convTo, setConvTo] = usePersistedState('finance:convTo', 'cash');
   const [convAmount, setConvAmount] = useState('');
+  const [weeklyMonth, setWeeklyMonth] = usePersistedState('finance:weeklyMonth', '');
+  const [weeklyMetric, setWeeklyMetric] = usePersistedState<WeeklyChartMetric>('finance:weeklyMetric', 'income');
 
   const financeSettings = snapshot.financeSettings;
 
@@ -109,6 +114,36 @@ export default function FinancePage() {
     for (const key of Object.keys(md)) md[key] = monthIncome(allTxs, key, financeSettings);
     return { labels: Object.keys(md).map(k => getMonthLabel(k)), income: Object.values(md) };
   }, [allTxs, financeSettings]);
+
+  // Тижневий звіт вибраного місяця: той самий спільний розрахунок,
+  // що й у відповідях AI-помічника (lib/weekly-finance-report).
+  // За замовчуванням — доходи поточного місяця за Europe/Kyiv.
+  const weeklyMonthKey = /^\d{4}-(0[1-9]|1[0-2])$/.test(weeklyMonth) ? weeklyMonth : currentMonthKey();
+  const weeklyReport = useMemo(
+    () => weeklyFinanceReport(allTxs, weeklyMonthKey, financeSettings),
+    [allTxs, weeklyMonthKey, financeSettings],
+  );
+  const weeklyCurrency = financeSettings.displayCurrency || 'UAH';
+  const weeklyTotal = weeklyMetric === 'income' ? weeklyReport.totalIncome : weeklyReport.totalExpense;
+  const weeklyYearOptions = useMemo(() => {
+    const years = new Set<number>([Number(currentMonthKey().slice(0, 4))]);
+    allTxs.forEach(t => {
+      const k = getMonthKey(t.date || t.plannedDate);
+      if (k) years.add(Number(k.slice(0, 4)));
+    });
+    return [...years].sort((a, b) => b - a);
+  }, [allTxs]);
+  // Список місяців для селекта: усі 12 + ті, де є транзакції.
+  const weeklyMonthKeyOptions = useMemo(() => {
+    const keys = new Set<string>();
+    for (let m = 1; m <= 12; m++) keys.add(`${weeklyReport.year}-${String(m).padStart(2, '0')}`);
+    allTxs.forEach(t => {
+      if (t.hidden) return;
+      const k = getMonthKey(t.date || t.plannedDate);
+      if (k) keys.add(k);
+    });
+    return [...keys].sort().reverse();
+  }, [allTxs, weeklyReport.year]);
 
   const balances = useMemo(() => bankBalances(allTxs, financeSettings), [allTxs, financeSettings]);
 
@@ -217,6 +252,53 @@ export default function FinancePage() {
       <div className="charts-grid charts-grid--2">
         <div className="chart-card"><div className="chart-header"><h3 className="chart-title">Дохід по місяцях</h3></div><IncomeChart labels={chartData.labels} data={chartData.income} /></div>
         <div className="chart-card"><div className="chart-header"><h3 className="chart-title">Активи по банках</h3></div><BankBalancesChart balances={balances} usdtRate={financeSettings.usdtRate ?? financeSettings.usdRate} /></div>
+      </div>
+
+      <div className="chart-card" style={{ marginBottom: 30 }}>
+        <div className="chart-header">
+          <h3 className="chart-title">{weeklyMetric === 'income' ? 'Доходи по тижнях' : 'Витрати по тижнях'}</h3>
+          <div className="weekly-chart-total" style={{ color: weeklyMetric === 'income' ? '#30D158' : '#FF453A' }}>
+            {formatMoney(Math.round(weeklyTotal), weeklyCurrency)}{' '}
+            <span className="weekly-chart-total__hint">{weeklyMetric === 'income' ? 'доходи' : 'витрати'} · {monthLabel(weeklyMonthKey)}</span>
+          </div>
+        </div>
+        <div className="weekly-chart-controls">
+          <div className="tabs weekly-chart-tabs">
+            <button type="button" className={`tab${weeklyMetric === 'income' ? ' active' : ''}`} onClick={() => setWeeklyMetric('income')}>Доходи</button>
+            <button type="button" className={`tab${weeklyMetric === 'expense' ? ' active' : ''}`} onClick={() => setWeeklyMetric('expense')}>Витрати</button>
+          </div>
+          <div className="weekly-chart-period">
+            <select
+              className="filter-select"
+              aria-label="Місяць"
+              value={String(weeklyReport.month).padStart(2, '0')}
+              onChange={e => setWeeklyMonth(`${weeklyReport.year}-${e.target.value}`)}
+            >
+              {weeklyMonthKeyOptions.filter(k => k.startsWith(`${weeklyReport.year}-`)).map(k => (
+                <option key={k} value={k.slice(5, 7)}>{getMonthLabel(k)}</option>
+              ))}
+            </select>
+            <select
+              className="filter-select"
+              aria-label="Рік"
+              value={String(weeklyReport.year)}
+              onChange={e => setWeeklyMonth(`${e.target.value}-${String(weeklyReport.month).padStart(2, '0')}`)}
+            >
+              {weeklyYearOptions.map(y => <option key={y} value={String(y)}>{y}</option>)}
+            </select>
+          </div>
+        </div>
+        {weeklyReport.totalIncome === 0 && weeklyReport.totalExpense === 0 ? (
+          <EmptyState message="Немає транзакцій за цей місяць" hint="Змініть місяць або додайте дохід чи витрату" />
+        ) : (
+          <WeeklyFinanceChart
+            labels={weeklyReport.weeks.map(w => w.label)}
+            hints={weeklyReport.weeks.map(w => `${w.label} (${w.start}…${w.end})`)}
+            data={weeklyReport.weeks.map(w => weeklyMetric === 'income' ? w.income : w.expense)}
+            metric={weeklyMetric}
+            currency={weeklyCurrency}
+          />
+        )}
       </div>
 
       <div className="table-toolbar">

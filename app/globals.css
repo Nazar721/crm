@@ -926,6 +926,34 @@ body {
 .chart-body { position: relative; height: 200px; }
 .chart-body--donut { height: 200px; }
 
+/* Тижневий графік фінансів: підсумок, перемикач, вибір періоду */
+.weekly-chart-total {
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  font-weight: 700;
+  margin-top: 6px;
+}
+.weekly-chart-total__hint {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-left: 8px;
+}
+.weekly-chart-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.weekly-chart-tabs { margin-bottom: 0; }
+.weekly-chart-period {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+.weekly-chart-period .filter-select { min-width: 110px; }
+
 /* =============================================
    TABS
    ============================================= */
