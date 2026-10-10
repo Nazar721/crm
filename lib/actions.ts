@@ -5,9 +5,10 @@ import type {
 import type { FieldError } from '@/lib/validate';
 import {
   validateAmount, validateBank, validateCurrency, validateDate,
-  validateEnum, validatePercent, validateProjectBank, validateRate,
+  validateEnum, validatePercent, validatePositiveNumber, validateProjectBank, validateRate,
   validateRequiredText, validateTelegram, toFiniteNumber,
 } from '@/lib/validate';
+import { autoMyPercent, DEFAULT_MY_SHARE } from '@/lib/my-share';
 import { generateId, today, daysBetween } from '@/lib/utils';
 import * as Storage from '@/lib/storage';
 import * as store from '@/lib/store';
@@ -195,6 +196,15 @@ async function _saveProject(input: Partial<Project>, editId?: string): Promise<A
   }
 
   const payload: Partial<Project> = { ...input, clientId };
+  // AI може створити проєкт без явно заданого відсотка — тоді діє те саме
+  // правило фахівця, що й у формі. Явно задане значення не змінюється.
+  const explicitPercent: unknown = payload.myPercent;
+  if (explicitPercent === undefined || explicitPercent === null || explicitPercent === '') {
+    const specialist = payload.developerId
+      ? Storage.getSpecialists().find(s => s.id === payload.developerId)
+      : undefined;
+    payload.myPercent = autoMyPercent(specialist, payload.budget, payload.currency) ?? 0;
+  }
 
   if (editId) {
     const active = Storage.getProjects();
@@ -329,22 +339,64 @@ async function _convertCurrency(input: { fromBank: string; toBank: string; amoun
 // Фахівці / партнери
 // ------------------------------------------------------------
 
-async function _saveSpecialist(input: Partial<Specialist>, editId?: string): Promise<ActionResult<Specialist>> {
-  const errors = [
+/**
+ * Вхід збереження/валідації фахівця. Налаштування «Моя частка» можуть
+ * приходити з форми рядками — перед записом вони нормалізуються до чисел.
+ */
+export type SpecialistInput = Omit<Partial<Specialist>, 'myShareThreshold' | 'mySharePercentUpTo' | 'mySharePercentAbove'> & {
+  myShareThreshold?: unknown;
+  mySharePercentUpTo?: unknown;
+  mySharePercentAbove?: unknown;
+};
+
+/**
+ * Налаштування «Моя частка»: поріг і два відсотки — обов'язкові,
+ * поріг > 0, відсотки від 0 до 100. Перевіряється і у формі, і тут.
+ */
+export function validateSpecialistInput(input: SpecialistInput): FieldError[] {
+  return [
     ...validateRequiredText(input.name, 'name', 'Ім’я', 120),
     ...validateRequiredText(input.specialization, 'specialization', 'Спеціалізація', 120),
     ...validateTelegram(input.telegram),
+    ...validatePositiveNumber(input.myShareThreshold, 'myShareThreshold', 'Поріг бюджету'),
+    ...validatePercent(input.mySharePercentUpTo, 'mySharePercentUpTo', 'Відсоток до порогу', { required: true }),
+    ...validatePercent(input.mySharePercentAbove, 'mySharePercentAbove', 'Відсоток понад поріг', { required: true }),
   ];
+}
+
+async function _saveSpecialist(input: SpecialistInput, editId?: string): Promise<ActionResult<Specialist>> {
+  // Відсутні налаштування (AI-створення, старі виклики) → початкове правило;
+  // явно порожні або некоректні значення відхиляються перевіркою нижче.
+  const prepared = {
+    name: input.name,
+    specialization: input.specialization,
+    telegram: input.telegram,
+    myShareThreshold: input.myShareThreshold ?? DEFAULT_MY_SHARE.threshold,
+    mySharePercentUpTo: input.mySharePercentUpTo ?? DEFAULT_MY_SHARE.percentUpTo,
+    mySharePercentAbove: input.mySharePercentAbove ?? DEFAULT_MY_SHARE.percentAbove,
+  };
+  const errors = validateSpecialistInput(prepared);
   if (errors.length) return fail(errors);
+  const myShare = {
+    myShareThreshold: toFiniteNumber(prepared.myShareThreshold)!,
+    mySharePercentUpTo: toFiniteNumber(prepared.mySharePercentUpTo)!,
+    mySharePercentAbove: toFiniteNumber(prepared.mySharePercentAbove)!,
+  };
   const list = Storage.getSpecialists();
   if (editId) {
     const index = list.findIndex(s => s.id === editId);
     if (index < 0) return fail([{ field: 'id', message: 'Фахівця не знайдено' }]);
-    list[index] = { ...list[index], ...input };
+    list[index] = { ...list[index], ...input, ...myShare };
     const result = await persist(Storage.saveSpecialists(list));
     return result.ok ? ok(list[index]) : result;
   }
-  const record: Specialist = { id: generateId(), name: String(input.name).trim(), specialization: input.specialization || '', telegram: input.telegram || '' };
+  const record: Specialist = {
+    id: generateId(),
+    name: String(input.name).trim(),
+    specialization: input.specialization || '',
+    telegram: input.telegram || '',
+    ...myShare,
+  };
   list.push(record);
   const result = await persist(Storage.saveSpecialists(list));
   return result.ok ? ok(record) : result;

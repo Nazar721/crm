@@ -243,6 +243,43 @@ function validateSimpleNamed(rec: unknown, ctx: Ctx, acc: Acc, label: string): R
   return { ...r, id: ctx.id, name: str(r.name).trim() };
 }
 
+/**
+ * Числове налаштування «Моя частка». Відсутнє/порожнє поле видаляється —
+ * старі резервні копії без цих полів сумісні і застосовують початкове правило.
+ * Некоректне значення — помилка запису (фахівець пропускається з issue).
+ */
+function readOptionalSetting(
+  rec: Record<string, unknown>,
+  key: string,
+  ctx: Ctx,
+  label: string,
+  opts: { max?: number; positive?: boolean },
+  acc: Acc,
+): number | undefined {
+  const raw = rec[key];
+  if (raw === undefined || raw === null || raw === '') return undefined;
+  const before = acc.errors.length;
+  const n = readNumber(rec, key, ctx, { min: 0, max: opts.max, label }, acc);
+  if (acc.errors.length > before) return undefined;
+  if (opts.positive && n <= 0) {
+    acc.errors.push({ ...ctx, message: `${label}: значення має бути більшим за 0` });
+    return undefined;
+  }
+  return n;
+}
+
+function validateSpecialist(rec: unknown, ctx: Ctx, acc: Acc): Record<string, unknown> | null {
+  const r = validateSimpleNamed(rec, ctx, acc, 'фахівець');
+  if (!r) return null;
+  const threshold = readOptionalSetting(r, 'myShareThreshold', ctx, 'поріг бюджету', { positive: true }, acc);
+  const percentUpTo = readOptionalSetting(r, 'mySharePercentUpTo', ctx, 'відсоток до порогу', { max: 100 }, acc);
+  const percentAbove = readOptionalSetting(r, 'mySharePercentAbove', ctx, 'відсоток понад поріг', { max: 100 }, acc);
+  if (threshold !== undefined) r.myShareThreshold = threshold; else delete r.myShareThreshold;
+  if (percentUpTo !== undefined) r.mySharePercentUpTo = percentUpTo; else delete r.mySharePercentUpTo;
+  if (percentAbove !== undefined) r.mySharePercentAbove = percentAbove; else delete r.mySharePercentAbove;
+  return r;
+}
+
 function validatePartner(rec: unknown, ctx: Ctx, acc: Acc): Record<string, unknown> | null {
   const r = validateSimpleNamed(rec, ctx, acc, 'партнер');
   if (!r) return null;
@@ -334,7 +371,7 @@ const VALIDATORS: Record<CollectionKey, RecordValidator> = {
   projectsActive: (rec, ctx, acc) => validateProject(rec, ctx, acc),
   projectsCompleted: (rec, ctx, acc) => validateProject(rec, ctx, acc),
   clients: (rec, ctx, acc) => validateClient(rec, ctx, acc),
-  specialists: (rec, ctx, acc) => validateSimpleNamed(rec, ctx, acc, 'фахівець'),
+  specialists: (rec, ctx, acc) => validateSpecialist(rec, ctx, acc),
   partners: (rec, ctx, acc) => validatePartner(rec, ctx, acc),
   transactions: (rec, ctx, acc) => validateTransaction(rec, ctx, acc),
   personalDebts: (rec, ctx, acc) => validateDebt(rec, ctx, acc),

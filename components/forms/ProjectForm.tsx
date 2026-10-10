@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import type { Project, Specialist, Partner } from '@/types';
 import { project as calcProject } from '@/lib/calc';
+import { autoMyPercent, resolveMyShare } from '@/lib/my-share';
 import { formatMoney, today, displayCurrency, currencySymbol } from '@/lib/utils';
 import { rateForCurrency } from '@/lib/calc';
 import { getClients, getAllProjects } from '@/lib/storage';
@@ -39,6 +40,7 @@ export default function ProjectForm({ isOpen, project, specialists, partners, on
   const [prepayment, setPrepayment] = useState('');
   const [paidToSpecialist, setPaidToSpecialist] = useState('');
   const [myPercent, setMyPercent] = useState('');
+  const [autoPercent, setAutoPercent] = useState(true);
   const [profitTaken, setProfitTaken] = useState('');
   const [fop, setFop] = useState('');
   const [partnerCommission, setPartnerCommission] = useState('');
@@ -69,6 +71,8 @@ export default function ProjectForm({ isOpen, project, specialists, partners, on
       setPartnerCommission(String(project.partnerCommission || ''));
       setDescription(project.description || '');
       setSelectedClientId(project.clientId || '');
+      // Наявний проєкт: відсоток лишається як є, автозастосування вимкнене.
+      setAutoPercent(false);
     } else {
       setName(''); setType(''); setStatus('Очікування оплати'); setStartDate(today());
       setDeadlineDays(''); setEndDate(''); setDeveloperId(''); setPartnerId('');
@@ -76,6 +80,8 @@ export default function ProjectForm({ isOpen, project, specialists, partners, on
       setBudget(''); setCurrency(displayCurrency()); setBank(''); setPrepayment(''); setPaidToSpecialist('');
       setMyPercent(''); setProfitTaken(''); setFop(''); setPartnerCommission('');
       setDescription(''); setSelectedClientId('');
+      // Новий проєкт: автоправило фахівця увімкнене.
+      setAutoPercent(true);
     }
   }, [project, isOpen]);
 
@@ -112,6 +118,38 @@ export default function ProjectForm({ isOpen, project, specialists, partners, on
     setSelectedClientId('');
   };
 
+  // Обраний фахівець та його правило «Моя частка».
+  const activeSpecialist = useMemo(
+    () => specialists.find(d => d.id === developerId),
+    [specialists, developerId],
+  );
+
+  // Автоматичний відсоток: null — фахівця не вибрано або бюджет
+  // некоректний (порожній/не число/від'ємний) — тоді нічого не підставляємо.
+  const autoValue = useMemo(
+    () => autoMyPercent(activeSpecialist, budget, currency),
+    [activeSpecialist, budget, currency],
+  );
+
+  // Правило показується під полем, коли автозастосування увімкнене.
+  const autoRule = activeSpecialist ? resolveMyShare(activeSpecialist) : null;
+
+  // Показуване значення: у автоматичному режимі — правило фахівця,
+  // інакше — збережений у стані (ручний) відсоток.
+  const effectiveMyPercent = autoPercent && autoValue !== null ? String(autoValue) : myPercent;
+
+  const handleAutoToggle = (checked: boolean) => {
+    if (checked) {
+      // Увімкнення застосовує правило фахівця.
+      setAutoPercent(true);
+      if (autoValue !== null) setMyPercent(String(autoValue));
+    } else {
+      // Вимкнення фіксує поточне (авто-)значення — далі воно ручне.
+      setMyPercent(effectiveMyPercent);
+      setAutoPercent(false);
+    }
+  };
+
   const calc = useMemo(() => {
     return calcProject({
       id: '',
@@ -125,12 +163,12 @@ export default function ProjectForm({ isOpen, project, specialists, partners, on
       currency,
       prepayment: Number(prepayment) || 0,
       paidToSpecialist: Number(paidToSpecialist) || 0,
-      myPercent: Number(myPercent) || 0,
+      myPercent: Number(effectiveMyPercent) || 0,
       profitTaken: Number(profitTaken) || 0,
       fop: Number(fop) || 0,
       partnerCommission: Number(partnerCommission) || 0,
     } as Project);
-  }, [budget, currency, prepayment, paidToSpecialist, myPercent, profitTaken, fop, partnerCommission]);
+  }, [budget, currency, prepayment, paidToSpecialist, effectiveMyPercent, profitTaken, fop, partnerCommission]);
 
   const handleSave = () => {
     onSave({
@@ -144,7 +182,7 @@ export default function ProjectForm({ isOpen, project, specialists, partners, on
       bank,
       prepayment: Number(prepayment) || 0,
       paidToSpecialist: Number(paidToSpecialist) || 0,
-      myPercent: Number(myPercent) || 0,
+      myPercent: Number(effectiveMyPercent) || 0,
       profitTaken: Number(profitTaken) || 0,
       fop: Number(fop) || 0,
       partnerCommission: Number(partnerCommission) || 0,
@@ -284,7 +322,31 @@ export default function ProjectForm({ isOpen, project, specialists, partners, on
         </div>
         <div className="form-group">
           <label className="form-label">Мій % від суми</label>
-          <input type="number" className="form-input" value={myPercent} onChange={e => setMyPercent(e.target.value)} min="0" max="100" placeholder="30" />
+          <input
+            type="number"
+            className="form-input"
+            value={effectiveMyPercent}
+            onChange={e => { setMyPercent(e.target.value); setAutoPercent(false); }}
+            min="0"
+            max="100"
+            step="any"
+            placeholder="30"
+          />
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={autoPercent}
+              onChange={e => handleAutoToggle(e.target.checked)}
+            />
+            Автоматично
+          </label>
+          {autoPercent && (
+            <small className="form-hint">
+              {autoValue !== null && autoRule
+                ? `Правило фахівця: ≤ ${formatMoney(autoRule.threshold, 'UAH')} → ${autoRule.percentUpTo}%, понад поріг → ${autoRule.percentAbove}%`
+                : 'Оберіть фахівця та вкажіть бюджет, щоб застосувати правило'}
+            </small>
+          )}
         </div>
         <div className="form-group">
           <label className="form-label">Прибуток (авто)</label>

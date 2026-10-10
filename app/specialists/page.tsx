@@ -3,8 +3,10 @@ import { useState, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { useApp } from '@/context/AppContext';
 import { specialistStats, getStatsContext } from '@/lib/calc';
+import { resolveMyShare } from '@/lib/my-share';
 import { formatMoney } from '@/lib/utils';
 import { saveSpecialist, deleteSpecialist } from '@/lib/actions';
+import type { SpecialistFormData } from '@/components/forms/SpecialistForm';
 import { emitToast } from '@/lib/toast-bus';
 import type { Specialist } from '@/types';
 import EmptyStateCard from '@/components/ui/EmptyStateCard';
@@ -40,7 +42,7 @@ export default function SpecialistsPage() {
     )
   ), [statsCtx, search]);
 
-  const handleSave = async (data: { name: string; specialization: string; telegram: string }) => {
+  const handleSave = async (data: SpecialistFormData) => {
     const result = await saveSpecialist(data, editSpec?.id);
     if (!result.ok) {
       reportErrors(result.errors);
@@ -81,6 +83,7 @@ export default function SpecialistsPage() {
         {!filtered.length ? <EmptyStateCard icon={<svg width="40" height="40" viewBox="0 0 24 24" fill="none"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>} message="Немає фахівців" hint="Натисніть «Новий фахівець», щоб додати" /> :
         filtered.map(d => {
           const s = specialistStats(d.id, statsCtx);
+          const share = resolveMyShare(d);
           const initials = d.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
           return (
             <div key={d.id} className="developer-card anim-stagger">
@@ -97,6 +100,13 @@ export default function SpecialistsPage() {
                 <div className="dev-stat"><div className="dev-stat-label">Завершено</div><div className="dev-stat-value">{s.count}</div></div>
                 <div className="dev-stat"><div className="dev-stat-label">Виплачено</div><div className="dev-stat-value">{formatMoney(s.totalPaid)}</div></div>
                 <div className="dev-stat"><div className="dev-stat-label">Борг</div><div className="dev-stat-value" style={{ color: s.debt > 0 ? 'var(--accent-orange)' : 'var(--accent-green)' }}>{formatMoney(s.debt)}</div></div>
+              </div>
+              <div className="dev-share">
+                <div className="dev-share-label">Моя частка</div>
+                <div className="dev-share-rules">
+                  <span className="dev-share-chip">≤ {formatMoney(share.threshold, 'UAH')} → <b>{share.percentUpTo}%</b></span>
+                  <span className="dev-share-chip">понад поріг → <b>{share.percentAbove}%</b></span>
+                </div>
               </div>
               <div className="dev-card-actions">
                 <button className="btn btn-ghost" style={{ flex: 1, justifyContent: 'center' }} onClick={() => { setEditSpec(d); setFormOpen(true); }}>Редагувати</button>

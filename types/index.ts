@@ -49,6 +49,16 @@ export interface Specialist {
   name: string;
   specialization?: string;
   telegram?: string;
+  /**
+   * «Моя частка»: поріг бюджету, грн (відсоток до порогу включно).
+   * Відсутнє у старих записів → застосовується початкове правило
+   * (див. lib/my-share.ts).
+   */
+  myShareThreshold?: number;
+  /** «Моя частка»: відсоток до порогу включно (0–100). */
+  mySharePercentUpTo?: number;
+  /** «Моя частка»: відсоток понад поріг (0–100). */
+  mySharePercentAbove?: number;
 }
 
 // Partner type

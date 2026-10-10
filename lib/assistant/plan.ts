@@ -19,7 +19,7 @@ export const schemas:Partial<Record<AssistantDomain,Record<string,Spec>>>={
  projects:{name:text('Назва проєкту'),type:select('Тип',['IT','Design','Video']),status:select('Статус',['Очікування оплати','В роботі','На паузі','Завершено']),clientName:text('Клієнт'),clientTelegram:text('Telegram клієнта'),clientSource:text('Джерело клієнта'),budget:number('Бюджет'),currency,bank,prepayment:number('Загалом сплатив клієнт'),paidToSpecialist:number('Виплачено фахівцю'),myPercent:number('Мій %'),fop:number('ФОП %'),partnerCommission:number('Комісія партнеру %'),profitTaken:number('Забрав собі'),developerId:text('ID фахівця'),partnerId:text('ID партнера'),startDate:date('Дата початку'),endDate:date('Дата завершення'),deadlineDays:number('Дедлайн, днів'),description:text('Опис')},
  finance:{type:select('Тип',['income','expense']),amount:number('Сума у валюті рахунку'),bank,date:date('Дата'),description:text('Опис'),category:text('Категорія'),incomeStatus:select('Статус доходу',['earned','incoming']),projectId:text('ID проєкту'),hidden:{label:'Прихований у підсумках',kind:'boolean'}},
  payments:{amount:number('Додаткова оплата'),bank,date:date('Дата'),description:text('Опис')},
- specialists:{name:text('Ім’я фахівця'),specialization:text('Спеціалізація'),telegram:text('Telegram')},
+ specialists:{name:text('Ім’я фахівця'),specialization:text('Спеціалізація'),telegram:text('Telegram'),myShareThreshold:number('Поріг бюджету, грн'),mySharePercentUpTo:number('Відсоток до порогу, %'),mySharePercentAbove:number('Відсоток понад поріг, %')},
  partners:{name:text('Ім’я партнера'),currency,services:text('Послуги'),paidToPartner:number('Виплачено партнеру'),givenProjectsCount:number('Передано проєктів'),givenProjectsPrice:number('Ціна переданих проєктів'),ourCommission:number('Наша комісія'),paidToUs:number('Виплачено нам')},
  debts:{type:select('Тип боргу',['owed_to_me','my_debt']),person:text('Людина'),amount:number('Сума'),currency,note:text('Примітка'),date:date('Дата')},
  savings:{name:text('Назва'),bank,amount:number('Сума'),goal:number('Ціль'),currency,date:date('Дата')},
@@ -61,7 +61,7 @@ export function normalizePlan(raw:unknown,s:DataSnapshot):Omit<Plan,'base'>{
  if(domain!=='settings'&&action!=='create'&&!records(domain,s).some(x=>x.id===recordId))throw new Error('Запис не знайдено. Уточни назву або ID');
  const fields=cleanFields(domain,r.fields||{});
  if(action==='create'){
-  const defaults:Partial<Record<AssistantDomain,Plan['fields']>>={projects:{status:'Очікування оплати',currency:'UAH',prepayment:0,paidToSpecialist:0,myPercent:0,fop:0,partnerCommission:0,profitTaken:0,startDate:today()},finance:{date:today(),hidden:false},clients:{isRegular:false,source:'Інше'},debts:{currency:'UAH',date:today()},savings:{currency:'UAH',amount:0,date:today()},partners:{currency:'UAH'}};
+  const defaults:Partial<Record<AssistantDomain,Plan['fields']>>={projects:{status:'Очікування оплати',currency:'UAH',prepayment:0,paidToSpecialist:0,fop:0,partnerCommission:0,profitTaken:0,startDate:today()},finance:{date:today(),hidden:false},clients:{isRegular:false,source:'Інше'},debts:{currency:'UAH',date:today()},savings:{currency:'UAH',amount:0,date:today()},partners:{currency:'UAH'}};
   Object.assign(fields,{...defaults[domain],...fields});
  }
  if(domain==='payments'&&!fields.date)fields.date=today();

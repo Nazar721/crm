@@ -38,12 +38,30 @@ export function validateAmount(
   return [];
 }
 
-/** Відсоток: 0–100. */
-export function validatePercent(value: unknown, field = 'percent', label = 'Відсоток'): FieldError[] {
-  if (value === '' || value === undefined || value === null) return [];
+/** Відсоток: 0–100. За потреби — обов'язкове поле. */
+export function validatePercent(
+  value: unknown,
+  field = 'percent',
+  label = 'Відсоток',
+  opts: { required?: boolean } = {},
+): FieldError[] {
+  if (value === '' || value === undefined || value === null) {
+    return opts.required ? [{ field, message: `${label}: обов'язкове поле` }] : [];
+  }
   const n = toFiniteNumber(value);
   if (n === null) return [{ field, message: `${label}: має бути числом` }];
   if (n < 0 || n > 100) return [{ field, message: `${label}: має бути від 0 до 100` }];
+  return [];
+}
+
+/** Додатне число: обов'язкове, кінцеве, > 0 — без порожніх, NaN, Infinity і від'ємних. */
+export function validatePositiveNumber(value: unknown, field: string, label: string): FieldError[] {
+  if (value === '' || value === undefined || value === null) {
+    return [{ field, message: `${label}: обов'язкове поле` }];
+  }
+  const n = toFiniteNumber(value);
+  if (n === null) return [{ field, message: `${label}: має бути числом` }];
+  if (n <= 0) return [{ field, message: `${label}: має бути більшим за 0` }];
   return [];
 }
 
