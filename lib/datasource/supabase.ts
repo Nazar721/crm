@@ -149,6 +149,9 @@ export class SupabaseDataSource implements CrmDataSource {
   }
 
   async historyUndo(request: HistoryUndoRequest & { patch: HistoryPatch }): Promise<HistoryUndoResult> {
+    // Ревізія 2: клієнт НЕ передає патч — сервер сам обчислює інверсію
+    // події з актуального стану під блокуванням (пункт огляду P1.7).
+    void request.patch;
     let result: { data: unknown; error: { message: string; code?: string } | null; status?: number };
     try {
       result = await this.rpc('crm_history_undo', {
@@ -156,7 +159,6 @@ export class SupabaseDataSource implements CrmDataSource {
         p_request: request.requestId,
         p_expected_revision: request.expectedRevision ?? null,
         p_source: request.source,
-        p_patch: request.patch,
       });
     } catch {
       return {
@@ -188,6 +190,12 @@ function mapUndoError(error: { message: string; code?: string }): HistoryUndoRes
   if (message.includes('CRM_CONFLICT')) {
     return { ok: false, reason: 'conflict', message: 'Дані змінилися після перегляду — перечитай журнал і повтори скасування.' };
   }
+  if (message.includes('CRM_UNDO_CHANGED')) {
+    return { ok: false, reason: 'conflict', message: 'Стан даних уже відрізняється від очікуваного після цієї події — нічого не перезаписано.' };
+  }
+  if (message.includes('CRM_UNDO_DEPENDENCY')) {
+    return { ok: false, reason: 'conflict', message: 'На зачеплені записи вже посилаються інші дані — скасування відхилено без часткового запису.' };
+  }
   if (message.includes('CRM_ALREADY_UNDONE')) {
     return { ok: false, reason: 'already_undone', message: 'Цю подію вже скасовано.' };
   }
@@ -201,7 +209,7 @@ function mapUndoError(error: { message: string; code?: string }): HistoryUndoRes
     return { ok: false, reason: 'denied', message: 'База відхилила доступ власника CRM.' };
   }
   if (message.includes('CRM_INVALID')) {
-    return { ok: false, reason: 'write_failed', message: 'Сервер відхилив некоректний запит скасування.' };
+    return { ok: false, reason: 'write_failed', message: 'Сервер відхилив некоректний запит скасування (перевір ревізію та параметри).' };
   }
   return { ok: false, reason: 'write_failed', message: 'Скасування в базу не підтверджено. Онови сторінку та перевір журнал.' };
 }

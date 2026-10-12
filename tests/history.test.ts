@@ -17,6 +17,7 @@ import { migrate } from '@/lib/migrations';
 import { applyImport } from '@/lib/importer';
 import { buildExportPayload } from '@/lib/export';
 import { SupabaseDataSource } from '@/lib/datasource/supabase';
+import { LocalDataSource } from '@/lib/datasource/local';
 import { clearAll, bootStore, emptySnapshot, makeClient, makeProject, makeTransaction } from './helpers';
 import type { DataSnapshot } from '@/types';
 
@@ -541,6 +542,113 @@ test('збій запису журналу: дані збережені, под�
 });
 
 // ------------------------------------------------------------
+// Локальний rollback: чесні гарантії (зауваження першого огляду)
+// ------------------------------------------------------------
+
+test('rollback: невдалий другий запис → відкочування ПЕРЕВІРЕНО, без інциденту', async () => {
+  clearAll();
+  await bootStore();
+  const project = makeProject({ id: 'p1', name: 'Проєкт', clientName: 'A' });
+  await store.saveCollection('projectsActive', [project]);
+  await completeProject('p1');
+  const completeEvent = (await listAll()).find(e => e.action === 'complete')!;
+
+  const originalSet = localStorage.setItem.bind(localStorage);
+  (localStorage as unknown as { setItem: (k: string, v: string) => void }).setItem = (key: string, value: string) => {
+    if (String(key) === 'projects_completed') {
+      const err = new Error('QuotaExceededError');
+      err.name = 'QuotaExceededError';
+      throw err;
+    }
+    return originalSet(key, value);
+  };
+  try {
+    const result = await store.undoHistory({ eventId: completeEvent.id, requestId: crypto.randomUUID(), source: 'Форма' });
+    assert.equal(result.ok, false);
+    assert.ok(result.ok === false && result.message.includes('ПЕРЕВІРЕНО'), 'відкат підтверджено повторним читанням');
+  } finally {
+    (localStorage as unknown as { setItem: (k: string, v: string) => void }).setItem = originalSet;
+  }
+  assert.equal(localStorage.getItem('crm_undo_incomplete_v1'), null, 'без інциденту після підтвердженого відкату');
+  assert.equal(store.getSnapshot().projectsCompleted.length, 1, 'стан даних як до спроби (відкат успішний)');
+});
+
+test('rollback: збій відкочування → стійкий інцидент блокує запис до перевірки', async () => {
+  clearAll();
+  await bootStore();
+  const project = makeProject({ id: 'p1', name: 'Проєкт', clientName: 'A' });
+  await store.saveCollection('projectsActive', [project]);
+  await completeProject('p1');
+  const completeEvent = (await listAll()).find(e => e.action === 'complete')!;
+
+  const originalSet = localStorage.setItem.bind(localStorage);
+  let activeWrites = 0;
+  (localStorage as unknown as { setItem: (k: string, v: string) => void }).setItem = (key: string, value: string) => {
+    const k = String(key);
+    if (k === 'projects_active') {
+      activeWrites += 1;
+      // Перший запис даних дозволений; спроба відкочування (друга) — ні.
+      if (activeWrites > 1) throw new Error('QuotaExceededError');
+    }
+    if (k === 'projects_completed') {
+      // Мітка інциденту має існувати ДО першого запису даних.
+      assert.ok(localStorage.getItem('crm_undo_incomplete_v1'), 'мітка пишеться до записів даних');
+      const err = new Error('QuotaExceededError');
+      err.name = 'QuotaExceededError';
+      throw err;
+    }
+    return originalSet(key, value);
+  };
+  try {
+    const result = await store.undoHistory({ eventId: completeEvent.id, requestId: crypto.randomUUID(), source: 'Форма' });
+    assert.equal(result.ok, false);
+    assert.ok(result.ok === false && result.message.includes('НЕ підтверджено'), 'не заявляємо про відкат без доказу');
+    assert.ok(result.ok === false && result.message.includes('віднови з резервної копії'), 'чесна інструкція для власника');
+  } finally {
+    (localStorage as unknown as { setItem: (k: string, v: string) => void }).setItem = originalSet;
+  }
+  // Стійкий інцидент: мітка + блок запису, переживає перезапуск сховища.
+  assert.ok(localStorage.getItem('crm_undo_incomplete_v1'), 'мітка невдалого скасування переживає збій');
+  assert.ok(store.getWriteBlock(), 'запис заблоковано');
+  const blocked = await store.saveCollection('clients', [makeClient({ name: 'Не можна' })]);
+  assert.equal(blocked.ok, false, 'нові дії блокуються до перевірки');
+  await store.initStore(new LocalDataSource());
+  assert.ok(store.getWriteBlock(), 'перезапуск не втрачає інцидент');
+  // Після явної перевірки/прибирання мітки запис можливий.
+  localStorage.removeItem('crm_undo_incomplete_v1');
+  await store.initStore(new LocalDataSource());
+  assert.equal(store.getWriteBlock(), null);
+});
+
+test('журнал: збій запису події після успішної дії — issue видимий і підписники сповіщені', async () => {
+  clearAll();
+  await bootStore();
+  let notified = 0;
+  const unsubscribe = store.subscribe(() => { notified += 1; });
+  const originalSet = localStorage.setItem.bind(localStorage);
+  (localStorage as unknown as { setItem: (k: string, v: string) => void }).setItem = (key: string, value: string) => {
+    if (String(key) === 'crm_history_v1') {
+      const err = new Error('QuotaExceededError');
+      err.name = 'QuotaExceededError';
+      throw err;
+    }
+    return originalSet(key, value);
+  };
+  try {
+    const result = await saveProject(makeProject({ name: 'Дія зі збоєм журналу', clientName: 'Клієнт' }));
+    assert.equal(result.ok, true, 'основна дія успішна');
+  } finally {
+    (localStorage as unknown as { setItem: (k: string, v: string) => void }).setItem = originalSet;
+    unsubscribe();
+  }
+  assert.ok(notified > 0, 'підписники сповіщені про збій журналу');
+  assert.ok(
+    store.getIssues().some(i => i.key === 'crm_history_v1' && i.kind === 'write_failed'),
+    'issue журналу видимий у списку проблем',
+  );
+});
+
+// ------------------------------------------------------------
 // Контракт віддаленого адаптера (НЕ перевірка SQL)
 // ------------------------------------------------------------
 
@@ -629,6 +737,14 @@ test('remote-контракт: список/подія/скасування ви
   assert.equal(conflict.ok, false);
   assert.equal(conflict.ok === false && conflict.reason, 'conflict');
 
+  db.undoError = { message: 'CRM_UNDO_CHANGED' };
+  const changed = await source.historyUndo({ eventId: 'e1', requestId: 'r1', source: 'Форма', patch: {} as never });
+  assert.equal(changed.ok === false && changed.reason, 'conflict', 'стан не відповідає «після» → конфлікт');
+
+  db.undoError = { message: 'CRM_UNDO_DEPENDENCY' };
+  const dependency = await source.historyUndo({ eventId: 'e1', requestId: 'r1', source: 'Форма', patch: {} as never });
+  assert.equal(dependency.ok === false && dependency.reason, 'conflict', 'залежності → конфлікт');
+
   db.undoError = { message: 'CRM_ALREADY_UNDONE' };
   const twice = await source.historyUndo({ eventId: 'e1', requestId: 'r1', source: 'Форма', patch: {} as never });
   assert.equal(twice.ok === false && twice.reason, 'already_undone');
@@ -642,6 +758,9 @@ test('remote-контракт: список/подія/скасування ви
   assert.equal(call.args!.p_request, 'r2');
   assert.equal(call.args!.p_expected_revision, 7);
   assert.equal(call.args!.p_source, 'Форма');
+  // Ревізія 2 (P1.5/P1.7): клієнт більше НЕ передає патч — сервер сам
+  // обчислює інверсію; ревізія обов'язкова.
+  assert.equal('p_patch' in call.args!, false, 'патч не передається — інверсію рахує сервер');
 });
 
 // ------------------------------------------------------------

@@ -254,9 +254,13 @@ export async function recordHistoryAfter(before: DataSnapshot, ctx?: Partial<Wri
       : getWriteContext();
     const event = buildEventFromSnapshots(before, snapshot, active);
     if (!event) return;
-    await dataSource.historyAppend(event);
+    const outcome = await dataSource.historyAppend(event);
+    // Новий issue про збій журналу має бути помітним в UI одразу після
+    // успішної основної дії — сповіщаємо підписників.
+    if (!outcome.ok) notify();
   } catch (err) {
     console.error('history journal append failed', err);
+    notify();
   }
 }
 
@@ -508,6 +512,13 @@ export async function previewUndo(eventId: string): Promise<PreviewUndoResult> {
  * відкочуванням). Після успіху snapshot перечитується/оновлюється.
  */
 export async function undoHistory(request: HistoryUndoRequest): Promise<HistoryUndoResult> {
+  const result = await runUndoHistory(request);
+  // Підписники (UI) мають побачити issue про збій/інцидент одразу.
+  notify();
+  return result;
+}
+
+async function runUndoHistory(request: HistoryUndoRequest): Promise<HistoryUndoResult> {
   const block = getWriteBlock();
   if (block) return { ok: false, reason: 'denied', message: block };
   // Повтор того самого запиту (підтверджений кнопкою двічі) — ідемпотентний

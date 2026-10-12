@@ -45,6 +45,12 @@ const HISTORY_KEY = 'crm_history_v1';
 /** Стійка recovery-мітка: подія, яку ще не встигли дописати в журнал. */
 const HISTORY_PENDING_KEY = 'crm_history_pending_v1';
 const HISTORY_CORRUPT_KEY = 'crm_history_v1_corrupt';
+/**
+ * Стійкий інцидент невдалого скасування: мітка пишеться ДО першого запису
+ * даних і знімається лише після повного успіху. Якщо мітка лишилася
+ * (збій/переривання) — стан даних непевний: запис блокується до перевірки.
+ */
+const UNDO_INCOMPLETE_KEY = 'crm_undo_incomplete_v1';
 
 /**
  * Копії стану:
@@ -226,6 +232,19 @@ export class LocalDataSource implements CrmDataSource {
         ? 'Перевищено ліміт локального сховища: дані доступні для перегляду та експорту, але запис заблоковано.'
         : `Запис у локальне сховище заблоковано: ${String(err)}. Дані доступні для перегляду та експорту.`;
       this.pushIssue(quota ? 'quota_exceeded' : 'write_failed', this.writeBlockReason);
+    }
+
+    // 3. Стійкий інцидент невдалого/перерваного скасування: мітка пережила
+    // перезапуск — стан даних непевний, запис блокується до перевірки.
+    const undoIncident = this.readUndoIncident();
+    if (undoIncident) {
+      this.writeBlockReason = this.writeBlockReason
+        || 'Скасування перервано збоєм: стан даних непевний. Перевір експорт і віднови з резервної копії за потреби.';
+      this.pushIssue(
+        'write_failed',
+        `Невдале скасування зафіксовано (${undoIncident.slice(0, 160)}). Стан даних непевний — запис заблоковано до перевірки.`,
+        UNDO_INCOMPLETE_KEY,
+      );
     }
 
     const data = {} as Record<CollectionKey, unknown[]> & { financeSettings: FinanceSettings; meta: BackupInfo };
@@ -543,9 +562,19 @@ export class LocalDataSource implements CrmDataSource {
     if (this.writeBlockReason) {
       return { ok: false, reason: 'denied', message: this.writeBlockReason };
     }
+    // Стійкий інцидент попереднього невдалого скасування: стан непевний —
+    // нові записи/скасування блокуються до з'ясування (відновлення з копії).
+    if (this.readUndoIncident()) {
+      return {
+        ok: false,
+        reason: 'denied',
+        message: 'Попереднє скасування перервалося збоєм — стан даних непевний. Перевір експорт і віднови з резервної копії.',
+      };
+    }
     const events = this.readHistory();
+    // Ідемпотентність прив'язана до ТОГО САМОГО запиту і події.
     const duplicate = request.requestId
-      ? events.find(e => e.action === 'undo' && e.requestId === request.requestId)
+      ? events.find(e => e.action === 'undo' && e.requestId === request.requestId && e.undoneEventId === request.eventId)
       : undefined;
     if (duplicate) return { ok: true, event: duplicate };
     const original = events.find(e => e.id === request.eventId);
@@ -555,6 +584,15 @@ export class LocalDataSource implements CrmDataSource {
 
     const patch = request.patch;
     const touched = Object.keys(patch.collections ?? {}) as CollectionKey[];
+
+    // 0. Стійка мітка ДО першого запису даних: переривання між записами
+    // не лишає приховано змішаного стану без видимого інциденту.
+    const marker = JSON.stringify({ at: new Date().toISOString(), eventId: request.eventId, requestId: request.requestId });
+    try {
+      localStorage.setItem(UNDO_INCOMPLETE_KEY, marker);
+    } catch {
+      return { ok: false, reason: 'write_failed', message: 'Не вдалося зафіксувати початок скасування (ліміт сховища) — жодних змін не зроблено.' };
+    }
 
     // 1. Прочитати поточні значення (для відкочування та події журналу).
     const previousRaw: Record<string, string | null> = {};
@@ -572,39 +610,59 @@ export class LocalDataSource implements CrmDataSource {
         previous.settings = raw ? JSON.parse(raw) as FinanceSettings : patch.settings;
       }
     } catch (err) {
+      // Записів ще не було — інцидент не потрібен.
+      this.clearUndoIncident();
       return { ok: false, reason: 'write_failed', message: `Не вдалося прочитати поточні дані для відкочування: ${String(err)}` };
     }
 
-    // 2. Записати патч (послідовно; при збої — відкочувати вже записане).
+    // 2. Запис патчу. Відкочування VERIFICOВУЄТЬСЯ повторним читанням:
+    // лише підтверджений відкат дозволяє стверджувати «відкочено».
     const written: string[] = [];
-    const rollback = (): void => {
+    const rollbackVerified = (): boolean => {
+      let ok = true;
       for (const storageKey of written) {
         try {
           const raw = previousRaw[storageKey];
           if (raw === null || raw === undefined) localStorage.removeItem(storageKey);
           else localStorage.setItem(storageKey, raw);
         } catch {
-          // Відкочування теж може впасти — про це буде окремий issue нижче.
+          ok = false;
         }
       }
+      for (const storageKey of written) {
+        try {
+          const expected = previousRaw[storageKey];
+          const actual = localStorage.getItem(storageKey);
+          if ((expected ?? null) !== (actual ?? null)) ok = false;
+        } catch {
+          ok = false;
+        }
+      }
+      return ok;
+    };
+    const failWrite = (key: string, issueMessage: string): HistoryUndoResult => {
+      const verified = rollbackVerified();
+      if (verified) {
+        this.clearUndoIncident();
+        return { ok: false, reason: 'write_failed', message: `Запис «${key}» не вдався — відкочування попередніх записів ПЕРЕВІРЕНО: ${issueMessage}` };
+      }
+      this.pushUndoIncident(`Збій під час скасування («${key}») з подальшим збоєм відкочування. Стан даних непевний — перевір експорт і віднови з резервної копії.`);
+      return { ok: false, reason: 'write_failed', message: `Запис «${key}» не вдався, а відкочування НЕ підтверджено — стан даних непевний (${issueMessage}). Перевір експорт і віднови з резервної копії.` };
     };
     for (const key of touched) {
       const storageKey = COLLECTION_STORAGE_KEYS[key];
       const outcome = this.write(storageKey, patch.collections![key]);
-      if (!outcome.ok) {
-        rollback();
-        return { ok: false, reason: 'write_failed', message: `Запис «${key}» не вдався — відновлення відкочено: ${outcome.issue.message}` };
-      }
+      if (!outcome.ok) return failWrite(key, outcome.issue.message);
       written.push(storageKey);
     }
     if (patch.settings) {
       const outcome = this.write(META_STORAGE_KEYS.financeSettings, patch.settings);
-      if (!outcome.ok) {
-        rollback();
-        return { ok: false, reason: 'write_failed', message: `Запис налаштувань не вдався — відновлення відкочено: ${outcome.issue.message}` };
-      }
+      if (!outcome.ok) return failWrite('financeSettings', outcome.issue.message);
       written.push(META_STORAGE_KEYS.financeSettings);
     }
+
+    // Дані застосовано повністю — інцидент скасування більше не потрібен.
+    this.clearUndoIncident();
 
     // 3. Подія-відновлення з ФАКТИЧНОЇ різниці + позначка на оригіналі — одним записом.
     const after: BuildEventInput['before'] = {};
@@ -624,8 +682,13 @@ export class LocalDataSource implements CrmDataSource {
     });
     if (!event) {
       // Патч не змінив вміст — поточний стан уже відповідає відновленню.
-      rollback();
-      return { ok: false, reason: 'conflict', message: 'Поточні дані вже відповідають стану до цієї події — нічого не змінено.' };
+      const verified = rollbackVerified();
+      if (verified) {
+        this.clearUndoIncident();
+        return { ok: false, reason: 'conflict', message: 'Поточні дані вже відповідають стану до цієї події — нічого не змінено.' };
+      }
+      this.pushUndoIncident('Скасування не змінило вміст і відкочування не підтверджено — стан даних непевний. Перевір експорт і віднови з резервної копії.');
+      return { ok: false, reason: 'conflict', message: 'Дані вже відповідають відновленню, але непевний стан вимагає перевірки (див. проблеми сховища).' };
     }
     try {
       localStorage.setItem(HISTORY_PENDING_KEY, JSON.stringify(event));
@@ -637,7 +700,7 @@ export class LocalDataSource implements CrmDataSource {
     if (!outcome.ok) {
       this.pushIssue(
         'write_failed',
-        `Дані відновлено, але подію журналу («${event.summary}») записати не вдалося. Повторне скасування буде заблоковано перевіркою стану даних.`,
+        `Дані скасування застосовано, але подію журналу («${event.summary}») записати не вдалося. Повторне скасування буде заблоковано перевіркою стану даних.`,
         HISTORY_KEY,
       );
       return { ok: false, reason: 'write_failed', message: 'Дані відновлено, але подію журналу записати не вдалося. Перезавантаж сторінку та перевір журнал.' };
@@ -645,6 +708,34 @@ export class LocalDataSource implements CrmDataSource {
     this.clearPendingHistory();
     this.clearHistoryIssue();
     return { ok: true, event };
+  }
+
+  private readUndoIncident(): string | null {
+    try {
+      return typeof window === 'undefined' ? null : localStorage.getItem(UNDO_INCOMPLETE_KEY);
+    } catch {
+      return null;
+    }
+  }
+
+  private clearUndoIncident(): void {
+    try {
+      if (typeof window !== 'undefined') localStorage.removeItem(UNDO_INCOMPLETE_KEY);
+    } catch {
+      // Без доступу до ключа інцидент лишається видимим наступного читання.
+    }
+  }
+
+  private pushUndoIncident(message: string): void {
+    try {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(UNDO_INCOMPLETE_KEY, JSON.stringify({ at: new Date().toISOString(), message }));
+      }
+    } catch {
+      // Навіть мітка не записалась — блок у пам'яті + issue нижче.
+    }
+    this.writeBlockReason = this.writeBlockReason || message;
+    this.pushIssue('write_failed', message, UNDO_INCOMPLETE_KEY);
   }
 
   /** Службовий запис поза контрактом (заглушки міграцій, кварантина тощо). */

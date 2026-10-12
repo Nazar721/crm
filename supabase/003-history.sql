@@ -1,21 +1,20 @@
 begin;
 -- ============================================================
 -- Пакет 03: журнал історії змін і скасування (server-side).
+-- Ревізія 2: виправлення зауважень першого огляду (P1.1–P1.7):
+--   усі внутрішні виклики кваліфіковано схемою public (порожній
+--   search_path), jsonb_typeof застосовано до JSON-вузла e->'id',
+--   cleanup має колонку at, apply_collections без неоднозначного k,
+--   формат клієнтського patch більше не потрібен — сервер сам
+--   обчислює інверсію події з актуального стану під блокуванням,
+--   унікальність проєктів перевіряється за ФІНАЛЬНИМ станом,
+--   ревізія обов'язкова, ідемпотентність прив'язана до події,
+--   bulk/невідновлювані події та обхід залежностей відхиляються.
 --
 -- ЗАСТОСУВАННЯ: після 001-crm.sql (наявна база) І ДО публікації
 -- клієнта пакета 03. Старий клієнт працює і без цієї міграції;
 -- новий клієнт без цієї міграції зберігає дані через резервну
--- стару сигнатуру crm_commit (без журналу) і покаже підказку
--- про відсутність журналу на відповідній вкладці.
---
--- Гарантії: подія створюється з ФАКТИЧНОЇ різниці в межах тієї ж
--- транзакції, що й запис даних (crm_commit) — успішний commit і
--- журнал атомарні; повтор того самого request ID не створює нової
--- події; crm_history_undo перевіряє власника, ревізію під
--- блокуванням, ідемпотентність і створює подію-відновлення також
--- атомарно. Доступ до таблиці — лише через SECURITY DEFINER функції
--- з перевіркою auth.uid() і crm_owners; anon/authenticated прямих
--- прав на crm_history не мають.
+-- стару сигнатуру crm_commit (без журналу) і показує підказку.
 -- ============================================================
 
 create table if not exists public.crm_history (
@@ -40,6 +39,8 @@ revoke all on public.crm_history from anon, authenticated;
 
 -- ------------------------------------------------------------
 -- Довідники/валідація (без прав виконання в клієнтів).
+-- Усі внутрішні виклики нижче кваліфіковані `public.` — тіло функції
+-- виконується з порожнім search_path, і некваліфіковане ім'я не знайдеться.
 -- ------------------------------------------------------------
 create or replace function public.crm_history_source(p text) returns text
 language sql immutable set search_path = '' as $$
@@ -93,7 +94,7 @@ begin
     if not exists (select 1 from jsonb_array_elements(p_old) o where o.value->>'id' = v_rec->>'id') then
       v_result := v_result || jsonb_build_array(jsonb_build_object(
         'collection', p_collection, 'change', 'create', 'id', v_rec->>'id',
-        'label', crm_history_label(p_collection, v_rec), 'after', v_rec));
+        'label', public.crm_history_label(p_collection, v_rec), 'after', v_rec));
     end if;
   end loop;
   -- видалені
@@ -101,7 +102,7 @@ begin
     if not exists (select 1 from jsonb_array_elements(p_new) n where n.value->>'id' = v_rec->>'id') then
       v_result := v_result || jsonb_build_array(jsonb_build_object(
         'collection', p_collection, 'change', 'delete', 'id', v_rec->>'id',
-        'label', crm_history_label(p_collection, v_rec), 'before', v_rec));
+        'label', public.crm_history_label(p_collection, v_rec), 'before', v_rec));
     end if;
   end loop;
   -- змінені: лише різниця полів
@@ -127,7 +128,7 @@ begin
     if jsonb_array_length(v_fields) > 0 then
       v_result := v_result || jsonb_build_array(jsonb_build_object(
         'collection', p_collection, 'change', 'update', 'id', v_row.nn->>'id',
-        'label', crm_history_label(p_collection, v_row.nn), 'fields', v_fields));
+        'label', public.crm_history_label(p_collection, v_row.nn), 'fields', v_fields));
     end if;
   end loop;
   return v_result;
@@ -158,7 +159,7 @@ language sql set search_path = '' as $$
     select c->>'collection' as collection,
       jsonb_build_object(
         'collection', c->>'collection', 'id', c->>'collection', 'change', 'bulk',
-        'label', crm_collection_label(c->>'collection'),
+        'label', public.crm_collection_label(c->>'collection'),
         'counts', jsonb_build_object(
           'added', count(*) filter (where c->>'change' = 'create'),
           'removed', count(*) filter (where c->>'change' = 'delete'),
@@ -177,7 +178,7 @@ language sql set search_path = '' as $$
     when 'personalDebts' then 'debts'
     when 'settings' then 'settings'
     when 'import' then 'import'
-    else (select c->>'collection' from jsonb_array_elements(p_changes) c limit 1) end;
+    else coalesce((select c->>'collection' from jsonb_array_elements(p_changes) c limit 1), 'import') end;
 $$;
 
 create or replace function public.crm_history_action(p_changes jsonb, p_source text, p_hint text) returns text
@@ -290,8 +291,8 @@ begin
 end $$;
 
 -- ОЧИЩЕННЯ: 90 днів / 2000 подій на власника, із захистом живих
--- recovery-посилань (подія, на яку посилається утримуване
--- відновлення, не видаляється).
+-- recovery-посилань (подія, на яку посилається УТРИМУВАНЕ
+-- відновлення, не видаляється — пара лишається цілісною).
 create or replace function public.crm_history_cleanup(p_owner uuid) returns void
 language plpgsql set search_path = '' as $$
 declare v_cutoff timestamptz := now() - interval '90 days';
@@ -308,10 +309,9 @@ begin
     and not exists (
       select 1 from public.crm_history k
       where k.owner_id = p_owner and k.undone_event_id = h.id
-        and k.at >= v_cutoff
         and k.id in (
           select id from (
-            select id, row_number() over (order by at desc, id desc) as rn
+            select id, at, row_number() over (order by at desc, id desc) as rn
             from public.crm_history where owner_id = p_owner
           ) ranked
           where ranked.rn <= 2000 and ranked.at >= v_cutoff
@@ -321,21 +321,23 @@ end $$;
 
 -- ------------------------------------------------------------
 -- Застосування колекцій (спільно для commit і undo).
+-- Псевдонім t(k): у WHERE використовується t.k — plpgsql-змінна k
+-- не змагається з колонкою (P1.4).
 -- ------------------------------------------------------------
 create or replace function public.crm_apply_collections(p_owner uuid, p_snapshot jsonb) returns void
 language plpgsql set search_path = '' as $$
-declare k text; items jsonb;
+declare v_key text; items jsonb;
 begin
-  for k in
+  for v_key in
     select t.k from jsonb_object_keys(p_snapshot) t(k)
-    where k in ('projectsActive','projectsCompleted','clients','specialists','partners','transactions','personalDebts','savings')
+    where t.k in ('projectsActive','projectsCompleted','clients','specialists','partners','transactions','personalDebts','savings')
   loop
-    items := p_snapshot->k;
+    items := p_snapshot->v_key;
     delete from public.crm_records r
-    where r.owner_id = p_owner and r.collection = k
+    where r.owner_id = p_owner and r.collection = v_key
       and not exists (select 1 from jsonb_array_elements(items) e where e->>'id' = r.id);
     insert into public.crm_records(owner_id,collection,id,position,payload)
-      select p_owner, k, e->>'id', n::integer, e
+      select p_owner, v_key, e->>'id', n::integer, e
       from jsonb_array_elements(items) with ordinality as t(e,n)
       on conflict(owner_id,collection,id) do update set position=excluded.position,payload=excluded.payload
       where crm_records.payload is distinct from excluded.payload or crm_records.position is distinct from excluded.position;
@@ -347,6 +349,8 @@ end $$;
 -- в ОДНІЙ транзакції. Стара 3-аргументна сигнатура видаляється, щоб
 -- виклики з 3 аргументів (старий клієнт) йшли через нову функцію з
 -- типовим p_source=null → «Застасунок».
+-- Валідація ID: jsonb_typeof застосовується до JSON-вузла e->'id'
+-- (оператор ->> повертає text — P1.2), текстове вилучення лише для trim.
 -- ------------------------------------------------------------
 drop function if exists public.crm_commit(bigint,uuid,jsonb);
 
@@ -372,7 +376,7 @@ begin
   foreach k in array array['projectsActive','projectsCompleted','clients','specialists','partners','transactions','personalDebts','savings'] loop
     items:=p_snapshot->k;
     if jsonb_typeof(items) is distinct from 'array' then raise exception 'CRM_INVALID_COLLECTION %',k; end if;
-    if exists(select 1 from jsonb_array_elements(items) e where jsonb_typeof(e)<>'object' or jsonb_typeof(e->>'id') is distinct from 'string' or length(trim(e->>'id'))=0) then raise exception 'CRM_INVALID_ID %',k; end if;
+    if exists(select 1 from jsonb_array_elements(items) e where jsonb_typeof(e)<>'object' or jsonb_typeof(e->'id') is distinct from 'string' or length(trim(e->>'id'))=0) then raise exception 'CRM_INVALID_ID %',k; end if;
     if exists(select 1 from jsonb_array_elements(items) e group by e->>'id' having count(*)>1) then raise exception 'CRM_DUPLICATE_ID %',k; end if;
   end loop;
   if exists(select 1 from jsonb_array_elements(p_snapshot->'projectsActive') as act(item) join jsonb_array_elements(p_snapshot->'projectsCompleted') as done(item) on act.item->>'id'=done.item->>'id') then raise exception 'CRM_DUPLICATE_PROJECT_ID'; end if;
@@ -479,34 +483,37 @@ begin
 end $$;
 
 -- ------------------------------------------------------------
--- Скасування: авторизація, ідемпотентність, ревізія під блокуванням,
--- атомарне «відновлення даних + нова подія».
--- Патч — лише зачеплені колекції (повні масиви) та/або financeSettings;
--- контент патчу — відповідальність клієнтського engine, сервер додає
--- лише перевірки форми/цілісності (права власника той самий рівень,
--- що й звичайний commit).
+-- Скасування (ревізія 2). Патч від клієнта БІЛЬШЕ НЕ ПРИЙМАЄТЬСЯ:
+-- сервер сам обчислює інверсію ev.changes з АКТУАЛЬНОГО стану під
+-- FOR UPDATE і застосовує її атомарно разом із подією-відновленням.
+-- Гарантії: власник; обов'язкова ревізія; ідемпотентність прив'язана
+-- до (request_id, події); відмова для import/restore/undo/bulk; перевірка
+-- «після» для кожної сутності/поля (CRM_UNDO_CHANGED); фінальна
+-- унікальність ID проєктів; перевірка залежностей (CRM_UNDO_DEPENDENCY);
+-- налаштування — лише allowlist-поля події. Непов'язані пізніші зміни
+-- поза змінами події не чіпаються.
 -- ------------------------------------------------------------
-create or replace function public.crm_history_undo(p_event_id uuid,p_request uuid,p_expected_revision bigint,p_source text,p_patch jsonb) returns jsonb
+create or replace function public.crm_history_undo(p_event_id uuid,p_request uuid,p_expected_revision bigint,p_source text) returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare u uuid:=auth.uid(); s public.crm_state; ev record;
-  v_id uuid; v_rev bigint; v_key text; items jsonb;
+  v_id uuid; v_rev bigint; v_key text; v_change jsonb; v_field jsonb;
+  v_state jsonb := '{}'::jsonb;
+  v_old_state jsonb;
+  v_arr jsonb; v_rec jsonb; v_new_rec jsonb;
+  v_settings jsonb;
   v_changes jsonb := '[]'::jsonb;
-  v_old jsonb;
-  v_set_old jsonb;
   v_set jsonb;
+  v_proj_active jsonb; v_proj_done jsonb; v_projects jsonb;
+  v_clients jsonb; v_specialists jsonb; v_partners jsonb; v_transactions jsonb;
 begin
   if u is null or not exists(select 1 from public.crm_owners where user_id=u) then raise exception 'CRM_ACCESS_DENIED'; end if;
-  if p_event_id is null or p_request is null then raise exception 'CRM_INVALID_REQUEST'; end if;
-  if p_patch is null or jsonb_typeof(p_patch) <> 'object' or (select count(*) from jsonb_object_keys(p_patch) t(k)) = 0 then raise exception 'CRM_INVALID_PATCH'; end if;
-  if exists (
-    select 1 from jsonb_object_keys(p_patch) t(k)
-    where k not in ('projectsActive','projectsCompleted','clients','specialists','partners','transactions','personalDebts','savings','financeSettings')
-  ) then raise exception 'CRM_INVALID_PATCH'; end if;
+  if p_event_id is null or p_request is null or p_expected_revision is null then raise exception 'CRM_INVALID_REQUEST'; end if;
   insert into public.crm_state(owner_id) values(u) on conflict do nothing;
   select * into s from public.crm_state where owner_id=u for update;
 
-  -- Повтор того самого запиту скасування → без другої події.
-  select id into v_id from public.crm_history where owner_id = u and request_id = p_request and action = 'undo';
+  -- Повтор того самого запиту щодо ТОЇ САМОЇ події → без другої події.
+  select id into v_id from public.crm_history
+    where owner_id = u and request_id = p_request and action = 'undo' and undone_event_id = p_event_id;
   if v_id is not null then
     return jsonb_build_object('eventId', v_id::text, 'revision', s.revision, 'duplicate', true);
   end if;
@@ -515,67 +522,171 @@ begin
   if not found then raise exception 'CRM_HISTORY_NOT_FOUND'; end if;
   if ev.action in ('import','restore','undo') then raise exception 'CRM_UNDO_NOT_ALLOWED'; end if;
   if ev.undone_by is not null then raise exception 'CRM_ALREADY_UNDONE'; end if;
+  if exists (select 1 from jsonb_array_elements(ev.changes) c where c->>'change' = 'bulk') then
+    raise exception 'CRM_UNDO_NOT_ALLOWED';
+  end if;
 
-  -- Перевірка ревізії ПІД БЛОКУВАННЯМ: клієнт розрахував патч на
-  -- певному стані; будь-яка паралельна зміна → конфлікт, без запису.
-  if p_expected_revision is not null and s.revision <> p_expected_revision then
+  -- Перевірка ревізії ПІД БЛОКУВАННЯМ (обов'язкова): клієнт розрахував
+  -- перегляд на певному стані; будь-яка паралельна зміна → конфлікт.
+  if s.revision <> p_expected_revision then
     raise exception 'CRM_CONFLICT' using errcode='40001';
   end if;
 
-  -- Валідація вмісту патчу (ті самі правила, що й для commit).
-  for v_key in select t.k from jsonb_object_keys(p_patch) t(k) where k <> 'financeSettings' loop
-    items := p_patch->v_key;
-    if jsonb_typeof(items) is distinct from 'array' then raise exception 'CRM_INVALID_COLLECTION %',v_key; end if;
-    if exists(select 1 from jsonb_array_elements(items) e where jsonb_typeof(e)<>'object' or jsonb_typeof(e->>'id') is distinct from 'string' or length(trim(e->>'id'))=0) then raise exception 'CRM_INVALID_ID %',v_key; end if;
-    if exists(select 1 from jsonb_array_elements(items) e group by e->>'id' having count(*)>1) then raise exception 'CRM_DUPLICATE_ID %',v_key; end if;
+  -- Завантажити зачеплені колекції як поточний (фінальний) стан.
+  for v_key in select distinct c->>'collection' from jsonb_array_elements(ev.changes) c where c->>'collection' <> 'settings' loop
+    v_state := v_state || jsonb_build_object(v_key,
+      coalesce((select jsonb_agg(payload order by position) from public.crm_records where owner_id=u and collection=v_key),'[]'::jsonb));
   end loop;
-  if p_patch ? 'projectsActive' then
+  v_old_state := v_state;
+  v_settings := s.settings;
+
+  -- Обчислення інверсії кожної зміни події з перевіркою «після».
+  for v_change in select value from jsonb_array_elements(ev.changes) loop
+    if v_change->>'change' = 'bulk' then raise exception 'CRM_UNDO_NOT_ALLOWED'; end if;
+    if v_change->>'collection' = 'settings' then
+      for v_field in select value from jsonb_array_elements(coalesce(v_change->'fields','[]'::jsonb)) loop
+        if (v_settings->(v_field->>'key')) is distinct from (v_field->'after') then
+          raise exception 'CRM_UNDO_CHANGED';
+        end if;
+        -- Відновлюємо лише поля, зафіксовані в події (allowlist за побудовою).
+        v_settings := v_settings || jsonb_build_object(v_field->>'key', v_field->'before');
+      end loop;
+    else
+      v_arr := v_state->(v_change->>'collection');
+      case v_change->>'change'
+        when 'create' then
+          -- Скасування створення: запис має існувати і відповідати «після».
+          select e into v_rec from jsonb_array_elements(v_arr) e where e->>'id' = v_change->>'id';
+          if not found then raise exception 'CRM_UNDO_CHANGED'; end if;
+          if v_rec is distinct from (v_change->'after') then raise exception 'CRM_UNDO_CHANGED'; end if;
+          v_arr := (select coalesce(jsonb_agg(t.e order by t.n), '[]'::jsonb)
+                    from jsonb_array_elements(v_arr) with ordinality as t(e,n)
+                    where t.e->>'id' <> v_change->>'id');
+        when 'delete' then
+          -- Скасування видалення: попередній ID має бути вільним.
+          if exists (select 1 from jsonb_array_elements(v_arr) e where e->>'id' = v_change->>'id') then
+            raise exception 'CRM_UNDO_CHANGED';
+          end if;
+          if jsonb_typeof(v_change->'before') is distinct from 'object' then raise exception 'CRM_UNDO_CHANGED'; end if;
+          v_arr := v_arr || jsonb_build_array(v_change->'before');
+        when 'update' then
+          select e into v_rec from jsonb_array_elements(v_arr) e where e->>'id' = v_change->>'id';
+          if not found then raise exception 'CRM_UNDO_CHANGED'; end if;
+          v_new_rec := v_rec;
+          for v_field in select value from jsonb_array_elements(coalesce(v_change->'fields','[]'::jsonb)) loop
+            if (v_rec->(v_field->>'key')) is distinct from (v_field->'after') then
+              raise exception 'CRM_UNDO_CHANGED';
+            end if;
+            v_new_rec := v_new_rec || jsonb_build_object(v_field->>'key', v_field->'before');
+          end loop;
+          v_arr := (select coalesce(jsonb_agg(case when t.e->>'id' = v_change->>'id' then v_new_rec else t.e end order by t.n), '[]'::jsonb)
+                    from jsonb_array_elements(v_arr) with ordinality as t(e,n));
+        else
+          raise exception 'CRM_UNDO_NOT_ALLOWED';
+      end case;
+      v_state := v_state || jsonb_build_object(v_change->>'collection', v_arr);
+    end if;
+  end loop;
+
+  -- Фінальний стан для перевірок залежностей/унікальності:
+  -- передана колекція — з v_state, непередана — поточна БД.
+  v_proj_active := coalesce(v_state->'projectsActive',
+    coalesce((select jsonb_agg(payload order by position) from public.crm_records where owner_id=u and collection='projectsActive'),'[]'::jsonb));
+  v_proj_done := coalesce(v_state->'projectsCompleted',
+    coalesce((select jsonb_agg(payload order by position) from public.crm_records where owner_id=u and collection='projectsCompleted'),'[]'::jsonb));
+  v_projects := v_proj_active || v_proj_done;
+  v_clients := coalesce(v_state->'clients',
+    coalesce((select jsonb_agg(payload) from public.crm_records where owner_id=u and collection='clients'),'[]'::jsonb));
+  v_specialists := coalesce(v_state->'specialists',
+    coalesce((select jsonb_agg(payload) from public.crm_records where owner_id=u and collection='specialists'),'[]'::jsonb));
+  v_partners := coalesce(v_state->'partners',
+    coalesce((select jsonb_agg(payload) from public.crm_records where owner_id=u and collection='partners'),'[]'::jsonb));
+  v_transactions := coalesce(v_state->'transactions',
+    coalesce((select jsonb_agg(payload) from public.crm_records where owner_id=u and collection='transactions'),'[]'::jsonb));
+
+  -- Унікальність ID проєктів між фінальними активними/завершеними.
+  if v_state ? 'projectsActive' or v_state ? 'projectsCompleted' then
     if exists (
-      select 1 from jsonb_array_elements(p_patch->'projectsActive') e
-      join public.crm_records r on r.owner_id = u and r.collection = 'projectsCompleted' and r.id = e->>'id'
+      select 1 from jsonb_array_elements(v_proj_active) a
+      join jsonb_array_elements(v_proj_done) d on a->>'id' = d->>'id'
     ) then raise exception 'CRM_DUPLICATE_PROJECT_ID'; end if;
-  end if;
-  if p_patch ? 'projectsCompleted' then
-    if exists (
-      select 1 from jsonb_array_elements(p_patch->'projectsCompleted') e
-      join public.crm_records r on r.owner_id = u and r.collection = 'projectsActive' and r.id = e->>'id'
-    ) then raise exception 'CRM_DUPLICATE_PROJECT_ID'; end if;
-  end if;
-  if p_patch ? 'projectsActive' and p_patch ? 'projectsCompleted' then
-    if exists (
-      select 1 from jsonb_array_elements(p_patch->'projectsActive') a
-      join jsonb_array_elements(p_patch->'projectsCompleted') d on a->>'id' = d->>'id'
-    ) then raise exception 'CRM_DUPLICATE_PROJECT_ID'; end if;
-  end if;
-  if p_patch ? 'financeSettings' and jsonb_typeof(p_patch->'financeSettings') is distinct from 'object' then
-    raise exception 'CRM_INVALID_PATCH';
   end if;
 
-  -- Старі значення зачеплених колекцій (для події-відновлення).
-  v_old := '{}'::jsonb;
-  for v_key in select t.k from jsonb_object_keys(p_patch) t(k) where k <> 'financeSettings' loop
-    v_old := v_old || jsonb_build_object(v_key,
-      coalesce((select jsonb_agg(payload) from public.crm_records where owner_id=u and collection=v_key),'[]'::jsonb));
+  -- Залежності: прибрані записи (створення, яке скасовуємо) без зовнішніх посилань.
+  for v_change in
+    select value from jsonb_array_elements(ev.changes) c
+    where c->>'change' = 'create' and c->>'collection' in ('clients','specialists','partners','projectsActive','projectsCompleted')
+  loop
+    if v_change->>'collection' in ('projectsActive','projectsCompleted') then
+      -- Проєкт може «перейти» в іншу колекцію (скасування завершення) — тоді він не прибирається.
+      if exists (select 1 from jsonb_array_elements(case when v_change->>'collection' = 'projectsActive' then v_proj_done else v_proj_active end) x
+                 where x->>'id' = v_change->>'id') then
+        continue;
+      end if;
+      if exists (select 1 from jsonb_array_elements(v_transactions) x where x->>'projectId' = v_change->>'id') then
+        raise exception 'CRM_UNDO_DEPENDENCY';
+      end if;
+    elsif v_change->>'collection' = 'clients' then
+      if exists (select 1 from jsonb_array_elements(v_projects) x where x->>'clientId' = v_change->>'id') then
+        raise exception 'CRM_UNDO_DEPENDENCY';
+      end if;
+    elsif v_change->>'collection' = 'specialists' then
+      if exists (select 1 from jsonb_array_elements(v_projects) x where x->>'developerId' = v_change->>'id') then
+        raise exception 'CRM_UNDO_DEPENDENCY';
+      end if;
+    elsif v_change->>'collection' = 'partners' then
+      if exists (select 1 from jsonb_array_elements(v_projects) x where x->>'partnerId' = v_change->>'id') then
+        raise exception 'CRM_UNDO_DEPENDENCY';
+      end if;
+    end if;
   end loop;
-  v_set_old := s.settings;
 
-  -- Застосування патчу (порожній diff нижче → виняток → повний відкат).
-  perform public.crm_apply_collections(u, p_patch - 'financeSettings');
-  if p_patch ? 'financeSettings' then
-    -- Злиття, а не заміна: невказані поля налаштувань зберігаються.
-    update public.crm_state set settings = s.settings || p_patch->'financeSettings' where owner_id = u;
-  end if;
+  -- Відновлені записи: їхні посилання мають бути валідними у фінальному стані.
+  for v_change in select value from jsonb_array_elements(ev.changes) c where c->>'change' = 'delete' loop
+    v_rec := v_change->'before';
+    if v_change->>'collection' in ('projectsActive','projectsCompleted') then
+      if coalesce(v_rec->>'clientId','') <> '' and not exists (select 1 from jsonb_array_elements(v_clients) x where x->>'id' = v_rec->>'clientId') then
+        raise exception 'CRM_UNDO_DEPENDENCY';
+      end if;
+      if coalesce(v_rec->>'developerId','') <> '' and not exists (select 1 from jsonb_array_elements(v_specialists) x where x->>'id' = v_rec->>'developerId') then
+        raise exception 'CRM_UNDO_DEPENDENCY';
+      end if;
+      if coalesce(v_rec->>'partnerId','') <> '' and not exists (select 1 from jsonb_array_elements(v_partners) x where x->>'id' = v_rec->>'partnerId') then
+        raise exception 'CRM_UNDO_DEPENDENCY';
+      end if;
+    elsif v_change->>'collection' = 'transactions' then
+      if coalesce(v_rec->>'projectId','') <> '' and not exists (select 1 from jsonb_array_elements(v_projects) x where x->>'id' = v_rec->>'projectId') then
+        raise exception 'CRM_UNDO_DEPENDENCY';
+      end if;
+    end if;
+  end loop;
+
+  -- Відновлювані поля-посилання в update-змінах.
+  for v_change in select value from jsonb_array_elements(ev.changes) c where c->>'change' = 'update' and c->>'collection' <> 'settings' loop
+    for v_field in select value from jsonb_array_elements(coalesce(v_change->'fields','[]'::jsonb)) f
+                   where f->>'key' in ('clientId','developerId','partnerId','projectId') and coalesce(f->>'before','') <> '' loop
+      if v_field->>'key' = 'clientId' and not exists (select 1 from jsonb_array_elements(v_clients) x where x->>'id' = v_field->'before') then
+        raise exception 'CRM_UNDO_DEPENDENCY';
+      elsif v_field->>'key' = 'developerId' and not exists (select 1 from jsonb_array_elements(v_specialists) x where x->>'id' = v_field->'before') then
+        raise exception 'CRM_UNDO_DEPENDENCY';
+      elsif v_field->>'key' = 'partnerId' and not exists (select 1 from jsonb_array_elements(v_partners) x where x->>'id' = v_field->'before') then
+        raise exception 'CRM_UNDO_DEPENDENCY';
+      elsif v_field->>'key' = 'projectId' and not exists (select 1 from jsonb_array_elements(v_projects) x where x->>'id' = v_field->'before') then
+        raise exception 'CRM_UNDO_DEPENDENCY';
+      end if;
+    end loop;
+  end loop;
+
+  -- Застосування обчисленого інверсного стану (порожній diff → виняток → відкат).
+  perform public.crm_apply_collections(u, v_state);
 
   -- Подія-відновлення з ФАКТИЧНОЇ різниці старий→новий стан.
-  for v_key in select t.k from jsonb_object_keys(v_old) t(k) loop
+  for v_key in select t.k from jsonb_object_keys(v_old_state) t(k) loop
     v_changes := v_changes || public.crm_history_diff_collection(
-      v_key,
-      v_old->v_key,
-      coalesce((select jsonb_agg(payload) from public.crm_records where owner_id=u and collection=v_key),'[]'::jsonb));
+      v_key, v_old_state->v_key, v_state->v_key);
   end loop;
-  if p_patch ? 'financeSettings' then
-    -- Порівнюємо зі ЗЛИТОЮ новою валідністю (невказані поля зберігаються).
-    v_set := public.crm_history_diff_settings(v_set_old, v_set_old || p_patch->'financeSettings');
+  if v_settings is distinct from s.settings then
+    v_set := public.crm_history_diff_settings(s.settings, v_settings);
     if v_set is not null then v_changes := v_changes || jsonb_build_array(v_set); end if;
   end if;
   if jsonb_array_length(v_changes) = 0 then
@@ -584,6 +695,7 @@ begin
 
   update public.crm_state
     set revision = revision + 1,
+        settings = case when v_settings is distinct from s.settings then v_settings else settings end,
         meta = meta || jsonb_build_object('lastSavedAt', now())
     where owner_id = u
     returning revision into v_rev;
@@ -617,9 +729,9 @@ revoke all on function public.crm_apply_collections(uuid,jsonb) from public, ano
 revoke all on function public.crm_commit(bigint,uuid,jsonb,text,text) from public, anon;
 revoke all on function public.crm_history_list(int,int,text,text,text,text) from public, anon;
 revoke all on function public.crm_history_get(uuid) from public, anon;
-revoke all on function public.crm_history_undo(uuid,uuid,bigint,text,jsonb) from public, anon;
+revoke all on function public.crm_history_undo(uuid,uuid,bigint,text) from public, anon;
 grant execute on function public.crm_commit(bigint,uuid,jsonb,text,text) to authenticated;
 grant execute on function public.crm_history_list(int,int,text,text,text,text) to authenticated;
 grant execute on function public.crm_history_get(uuid) to authenticated;
-grant execute on function public.crm_history_undo(uuid,uuid,bigint,text,jsonb) to authenticated;
+grant execute on function public.crm_history_undo(uuid,uuid,bigint,text) to authenticated;
 commit;
