@@ -231,6 +231,7 @@ export default function ProjectForm({ isOpen, project, copyPrefill, copyWarnings
         fop: Number(fop) || 0,
         partnerCommission: Number(partnerCommission) || 0,
         description,
+        clientId: copyPrefill?.clientId || selectedClientId,
       });
     } finally {
       savingRef.current = false;

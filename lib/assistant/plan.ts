@@ -17,7 +17,7 @@ const bank=select('Рахунок',BANKS.map(b=>b.id));
 export const schemas:Partial<Record<AssistantDomain,Record<string,Spec>>>={
  settings:{usdRate:number('Курс USD'),eurRate:number('Курс EUR'),usdtRate:number('Курс USDT'),displayCurrency:select('Валюта відображення',['UAH','USD','EUR'])},
  clients:{name:text('Ім’я клієнта'),telegram:text('Telegram'),source:text('Джерело'),isRegular:{label:'Постійний клієнт',kind:'boolean'}},
- projects:{name:text('Назва проєкту'),type:select('Тип',['IT','Design','Video']),status:select('Статус',['Очікування оплати','В роботі','На паузі','Завершено']),clientName:text('Клієнт'),clientTelegram:text('Telegram клієнта'),clientSource:text('Джерело клієнта'),budget:number('Бюджет'),currency,bank,prepayment:number('Загалом сплатив клієнт'),paidToSpecialist:number('Виплачено фахівцю'),myPercent:number('Мій %'),fop:number('ФОП %'),partnerCommission:number('Комісія партнеру %'),profitTaken:number('Забрав собі'),developerId:text('ID фахівця'),partnerId:text('ID партнера'),startDate:date('Дата початку'),endDate:date('Дата завершення'),deadlineDays:number('Дедлайн, днів'),description:text('Опис'),copyFromId:text('ID початкового проєкту для копії')},
+ projects:{name:text('Назва проєкту'),type:select('Тип',['IT','Design','Video']),status:select('Статус',['Очікування оплати','В роботі','На паузі','Завершено']),clientName:text('Клієнт'),clientTelegram:text('Telegram клієнта'),clientSource:text('Джерело клієнта'),budget:number('Бюджет'),currency,bank,prepayment:number('Загалом сплатив клієнт'),paidToSpecialist:number('Виплачено фахівцю'),myPercent:number('Мій %'),fop:number('ФОП %'),partnerCommission:number('Комісія партнеру %'),profitTaken:number('Забрав собі'),developerId:text('ID фахівця'),partnerId:text('ID партнера'),startDate:date('Дата початку'),endDate:date('Дата завершення'),deadlineDays:number('Дедлайн, днів'),description:text('Опис'),clientId:text('ID клієнта')},
  finance:{type:select('Тип',['income','expense']),amount:number('Сума у валюті рахунку'),bank,date:date('Дата'),description:text('Опис'),category:text('Категорія'),incomeStatus:select('Статус доходу',['earned','incoming']),projectId:text('ID проєкту'),hidden:{label:'Прихований у підсумках',kind:'boolean'}},
  payments:{amount:number('Додаткова оплата'),bank,date:date('Дата'),description:text('Опис')},
  specialists:{name:text('Ім’я фахівця'),specialization:text('Спеціалізація'),telegram:text('Telegram'),myShareThreshold:number('Поріг бюджету, грн'),mySharePercentUpTo:number('Відсоток до порогу, %'),mySharePercentAbove:number('Відсоток понад поріг, %')},
@@ -60,24 +60,33 @@ export function normalizePlan(raw:unknown,s:DataSnapshot):Omit<Plan,'base'>{
  if(domain==='payments'&&action!=='update')throw new Error('Оплата потребує конкретного проєкту');
  const recordId=typeof r.recordId==='string'?r.recordId:undefined;
  if(domain!=='settings'&&action!=='create'&&!records(domain,s).some(x=>x.id===recordId))throw new Error('Запис не знайдено. Уточни назву або ID');
- const fields=cleanFields(domain,r.fields||{});
+ // Пакет 02: службова команда копії. copyFromId НЕ є збереженим полем проекту
+ // (не просочується в запит і не потрапляє в backup), тому вилучаємо його зі
+ // схеми ще до валідації. Для обраних сутностей це параметр дії.
+ const rawFields: Record<string, unknown> = {};
+ if (Object.prototype.hasOwnProperty.call(r, 'fields') && r.fields && typeof r.fields === 'object') {
+   Object.assign(rawFields, r.fields as Record<string, unknown>);
+ }
+ let copyFromId: string | null = null;
+ if(rawFields.copyFromId!==undefined&&rawFields.copyFromId!==null){
+  if(typeof rawFields.copyFromId!=='string')throw new Error('Неправильний запит копії: ID початкового проєкту має бути рядком');
+  copyFromId=rawFields.copyFromId.trim();
+  if(!copyFromId)throw new Error('Неправильний запит копії: ID початкового проєкту порожній');
+ }
+ delete rawFields.copyFromId;
+ const fields=cleanFields(domain,rawFields);
  if(action==='create'){
-  if(domain==='projects'&&typeof fields.copyFromId==='string'&&fields.copyFromId){
-   // Пакет 02: копіювання завершеного/активного проєкту. Ті самі початкові
-   // поля будує чиста функція allowlist (lib/copy-project) — модель лише
-   // вказує джерело (copyFromId) та дозволені умови; скинуті поля
-   // (оплати/виплати/дати/банки/архів) вона передати не може.
-   const source=[...s.projectsActive,...s.projectsCompleted].find(p=>p.id===fields.copyFromId);
+  if(domain==='projects'&&copyFromId){
+   const source=[...s.projectsActive,...s.projectsCompleted].find(p=>p.id===copyFromId);
    if(!source)throw new Error('Початковий проєкт для копії не знайдено');
    const {prefill}=initialProjectForCopy(source,{clients:s.clients,specialists:s.specialists,partners:s.partners});
    const overrides=pickCopyOverrides(fields as Record<string,unknown>);
    for(const key of Object.keys(fields))delete (fields as Record<string,unknown>)[key];
    // Нульові оплати явно; умови копії; дозволені умови моделі поверх.
    Object.assign(fields,{prepayment:0,paidToSpecialist:0,profitTaken:0},prefill,overrides);
-   // prefill несе службові ключі поза схемою (наприклад clientId — клієнта
-   // при збереженні визначає clientName, а службовий ID ігнорується).
-   // Чернетка має показувати лише поля зі схеми: прибираємо службові, щоб
-   // у UI не з'являвся порожній підпис із внутрішнім ID.
+   // Копіювання: службові параметри не зберігаються. clientId (зв'язок з
+   // клієнтом) та copyFromId (джерело) визначаються системою під час збереження,
+   // тому не потрапляють в дані проєкту й backup.
    for(const key of Object.keys(fields))if(!(key in schemas.projects!))delete (fields as Record<string,unknown>)[key];
   }else{
    const defaults:Partial<Record<AssistantDomain,Plan['fields']>>={projects:{status:'Очікування оплати',currency:'UAH',prepayment:0,paidToSpecialist:0,fop:0,partnerCommission:0,profitTaken:0,startDate:today()},finance:{date:today(),hidden:false},clients:{isRegular:false,source:'Інше'},debts:{currency:'UAH',date:today()},savings:{currency:'UAH',amount:0,date:today()},partners:{currency:'UAH'}};

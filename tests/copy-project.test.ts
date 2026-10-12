@@ -8,6 +8,7 @@ import {
   COPY_CONDITION_FIELDS,
 } from '@/lib/copy-project';
 import { normalizePlan, fingerprint, type Plan } from '@/lib/assistant/plan';
+import { saveProject } from '@/lib/actions';
 import { executePlan } from '@/lib/assistant/executor';
 import { SupabaseDataSource } from '@/lib/datasource/supabase';
 import * as store from '@/lib/store';
@@ -291,5 +292,95 @@ test('AI-копія: підтвердження створює рівно оди
 
   // Той самий підписаний стан не може виконатись повторно.
   assert.equal((await executePlan(signed)).kind, 'error');
+});
+
+test('saveProject з явним clientId не переписує клієнта за ім\'ям навіть при іменні колізії', async () => {
+  clearAll();
+  const db = database();
+  await store.initStore(new SupabaseDataSource(db.rpc));
+  const a = makeClient({ id: 'cli_a', name: 'Клієнт' });
+  const b = makeClient({ id: 'cli_b', name: 'Клієнт' });
+  await store.saveCollection('clients', [a, b]);
+  const source = completedSource({ clientId: 'cli_a', clientName: 'Клієнт А', clientTelegram: '@a', clientSource: 'Telegram' });
+  await store.saveCollection('projectsCompleted', [source]);
+
+  const result = await saveProject({
+    name: 'Новий проєкт',
+    type: 'IT',
+    status: 'Очікування оплати',
+    startDate: today(),
+    budget: 100000,
+    currency: 'UAH',
+    clientName: 'Клієнт',      // є ще картка cli_b — пошук за ім\'ям не дочекається
+    clientTelegram: '@b',
+    clientSource: 'Instagram',
+    clientId: 'cli_a',         // явне ID має залишитись без змін
+  });
+  if (!result.ok) assert.fail(result.errors?.join('; ')); assert.equal(result.ok, true);
+  assert.equal(db.snap.projectsActive.length, 1);
+  assert.equal(db.snap.projectsActive[0].clientId, 'cli_a', 'явний clientId має переможнати пошук за ім\'ям');
+  // Контакти не переписано: друга картка зберігає свій клієнт.
+  assert.deepEqual(db.snap.clients, [a, b]);
+});
+
+test('saveProject з явним clientId не змінює стрічковий контакт при перейменуванні клієнта', async () => {
+  clearAll();
+  const db = database();
+  await store.initStore(new SupabaseDataSource(db.rpc));
+  const a = makeClient({ id: 'cli_a', name: 'Старе ім\'я' });
+  await store.saveCollection('clients', [a]);
+  const source = completedSource({ clientId: 'cli_a', clientName: 'Старе ім\'я', clientTelegram: '@a', clientSource: 'Telegram' });
+  await store.saveCollection('projectsCompleted', [source]);
+
+  const result = await saveProject({
+    name: 'Перейменований проєкт',
+    type: 'IT',
+    status: 'Очікування оплати',
+    startDate: today(),
+    budget: 100000,
+    currency: 'UAH',
+    clientName: 'Нове ім\'я',   // клієнт перейменовано
+    clientTelegram: '@b',
+    clientSource: 'Instagram',
+    clientId: 'cli_a',          // явне ID залишається гідним
+  });
+  if (!result.ok) assert.fail(result.errors?.join('; ')); assert.equal(result.ok, true);
+  assert.equal(db.snap.projectsActive[0].clientId, 'cli_a', 'зв\'язок з клієнтом не бита на ім\'я');
+  assert.deepEqual(db.snap.clients, [a]);
+});
+
+test('AI-копія: явний clientId доходить до збереження; copyFromId не зберігається', async () => {
+  clearAll();
+  const db = database();
+  await store.initStore(new SupabaseDataSource(db.rpc));
+  const a = makeClient({ id: 'cli_a', name: 'Клієнт А' });
+  await store.saveCollection('clients', [a]);
+  const source = completedSource({ clientId: 'cli_a', clientName: 'Клієнт А', clientTelegram: '@a', clientSource: 'Telegram' });
+  await store.saveCollection('projectsCompleted', [source]);
+
+  const plan = normalizePlan(
+    {
+      domain: 'projects',
+      action: 'create',
+      fields: {
+        copyFromId: source.id,
+        name: 'Нове ім\'я',
+        budget: 200000,
+        clientName: 'Клієнт А',
+        clientTelegram: '@a',
+        clientSource: 'Telegram',
+      },
+    },
+    db.snap,
+  );
+  assert.equal(plan.fields.clientId, 'cli_a', 'clientId з умов копії має приходити в дані проєкту');
+  assert.ok(!('copyFromId' in plan.fields), 'copyFromId не зберігається в даніх проєкту');
+  const signed: Plan = { ...plan, base: await fingerprint(db.snap) };
+  const result = await executePlan(signed);
+  assert.equal(result.kind, 'applied'); assert.ok(result.recordId, 'повертає ID нового запису');
+  assert.equal(db.snap.projectsActive.length, 1);
+  assert.equal(db.snap.projectsActive[0].clientId, 'cli_a', 'AI підтвердив посилання на чинний клієнт');
+  // контакти не змінилися: AI не переписує картку за старим ім\'ям
+  assert.deepEqual(db.snap.clients, [a]);
 });
 

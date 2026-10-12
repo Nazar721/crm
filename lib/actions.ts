@@ -184,8 +184,16 @@ async function _saveProject(input: Partial<Project>, editId?: string): Promise<A
   const errors = validateProjectInput(input);
   if (errors.length) return fail(errors);
 
-  let clientId = editId ? (Storage.getProjects().find(p => p.id === editId)?.clientId || Storage.getCompleted().find(p => p.id === editId)?.clientId || '') : '';
-  if (input.clientName) {
+  let clientId = editId
+    ? (Storage.getProjects().find(p => p.id === editId)?.clientId || Storage.getCompleted().find(p => p.id === editId)?.clientId || '')
+    : '';
+
+  // Явний clientId (вибір клієнта в формі або змовна умова копії AI) завжди
+  // перемагає пошук за ім'ям. Пошук за clientName використовується лише тоді,
+  // коли користувач не вкаже конкретну картку.
+  if (input.clientId) {
+    clientId = input.clientId;
+  } else if (input.clientName) {
     const resolved = await _resolveClient({
       name: input.clientName,
       telegram: input.clientTelegram,
