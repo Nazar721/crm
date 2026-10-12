@@ -53,12 +53,47 @@ export function parseSettingsTabFromSearch(search: string | null | undefined): S
 
 /**
  * Розв'язати активну вкладку: query (URL) → збережена (sessionStorage) → базова.
- * Невідомі значення на кожному рівні ігноруються, а не кидають.
+ * Відсутність параметра і некоректний параметр РОЗРІЗНЯЮТЬСЯ:
+ * - параметра `tab` немає → fallback на збережену/базову;
+ * - параметр Є, але невідомий або порожній → нормалізація до базової `finance`.
  */
 export function resolveSettingsTab(input: { search?: string | null; stored?: unknown }): SettingsTabId {
-  const fromUrl = parseSettingsTabFromSearch(input.search ?? null);
-  if (fromUrl) return fromUrl;
+  const search = input.search ?? null;
+  if (typeof search === 'string' && search.length > 0) {
+    let has = false;
+    let raw: string | null = null;
+    try {
+      const query = search.startsWith('?') ? search.slice(1) : search;
+      const params = new URLSearchParams(query);
+      has = params.has('tab');
+      raw = params.get('tab');
+    } catch {
+      has = false;
+      raw = null;
+    }
+    if (has) {
+      const found = typeof raw === 'string' ? SETTINGS_TABS.find(t => t.id === raw) : undefined;
+      return found ? found.id : DEFAULT_SETTINGS_TAB;
+    }
+  }
   return normalizeSettingsTabId(input.stored);
+}
+
+/**
+ * Реактивна версія для сторінки: приймає вже прочитані `has`/`raw`
+ * з Next `useSearchParams` (той самий контракт, що й resolveSettingsTab).
+ * Семантика ідентична: missing → stored, invalid/empty → finance.
+ */
+export function resolveSettingsTabParam(
+  has: boolean,
+  raw: string | null | undefined,
+  stored: unknown,
+): SettingsTabId {
+  if (has) {
+    const found = typeof raw === 'string' ? SETTINGS_TABS.find(t => t.id === raw) : undefined;
+    return found ? found.id : DEFAULT_SETTINGS_TAB;
+  }
+  return normalizeSettingsTabId(stored);
 }
 
 /** Канонічне посилання на вкладку (для банерів і оновлення URL). */

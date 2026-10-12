@@ -1,13 +1,13 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { Suspense, useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import { getBackupInfo, shouldShowBackupReminder, snoozeBackupReminder, exportData, markManualBackup } from '@/lib/storage';
 import { previewImport, applyImport, restoreFromPreviousCopy, type ImportPreview, type ImportReport } from '@/lib/importer';
 import { getBackupRuntimeStatus, type BackupRuntimeStatus } from '@/lib/backup';
 import {
   SETTINGS_TABS,
-  normalizeSettingsTabId,
-  parseSettingsTabFromSearch,
+  resolveSettingsTabParam,
   settingsTabHref,
   type SettingsTabId,
 } from '@/lib/settings-tabs';
@@ -36,12 +36,33 @@ const COLLECTION_LABELS: Record<string, string> = {
 };
 
 export default function SettingsPage() {
+  return (
+    <Suspense fallback={
+      <section className="page active">
+        <div className="page-header">
+          <div><h1 className="page-title">Налаштування</h1><p className="page-subtitle">Завантаження…</p></div>
+        </div>
+      </section>
+    }>
+      <SettingsTabsBody />
+    </Suspense>
+  );
+}
+
+function SettingsTabsBody() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { triggerRefresh, reinitialize, snapshot, storageIssues, refreshKey } = useApp();
-  // P2: пріоритет вкладки — валідний `?tab=` в URL → sessionStorage → базова.
-  // Перший рендер збігається з SSR (finance), синхронізація з URL — лише на
-  // клієнті в effect, щоб не було hydration-розбіжності.
-  const [activeTab, setActiveTab] = usePersistedState<SettingsTabId>('settings:tab', 'finance');
-  const tab: SettingsTabId = normalizeSettingsTabId(activeTab);
+  // URL — єдине актуальне джерело вкладки після входу. sessionStorage —
+  // лише fallback для ПЕРШОГО entry без `?tab=` (далі entry канонізується
+  // через replace, тож Back завжди має визначену вкладку).
+  // Перший рендер збігається з SSR (finance); реальна вкладка
+  // встановлюється реактивно з useSearchParams (mount, кліки, Back/Forward,
+  // внутрішні Next-переходи на той самий pathname з новим query).
+  const [storedTab, setStoredTab] = usePersistedState<SettingsTabId>('settings:tab', 'finance');
+  const hasTab = searchParams.has('tab');
+  const rawTab = searchParams.get('tab');
+  const tab: SettingsTabId = resolveSettingsTabParam(hasTab, rawTab, storedTab);
   const [info, setInfo] = useState({ lastSavedAt: '', lastManualBackupAt: '', backupSnoozedUntil: '' });
   const [backupStatus, setBackupStatus] = useState<BackupRuntimeStatus | null>(null);
   const [showWarning, setShowWarning] = useState(false);
@@ -60,33 +81,55 @@ export default function SettingsPage() {
     setBackupStatus(getBackupRuntimeStatus());
   };
 
-  // P2: читаємо `?tab=` лише на клієнті після монтування (SSR бачить finance
-  // в обох місцях — розбіжності немає). Валідний query перемагає sessionStorage.
+  // Канонізація entry: перший вхід без `?tab=` отримує визначений URL
+  // (fallback sessionStorage → replace), тож Back повертає на вкладку,
+  // а не на адресу без стану. Недійсний `?tab=` нормалізується до finance
+  // так само через replace (історія не засмічується).
+  // Невідкладна навігація (кліки, банер, Back/Forward, внутрішні Next Link)
+  // оновлює useSearchParams → tab перераховується реактивно, без ручних
+  // слухачів popstate.
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const syncFromUrl = () => {
-      try {
-        const fromUrl = parseSettingsTabFromSearch(window.location.search);
-        if (fromUrl) setActiveTab(fromUrl);
-      } catch {
-        // Немає доступу до location — лишається fallback sessionStorage.
-      }
-    };
-    syncFromUrl();
-    window.addEventListener('popstate', syncFromUrl);
-    return () => window.removeEventListener('popstate', syncFromUrl);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // P2: клік по вкладці оновлює URL (?tab=), щоб банер/помічник і
-  // back/forward працювали з потрібним розділом.
-  const selectTab = (next: SettingsTabId) => {
-    setActiveTab(next);
-    if (typeof window === 'undefined') return;
+    const expected = settingsTabHref(tab);
+    let current = '';
     try {
-      window.history.pushState(null, '', settingsTabHref(next));
+      current = `${window.location.pathname}${window.location.search}`;
     } catch {
-      // Немає доступу до history — вкладка все одно перемкнулася локально.
+      return;
+    }
+    if (current !== expected) {
+      try {
+        router.replace(expected);
+      } catch {
+        // Немає доступу до router — вкладка все одно показана з URL-розрахунку.
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasTab, rawTab]);
+
+  // sessionStorage — лише необов'язковий fallback першого entry:
+  // запам'ятовуємо останню ПОКАЗАНУ вкладку для наступного візиту без `?tab=`.
+  useEffect(() => {
+    try {
+      setStoredTab(tab);
+    } catch {
+      // Немає доступу до sessionStorage — URL лишається джерелом.
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
+
+  // Клік по вкладці — звичайна Next-навігація (push): працює Back/Forward,
+  // відкриття в новій вкладці (href), внутрішні переходи з банера.
+  // preventDefault НЕ викликаємо, щоб не ламати стандартну поведінку посилань.
+  const selectTab = (next: SettingsTabId) => {
+    if (next === tab) return;
+    try {
+      router.push(settingsTabHref(next));
+    } catch {
+      try {
+        setStoredTab(next);
+      } catch {
+        // Немає ні router, ні sessionStorage — лишається поточна вкладка.
+      }
     }
   };
 
@@ -268,7 +311,13 @@ export default function SettingsPage() {
             className={`tab${tab === t.id ? ' active' : ''}`}
             title={t.hint}
             href={settingsTabHref(t.id)}
-            onClick={e => { e.preventDefault(); selectTab(t.id); }}
+            onClick={e => {
+              // Стандартний клік — через Next router (історія + Back/Forward);
+              // модифікований клік (нова вкладка/вікно) лишаємо браузеру.
+              if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+              e.preventDefault();
+              selectTab(t.id);
+            }}
           >
             {t.label}
           </a>
