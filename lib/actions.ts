@@ -640,9 +640,24 @@ async function _recordProjectPayment(id:string,input:{amount:number;bank?:string
   if(!saved.ok)return saved;
   return ok(next);
 }
-export const recordProjectPayment=(...args:Parameters<typeof _recordProjectPayment>)=>store.atomicAction(()=>_recordProjectPayment(...args));
+export const recordProjectPayment=(...args:Parameters<typeof _recordProjectPayment>)=>store.atomicAction(()=>_recordProjectPayment(...args),{source:'Форма',hint:'payment'});
 
-export const applyAssistantPlan=(plan:Plan):Promise<ActionResult<unknown>>=>store.atomicAction(async()=>{
+/** Пакет 03: скасування події журналу — окремий шлях (без commit-черги). */
+async function _undoHistoryEvent(plan: Plan): Promise<ActionResult<unknown>> {
+  const eventId = plan.recordId;
+  if (!eventId) return fail([{ field: 'recordId', message: 'Вкажи ID події журналу' }]);
+  const result = await store.undoHistory({
+    eventId,
+    requestId: crypto.randomUUID(),
+    source: 'Помічник',
+  });
+  if (!result.ok) return fail([{ field: 'eventId', message: result.message }]);
+  return ok({ id: result.event ? result.event.id : eventId });
+}
+
+export const applyAssistantPlan=(plan:Plan):Promise<ActionResult<unknown>>=>plan.domain==='history'
+  ? _undoHistoryEvent(plan)
+  : store.atomicAction(async()=>{
   if(plan.base!==await fingerprint(store.getSnapshot()))return fail([{field:'storage',message:'Дані змінилися. Онови CRM й створи нову чернетку.'}]);
   const id=plan.recordId,fields=plan.fields,edit=plan.action==='update'?id:undefined;
   const old=id?records(plan.domain,store.getSnapshot()).find(x=>x.id===id):undefined;
@@ -663,4 +678,4 @@ export const applyAssistantPlan=(plan:Plan):Promise<ActionResult<unknown>>=>stor
     case 'savings':return remove?_deleteSaving(id!):_saveSaving(input,edit);
     default:return fail([{field:'action',message:'Дія не підтримується'}]);
   }
-});
+},{source:'Помічник',hint:plan.domain==='payments'?'payment':null});

@@ -44,7 +44,9 @@ export function getFinanceSettings(): FinanceSettings {
 }
 
 export function saveFinanceSettings(settings: FinanceSettings) {
-  return store.saveSettings(settings);
+  // Пакет 03: через atomicAction, щоб зміна налаштувань потрапила в журнал
+  // (одна група, джерело «Форма») так само, як інші доменні дії.
+  return store.atomicAction(() => store.saveSettings(settings), { source: 'Форма' });
 }
 
 /** Повний JSON-експорт зі snapshot (незалежно від пагінації/фільтрів). */

@@ -2,6 +2,15 @@ import type { BackupInfo, FinanceSettings } from '@/types';
 import type { CollectionHealth, CollectionKey, CrmDataSource, DataSnapshotPayload, StorageIssue, StorageIssueKind, WriteOutcome } from './types';
 import { COLLECTION_KEYS } from './types';
 import { normalizeSettings } from '@/lib/settings';
+import type {
+  HistoryEvent, HistoryListResult, HistoryPatch, HistoryQuery,
+  HistoryUndoRequest, HistoryUndoResult,
+} from '@/lib/history/types';
+import { HISTORY_LIMIT_EVENTS, isUndoable } from '@/lib/history/types';
+import {
+  buildEvent, enforceHistoryLimits, normalizeHistoryEvent,
+  type BuildEventInput,
+} from '@/lib/history/engine';
 
 export const COLLECTION_STORAGE_KEYS: Record<CollectionKey, string> = {
   projectsActive: 'projects_active',
@@ -29,6 +38,13 @@ const ISSUES_KEY = 'crm_storage_issues';
 const CORRUPT_PREFIX = 'crm_corrupt_';
 /** Стан здоров'я даних — живе окремо від журналу повідомлень. */
 const HEALTH_KEY = 'crm_data_health';
+
+// Пакет 03: журнал історії живе в ОКРЕМИХ ключах — пошкодження журналу
+// не впливає на дані, а збій запису не лишає приховано некоректний стан.
+const HISTORY_KEY = 'crm_history_v1';
+/** Стійка recovery-мітка: подія, яку ще не встигли дописати в журнал. */
+const HISTORY_PENDING_KEY = 'crm_history_pending_v1';
+const HISTORY_CORRUPT_KEY = 'crm_history_v1_corrupt';
 
 /**
  * Копії стану:
@@ -365,6 +381,270 @@ export class LocalDataSource implements CrmDataSource {
       this.pushIssue('read_failed', `Не вдалося прочитати копію стану «${key}»: ${String(err)}`, key);
       return null;
     }
+  }
+
+  // ------------------------------------------------------------
+  // Пакет 03: журнал історії (локальний адаптер).
+  //
+  // Фактичні гарантії: подія додається ОДНИМ setItem після успішного запису
+  // даних (один ключ або пишеться цілком, або відхиляється — часткового
+  // підриву JSON не буває). Між даними та журналом атомарності localStorage
+  // НЕМАЄ: якщо запис журналу впав, стійка мітка HISTORY_PENDING_KEY
+  // дозволяє дописати подію при наступному читанні, а видимий issue
+  // повідомляє про втрату можливості скасування — стан не ховається.
+  // ------------------------------------------------------------
+
+  currentRevision(): number | null {
+    return null;
+  }
+
+  /** Розбір журналу (без recovery). Непридатний JSON ізолюється в карантин. */
+  private parseHistory(): HistoryEvent[] {
+    let raw: string | null = null;
+    try {
+      raw = localStorage.getItem(HISTORY_KEY);
+    } catch {
+      return [];
+    }
+    if (raw === null) return [];
+    try {
+      const parsed = JSON.parse(raw) as { events?: unknown[] };
+      const events = (Array.isArray(parsed?.events) ? parsed.events : [])
+        .map(normalizeHistoryEvent)
+        .filter((e): e is HistoryEvent => !!e);
+      return events.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
+    } catch (err) {
+      try {
+        localStorage.setItem(HISTORY_CORRUPT_KEY, raw);
+      } catch {
+        // Карантинна копія не записалась — сирий оригінал лишається під основним ключем.
+      }
+      // Журнал — окремий шар: здоров'я колекцій даних не змінюється.
+      this.pushIssue(
+        'corrupt_json',
+        `Журнал історії пошкоджено (${HISTORY_KEY}): ${String(err)}. Дані не постраждали; перегляд історії та скасування недоступні до очищення журналу.`,
+        HISTORY_KEY,
+        HISTORY_CORRUPT_KEY,
+      );
+      return [];
+    }
+  }
+
+  private writeHistoryStored(events: HistoryEvent[]): WriteOutcome {
+    return this.write(HISTORY_KEY, { v: 1, events });
+  }
+
+  private clearPendingHistory(): void {
+    try {
+      localStorage.removeItem(HISTORY_PENDING_KEY);
+    } catch {
+      // Якщо мітку не прибрати — наступне читання просто перевірить наявність події.
+    }
+  }
+
+  /** Допис події з recovery-мітки (перерваний запис минулого запуску). */
+  private recoverPendingHistory(): void {
+    let raw: string | null = null;
+    try {
+      raw = localStorage.getItem(HISTORY_PENDING_KEY);
+    } catch {
+      return;
+    }
+    if (!raw) return;
+    let event: HistoryEvent | null = null;
+    try {
+      event = normalizeHistoryEvent(JSON.parse(raw));
+    } catch {
+      event = null;
+    }
+    if (!event) {
+      this.clearPendingHistory();
+      return;
+    }
+    const events = this.parseHistory();
+    if (events.some(e => e.id === event!.id)) {
+      this.clearPendingHistory();
+      return;
+    }
+    const withOriginal = event.undoneEventId
+      ? events.map(e => (e.id === event!.undoneEventId ? { ...e, undoneBy: event!.id } : e))
+      : events;
+    const next = enforceHistoryLimits([...withOriginal, event]);
+    if (this.writeHistoryStored(next).ok) {
+      this.clearPendingHistory();
+      this.clearHistoryIssue();
+    }
+    // Не вдалося — мітка лишається, issue про запис уже зафіксовано write().
+  }
+
+  private readHistory(): HistoryEvent[] {
+    this.recoverPendingHistory();
+    return this.parseHistory();
+  }
+
+  async historyAppend(event: HistoryEvent): Promise<WriteOutcome> {
+    if (typeof window === 'undefined') {
+      const issue: StorageIssue = {
+        id: issueId(), kind: 'write_failed', key: HISTORY_KEY,
+        message: 'Локальний журнал історії недоступний поза браузером',
+        at: new Date().toISOString(),
+      };
+      return { ok: false, issue };
+    }
+    this.recoverPendingHistory();
+    // Мітка відновлення — до запису журналу (best effort: вона маленька).
+    try {
+      localStorage.setItem(HISTORY_PENDING_KEY, JSON.stringify(event));
+    } catch {
+      // Без мітки запис може бути втрачено при збої — про це скаже результат нижче.
+    }
+    const events = this.parseHistory();
+    if (events.some(e => e.id === event.id)) {
+      this.clearPendingHistory();
+      return { ok: true };
+    }
+    const outcome = this.writeHistoryStored(enforceHistoryLimits([...events, event]));
+    if (!outcome.ok) {
+      this.pushIssue(
+        'write_failed',
+        `Подію журналу («${event.summary}») не вдалося записати. Дані збережені, але скасування цієї зміни буде недоступне; подію буде дописано автоматично, якщо ліміт сховища дозволить повторний запис.`,
+        HISTORY_KEY,
+      );
+      return outcome;
+    }
+    this.clearPendingHistory();
+    this.clearHistoryIssue();
+    return { ok: true };
+  }
+
+  private clearHistoryIssue(): void {
+    const before = this.issues.length;
+    this.issues = this.issues.filter(i => !(i.key === HISTORY_KEY && (i.kind === 'corrupt_json' || i.kind === 'write_failed')));
+    if (this.issues.length !== before) this.persistIssues();
+  }
+
+  async historyList(query: HistoryQuery): Promise<HistoryListResult> {
+    let events = this.readHistory();
+    if (query.section) events = events.filter(e => e.section === query.section);
+    if (query.action) events = events.filter(e => e.action === query.action);
+    if (query.from) events = events.filter(e => e.at >= String(query.from));
+    if (query.to) events = events.filter(e => e.at <= String(query.to));
+    const total = events.length;
+    const offset = Math.max(0, Math.floor(query.offset ?? 0));
+    const limit = Math.min(Math.max(1, Math.floor(query.limit ?? 20)), HISTORY_LIMIT_EVENTS);
+    return { events: events.slice(offset, offset + limit), total };
+  }
+
+  async historyGet(id: string): Promise<HistoryEvent | null> {
+    return this.readHistory().find(e => e.id === id) ?? null;
+  }
+
+  async historyUndo(request: HistoryUndoRequest & { patch: HistoryPatch }): Promise<HistoryUndoResult> {
+    if (this.writeBlockReason) {
+      return { ok: false, reason: 'denied', message: this.writeBlockReason };
+    }
+    const events = this.readHistory();
+    const duplicate = request.requestId
+      ? events.find(e => e.action === 'undo' && e.requestId === request.requestId)
+      : undefined;
+    if (duplicate) return { ok: true, event: duplicate };
+    const original = events.find(e => e.id === request.eventId);
+    if (!original) return { ok: false, reason: 'not_found', message: 'Подію не знайдено в журналі.' };
+    if (original.undoneBy) return { ok: false, reason: 'already_undone', message: 'Цю подію вже скасовано.' };
+    if (!isUndoable(original)) return { ok: false, reason: 'not_undoable', message: 'Цю подію не можна скасувати.' };
+
+    const patch = request.patch;
+    const touched = Object.keys(patch.collections ?? {}) as CollectionKey[];
+
+    // 1. Прочитати поточні значення (для відкочування та події журналу).
+    const previousRaw: Record<string, string | null> = {};
+    const previous: BuildEventInput['before'] = {};
+    try {
+      for (const key of touched) {
+        const storageKey = COLLECTION_STORAGE_KEYS[key];
+        const raw = localStorage.getItem(storageKey);
+        previousRaw[storageKey] = raw;
+        previous[key] = raw ? JSON.parse(raw) as unknown[] : [];
+      }
+      if (patch.settings) {
+        const raw = localStorage.getItem(META_STORAGE_KEYS.financeSettings);
+        previousRaw[META_STORAGE_KEYS.financeSettings] = raw;
+        previous.settings = raw ? JSON.parse(raw) as FinanceSettings : patch.settings;
+      }
+    } catch (err) {
+      return { ok: false, reason: 'write_failed', message: `Не вдалося прочитати поточні дані для відкочування: ${String(err)}` };
+    }
+
+    // 2. Записати патч (послідовно; при збої — відкочувати вже записане).
+    const written: string[] = [];
+    const rollback = (): void => {
+      for (const storageKey of written) {
+        try {
+          const raw = previousRaw[storageKey];
+          if (raw === null || raw === undefined) localStorage.removeItem(storageKey);
+          else localStorage.setItem(storageKey, raw);
+        } catch {
+          // Відкочування теж може впасти — про це буде окремий issue нижче.
+        }
+      }
+    };
+    for (const key of touched) {
+      const storageKey = COLLECTION_STORAGE_KEYS[key];
+      const outcome = this.write(storageKey, patch.collections![key]);
+      if (!outcome.ok) {
+        rollback();
+        return { ok: false, reason: 'write_failed', message: `Запис «${key}» не вдався — відновлення відкочено: ${outcome.issue.message}` };
+      }
+      written.push(storageKey);
+    }
+    if (patch.settings) {
+      const outcome = this.write(META_STORAGE_KEYS.financeSettings, patch.settings);
+      if (!outcome.ok) {
+        rollback();
+        return { ok: false, reason: 'write_failed', message: `Запис налаштувань не вдався — відновлення відкочено: ${outcome.issue.message}` };
+      }
+      written.push(META_STORAGE_KEYS.financeSettings);
+    }
+
+    // 3. Подія-відновлення з ФАКТИЧНОЇ різниці + позначка на оригіналі — одним записом.
+    const after: BuildEventInput['before'] = {};
+    for (const key of touched) after[key] = patch.collections![key];
+    if (patch.settings) after.settings = patch.settings;
+    const event = buildEvent({
+      before: previous,
+      after,
+      ctx: { source: request.source },
+      forced: {
+        action: 'undo',
+        section: original.section,
+        summary: `Скасовано: «${original.summary}»`,
+        undoneEventId: original.id,
+        requestId: request.requestId,
+      },
+    });
+    if (!event) {
+      // Патч не змінив вміст — поточний стан уже відповідає відновленню.
+      rollback();
+      return { ok: false, reason: 'conflict', message: 'Поточні дані вже відповідають стану до цієї події — нічого не змінено.' };
+    }
+    try {
+      localStorage.setItem(HISTORY_PENDING_KEY, JSON.stringify(event));
+    } catch {
+      // Без мітки допису — ризик втрати події видимий із результату запису.
+    }
+    const withOriginal = events.map(e => (e.id === original.id ? { ...e, undoneBy: event.id } : e));
+    const outcome = this.writeHistoryStored(enforceHistoryLimits([...withOriginal, event]));
+    if (!outcome.ok) {
+      this.pushIssue(
+        'write_failed',
+        `Дані відновлено, але подію журналу («${event.summary}») записати не вдалося. Повторне скасування буде заблоковано перевіркою стану даних.`,
+        HISTORY_KEY,
+      );
+      return { ok: false, reason: 'write_failed', message: 'Дані відновлено, але подію журналу записати не вдалося. Перезавантаж сторінку та перевір журнал.' };
+    }
+    this.clearPendingHistory();
+    this.clearHistoryIssue();
+    return { ok: true, event };
   }
 
   /** Службовий запис поза контрактом (заглушки міграцій, кварантина тощо). */

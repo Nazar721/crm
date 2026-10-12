@@ -1,6 +1,7 @@
 import './setup';
 import type { Client, DataSnapshot, Project, Transaction } from '@/types';
 import type { CollectionKey, CrmDataSource, StorageIssue, WriteOutcome } from '@/lib/datasource/types';
+import type { HistoryEvent, HistoryListResult, HistoryPatch, HistoryQuery, HistoryUndoRequest, HistoryUndoResult } from '@/lib/history/types';
 import { LocalDataSource } from '@/lib/datasource/local';
 import * as store from '@/lib/store';
 import { resetSettingsCache } from '@/lib/settings';
@@ -132,6 +133,11 @@ export class FlakyDataSource implements CrmDataSource {
 
   load() { return this.inner.load(); }
   writeBlockedReason() { return this.inner.writeBlockedReason(); }
+  currentRevision() { return this.inner.currentRevision(); }
+  historyList(query: HistoryQuery): Promise<HistoryListResult> { return this.inner.historyList(query); }
+  historyGet(id: string): Promise<HistoryEvent | null> { return this.inner.historyGet(id); }
+  historyAppend(event: HistoryEvent): Promise<WriteOutcome> { return this.inner.historyAppend(event); }
+  historyUndo(request: HistoryUndoRequest & { patch: HistoryPatch }): Promise<HistoryUndoResult> { return this.inner.historyUndo(request); }
   clearCollectionIssue(c: CollectionKey) { this.inner.clearCollectionIssue(c); }
   collectionHealth() { return this.inner.collectionHealth(); }
   markCollectionHealth(c: CollectionKey, state: 'corrupt' | 'ok') { this.inner.markCollectionHealth(c, state); }

@@ -135,6 +135,7 @@ function routeForDomain(domain: AssistantDomain): string {
     partners: '/partners',
     debts: '/debts',
     savings: '/savings',
+    history: '/settings?tab=history',
     settings: '/settings',
     reports: '/dashboard',
   };

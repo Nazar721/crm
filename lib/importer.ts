@@ -238,6 +238,8 @@ export async function applyImport(raw: unknown, options: ImportOptions = {}): Pr
     initialCopyKey: existingIncident?.copyKey ?? PREVIOUS_STATE_KEY,
   };
   const incomingCorruptRaw = (raw as { corruptRaw?: Record<string, string> }).corruptRaw;
+  // Пакет 03: стан ДО імпорту для журналу (подія — лише після успіху).
+  const historyBefore = structuredClone(store.getSnapshot());
 
   // 1. Копія стану перед записом.
   //
@@ -360,6 +362,11 @@ export async function applyImport(raw: unknown, options: ImportOptions = {}): Pr
   if (result.ok) {
     // Повністю успішний імпорт — єдина умова зняття стійкої мітки.
     await store.setImportIncident(null);
+    // ОДНА групова подія «Імпорт/Відновлення» (підсумок, без повного JSON).
+    await store.recordHistoryAfter(historyBefore, {
+      source: 'Імпорт',
+      hint: mode === 'restore-previous' ? 'restore' : 'import',
+    });
     return { ok: true, stage: 'done', validation, written: result.written, errors: [] };
   }
 
@@ -420,8 +427,9 @@ export async function restoreFromPreviousCopy(): Promise<ImportReport> {
 }
 
 async function applyCloudImport(raw:unknown, options:ImportOptions):Promise<ImportReport> {
+  const restore = options.mode === 'restore-previous';
   const validation = validateCloudBackup(raw);
-  if (!validation.ok || !validation.content || options.mode === 'restore-previous') return {
+  if (!validation.ok || !validation.content || restore) return {
     ok:false,stage:'validate',validation,written:[],errors:validation.errors.length ? validation.errors : [{message:'Для бази використовуй перевірений JSON-експорт.'}],
   };
   let copyFailed = false;
@@ -437,6 +445,6 @@ async function applyCloudImport(raw:unknown, options:ImportOptions):Promise<Impo
       if (!saved.ok) return {ok:false,errors:[{message:saved.issue.message}]};
     }
     return {ok:true,errors:[] as {message:string}[]};
-  });
+  }, { source: 'Імпорт', hint: restore ? 'restore' : 'import' });
   return {ok:result.ok,stage:result.ok ? 'done':copyFailed ? 'safety-copy':'write',validation,written:result.ok ? [...COLLECTION_KEYS]:[],errors:result.errors};
 }

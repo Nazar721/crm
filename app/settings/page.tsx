@@ -16,6 +16,7 @@ import FinanceSettingsSection from '@/components/settings/FinanceSettingsSection
 import AssistantSettingsSection from '@/components/settings/AssistantSettingsSection';
 import BackupSettingsSection from '@/components/settings/BackupSettingsSection';
 import SystemSettingsSection from '@/components/settings/SystemSettingsSection';
+import HistorySection from '@/components/settings/HistorySection';
 import * as store from '@/lib/store';
 import { emitToast } from '@/lib/toast-bus';
 import { formatDateTime } from '@/lib/utils';
@@ -294,6 +295,7 @@ function SettingsTabsBody() {
     finance: 'Валюта відображення та курси',
     assistant: 'Провайдер і модель AI-помічника',
     backup: 'Резервні копії, експорт та відновлення CRM',
+    history: 'Журнал змін і скасування',
     system: 'Збереження, стан даних і журнал',
   };
 
@@ -343,6 +345,9 @@ function SettingsTabsBody() {
           onRestoreCopy={doRestoreCopy}
           onAcknowledgeIncident={doAcknowledgeIncident}
         />
+      )}
+      {tab === 'history' && (
+        <HistorySection />
       )}
       {tab === 'system' && (
         <SystemSettingsSection

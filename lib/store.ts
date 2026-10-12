@@ -5,6 +5,12 @@ import { cloudEnabled } from '@/lib/supabase/client';
 import { localDataSource } from '@/lib/datasource/local';
 import { normalizeSettings, primeSettings } from '@/lib/settings';
 import { flushBackupOnClose, markSnapshotDirty, registerSnapshotReader, resumePendingBackup } from '@/lib/backup';
+import type {
+  HistoryEvent, HistoryListResult, HistoryPatch, HistoryQuery,
+  HistoryUndoRequest, HistoryUndoResult, UndoPreviewRow,
+} from '@/lib/history/types';
+import { buildEventFromSnapshots, computeUndoPlan, patchSnapshot } from '@/lib/history/engine';
+import { getWriteContext, runWithWriteContext, resetWriteContext, type WriteContext } from '@/lib/history/source';
 
 export type StoreStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -233,10 +239,43 @@ export async function reloadStore(): Promise<void> {
 let staging = false;
 let actionQueue: Promise<unknown> = Promise.resolve();
 export function remoteEnabled(): boolean { return dataSource.kind === 'remote'; }
-export function atomicAction<T extends {ok:boolean}>(work:()=>Promise<T>):Promise<T> {
-  if (!(dataSource instanceof SupabaseDataSource)) return work();
+
+/**
+ * Пакет 03: запис журналу ПІСЛЯ успіху дії — з фактичної різниці до/після.
+ * Для remote подію створює сервер у межах commit (тут — no-op).
+ * Збій журналу не фальшує вже виконану дію: локальний адаптер докладає
+ * recovery-мітку та видимий issue (див. lib/datasource/local.ts).
+ */
+export async function recordHistoryAfter(before: DataSnapshot, ctx?: Partial<WriteContext>): Promise<void> {
+  if (dataSource.kind !== 'local') return;
+  try {
+    const active = ctx
+      ? { source: ctx.source ?? getWriteContext().source, hint: ctx.hint ?? null }
+      : getWriteContext();
+    const event = buildEventFromSnapshots(before, snapshot, active);
+    if (!event) return;
+    await dataSource.historyAppend(event);
+  } catch (err) {
+    console.error('history journal append failed', err);
+  }
+}
+
+/**
+ * Атомарна доменна дія. `ctx` — джерело/підказка дії для журналу
+ * (за замовчуванням «Форма»; помічник/імпорт/система вказують явно).
+ */
+export function atomicAction<T extends {ok:boolean}>(work:()=>Promise<T>, ctx?: Partial<WriteContext>):Promise<T> {
+  if (!(dataSource instanceof SupabaseDataSource)) {
+    // Локальний режим: одна дія — одна група журналу (як і один commit remote).
+    return runWithWriteContext(ctx, async () => {
+      const before = structuredClone(snapshot);
+      const result = await work();
+      if (result.ok) await recordHistoryAfter(before);
+      return result;
+    });
+  }
   const source = dataSource;
-  const run = async ():Promise<T> => {
+  const run = async ():Promise<T> => runWithWriteContext(ctx, async () => {
     const previous = structuredClone(snapshot);
     staging = true;
     try {
@@ -249,7 +288,7 @@ export function atomicAction<T extends {ok:boolean}>(work:()=>Promise<T>):Promis
       return result as T;
     } catch { snapshot=previous; return {ok:false,errors:[{field:'storage',message:'Запис не підтверджено. Онови сторінку перед повторною дією.'}]} as unknown as T; }
     finally { staging=false; storageWriteBlock=source.writeBlockedReason(); primeSettings(snapshot.financeSettings); notify(); }
-  };
+  });
   const pending = actionQueue.then(run,run);
   actionQueue = pending.then(()=>undefined,()=>undefined);
   return pending;
@@ -289,6 +328,12 @@ function guard(key: CollectionKey | undefined, scope: WriteScope): WriteOutcome 
   return null;
 }
 
+/** Джерело журналу для записів поза atomicAction (міграції/імпорт). */
+async function withScopeContext<T>(scope: WriteScope, fn: () => Promise<T>): Promise<T> {
+  if (scope === 'user') return fn();
+  return runWithWriteContext({ source: scope === 'import' ? 'Імпорт' : 'Система' }, fn);
+}
+
 /**
  * Запис колекції. Спочатку — запис у сховище, потім оновлення пам'яті:
  * якщо запис упав (квота/збій), дані не «зберігаються» мовчки.
@@ -304,7 +349,7 @@ export async function saveCollection(
     notify();
     return blocked;
   }
-  const outcome = await dataSource.saveCollection(key, value);
+  const outcome = await withScopeContext(scope, () => dataSource.saveCollection(key, value));
   if (!outcome.ok) {
     // Перевищено ліміт — фіксуємо стан «запис заблоковано», щоб наступні
     // спроби падали швидко з зрозумілою причиною, а не кожен раз оновленням.
@@ -349,7 +394,7 @@ export async function saveSettings(settings: FinanceSettings, scope: WriteScope 
     return blocked;
   }
   const normalized = normalizeSettings(settings);
-  const outcome = await dataSource.saveSettings(normalized);
+  const outcome = await withScopeContext(scope, () => dataSource.saveSettings(normalized));
   if (!outcome.ok) {
     notify();
     return outcome;
@@ -402,6 +447,108 @@ export function clearIssues(): void {
   notify();
 }
 
+// ------------------------------------------------------------
+// Пакет 03: журнал історії та скасування (фасад над адаптером).
+// Журнал НЕ входить у snapshot, експорт даних і AI-контекст.
+// ------------------------------------------------------------
+
+/** Сторінка журналу з фільтрами (remote — сервер; local — localStorage). */
+export function listHistory(query: HistoryQuery = {}): Promise<HistoryListResult> {
+  return dataSource.historyList(query);
+}
+
+export function getHistoryEvent(id: string): Promise<HistoryEvent | null> {
+  return dataSource.historyGet(id);
+}
+
+/** Поточна ревізія даних для очікування при скасуванні (local — null). */
+export function getRevision(): number | null {
+  return dataSource.currentRevision();
+}
+
+function notUndoableMessage(event: HistoryEvent): string | null {
+  if (event.imported) return 'Імпортована подія — лише перегляд, скасування недоступне.';
+  if (event.action === 'import' || event.action === 'restore') {
+    return 'Імпорт і відновлення скасуються через резервну копію, а не цією кнопкою.';
+  }
+  if (event.action === 'undo') return 'Подію-відновлення не скасовують.';
+  if (event.undoneBy) return 'Цю подію вже скасовано.';
+  if (event.changes.some(c => c.change === 'bulk')) {
+    return 'Група збережена як підсумок без деталей — скасування недоступне.';
+  }
+  return null;
+}
+
+export type PreviewUndoResult =
+  | { ok: true; event: HistoryEvent; patch: HistoryPatch; preview: UndoPreviewRow[] }
+  | { ok: false; message: string; conflicts?: string[] };
+
+/** Попередній перегляд відновлення — без жодного запису. */
+export async function previewUndo(eventId: string): Promise<PreviewUndoResult> {
+  let event: HistoryEvent | null;
+  try {
+    event = await dataSource.historyGet(eventId);
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : 'Журнал історії недоступний.' };
+  }
+  if (!event) return { ok: false, message: 'Подію не знайдено в журналі.' };
+  const notAllowed = notUndoableMessage(event);
+  if (notAllowed) return { ok: false, message: notAllowed };
+  const plan = computeUndoPlan(event, snapshot);
+  if (!plan.ok) {
+    return { ok: false, message: 'Зміни після цієї події заважають відновленню — нічого не перезаписано.', conflicts: plan.conflicts };
+  }
+  return { ok: true, event, patch: plan.patch, preview: plan.preview };
+}
+
+/**
+ * Скасування події. Перевіряє конфлікти/залежності за поточним snapshot,
+ * потім передає патч адаптеру (remote — сервер перевіряє ревізію під
+ * блокуванням і створює подію атомарно; local — послідовний запис із
+ * відкочуванням). Після успіху snapshot перечитується/оновлюється.
+ */
+export async function undoHistory(request: HistoryUndoRequest): Promise<HistoryUndoResult> {
+  const block = getWriteBlock();
+  if (block) return { ok: false, reason: 'denied', message: block };
+  // Повтор того самого запиту (підтверджений кнопкою двічі) — ідемпотентний
+  // успішний результат без другої події та без повторних перевірок.
+  try {
+    const recent = await dataSource.historyList({ limit: 200, action: 'undo' });
+    const duplicate = recent.events.find(e => e.requestId && e.requestId === request.requestId);
+    if (duplicate) return { ok: true, event: duplicate };
+  } catch {
+    // Журнал недоступний для пошуку дубліката — основний шлях дасть зрозумілу відмову.
+  }
+  let event: HistoryEvent | null;
+  try {
+    event = await dataSource.historyGet(request.eventId);
+  } catch (err) {
+    return { ok: false, reason: 'denied', message: err instanceof Error ? err.message : 'Журнал історії недоступний.' };
+  }
+  if (!event) return { ok: false, reason: 'not_found', message: 'Подію не знайдено в журналі.' };
+  if (event.undoneBy) return { ok: false, reason: 'already_undone', message: 'Цю подію вже скасовано.' };
+  const notAllowed = notUndoableMessage(event);
+  if (notAllowed) return { ok: false, reason: 'not_undoable', message: notAllowed };
+  const plan = computeUndoPlan(event, snapshot);
+  if (!plan.ok) {
+    return { ok: false, reason: 'conflict', message: 'Зміни після цієї події заважають відновленню — нічого не перезаписано.', conflicts: plan.conflicts };
+  }
+  const expectedRevision = request.expectedRevision === undefined ? dataSource.currentRevision() : request.expectedRevision;
+  const result = await dataSource.historyUndo({ ...request, expectedRevision, patch: plan.patch });
+  if (!result.ok) return result;
+  if (dataSource.kind === 'remote') {
+    try {
+      await reloadStore();
+    } catch {
+      // Дані вже відновлено на сервері; перечитання відбудеться при завантаженні.
+    }
+  } else {
+    replaceSnapshot(patchSnapshot(snapshot, plan.patch));
+  }
+  notify();
+  return result;
+}
+
 export function resetStoreForTests(): void {
   snapshot = emptySnapshot();
   status = 'idle';
@@ -412,6 +559,7 @@ export function resetStoreForTests(): void {
   corruptRaw = {};
   storageWriteBlock = null;
   migrationWriteBlock = null;
+  resetWriteContext();
   primeSettings(null);
 }
 

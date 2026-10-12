@@ -1,4 +1,8 @@
 import type { BackupInfo, DataSnapshot, FinanceSettings } from '@/types';
+import type {
+  HistoryEvent, HistoryListResult, HistoryPatch, HistoryQuery,
+  HistoryUndoRequest, HistoryUndoResult,
+} from '@/lib/history/types';
 
 // ============================================================
 // Контракт сховища даних (етап 1: локальний адаптер;
@@ -102,4 +106,29 @@ export interface CrmDataSource {
   markCollectionHealth(collection: CollectionKey, state: CollectionHealth | 'ok'): void;
   /** Повернути сирий вміст колекції (для відновлення пошкоджених даних). */
   restoreRaw(collection: CollectionKey, raw: string): Promise<WriteOutcome>;
+
+  // ------------------------------------------------------------
+  // Пакет 03: журнал історії змін (окремо від snapshot).
+  // ------------------------------------------------------------
+
+  /**
+   * Поточна ревізія даних (remote; local — null, бо ревізій немає).
+   * Використовується як очікувана ревізія при скасуванні.
+   */
+  currentRevision(): number | null;
+  /** Сторінка журналу з фільтрами та пагінацією. */
+  historyList(query: HistoryQuery): Promise<HistoryListResult>;
+  /** Одна подія (null — не знайдено). Виняток — журнал недоступний. */
+  historyGet(id: string): Promise<HistoryEvent | null>;
+  /**
+   * Додати подію журналу (локальний адаптер: окремий ключ із recovery-міткою).
+   * Віддалений адаптер — no-op: подію створює сервер у межах commit.
+   */
+  historyAppend(event: HistoryEvent): Promise<WriteOutcome>;
+  /**
+   * Застосувати патч відновлення і створити подію-відновлення (remote —
+   * одна серверна транзакція; local — послідовний запис із відкочуванням
+   * при збої; фактичні гарантії описані в HANDOFF-PACKAGE-03).
+   */
+  historyUndo(request: HistoryUndoRequest & { patch: HistoryPatch }): Promise<HistoryUndoResult>;
 }

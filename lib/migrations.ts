@@ -236,6 +236,9 @@ export async function migrate(): Promise<MigrationReport> {
   const failed: string[] = [];
   if (typeof window === 'undefined') return { applied, skipped, failed };
 
+  // Пакет 03: одна група «Система» на успішний прогін міграцій.
+  const historyBefore = structuredClone(store.getSnapshot());
+
   for (const migration of MIGRATIONS) {
     if (isMigrationApplied(migration.id)) {
       skipped.push(migration.id);
@@ -260,6 +263,13 @@ export async function migrate(): Promise<MigrationReport> {
       ? `Міграції не застосовано: ${failed.join(', ')}. Запис даних заблоковано до виправлення.`
       : null,
   );
+  // Журнал — лише після повного успіху: невдалий прогін лишається видимим
+  // через блокування запису, а не прихованою зміною без події. Під час
+  // імпорту/відновлення окрема системна подія не потрібна — групова
+  // подія імпорту вже охоплює цей стан.
+  if (!failed.length && applied.length && !store.getImportIncident()) {
+    await store.recordHistoryAfter(historyBefore, { source: 'Система' });
+  }
   return { applied, skipped, failed };
 }
 

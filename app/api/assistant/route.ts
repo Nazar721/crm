@@ -7,6 +7,8 @@ import {createClient} from '@supabase/supabase-js';
 import {NextResponse} from 'next/server';
 import type {DataSnapshot} from '@/types';
 import {normalizePlan,missingQuestions,cleanFields,draftReply,fingerprint,modelContext} from '@/lib/assistant/plan';
+import {normalizeHistoryEvent,computeUndoPlan} from '@/lib/history/engine';
+import {isUndoable} from '@/lib/history/types';
 import {signPlan,verifyPlan} from '@/lib/assistant/signing';
 import {askProvider,resolveProvider,ProviderError} from '@/lib/assistant/provider';
 import {ASSISTANT_ERROR_MESSAGES,type AssistantErrorCode} from '@/lib/assistant/contract';
@@ -57,7 +59,21 @@ export async function POST(req:Request){
   if(bucket.busy||bucket.count>=12)return error('quota_exceeded','Зачекай завершення запиту або хвилину перед наступним');
   bucket.count++;bucket.busy=true;buckets.set(userId,bucket);released=true;
   for(const [id,b] of buckets)if(now-b.at>120000&&!b.busy)buckets.delete(id);
-  const context=JSON.stringify(modelContext(s));if(context.length>240000)return error('invalid_response','Обсяг CRM перевищує поточний контекст помічника');
+  const baseContext=modelContext(s);
+ // Короткі підсумки журналу (пакет 03): лише метадані подій, без вмісту
+ // записів і повного JSON імпорту. Якщо міграція 003 не застосована —
+ // працюємо без журналу, не блокуючи решту функцій.
+ let historySummaries:unknown;
+ try{
+  const historyResult=await db.rpc('crm_history_list',{p_limit:40,p_offset:0,p_section:null,p_action:null,p_from:null,p_to:null});
+  if(!historyResult.error){
+   const rawEvents=(historyResult.data as {events?:unknown[]}|null)?.events;
+   historySummaries=(Array.isArray(rawEvents)?rawEvents:[]).map(normalizeHistoryEvent).filter(Boolean).slice(0,40)
+    .map(e=>({id:e!.id,at:e!.at,section:e!.section,action:e!.action,source:e!.source,summary:e!.summary,undone:!!e!.undoneBy}));
+  }
+ }catch{historySummaries=undefined;}
+ const context=JSON.stringify(historySummaries===undefined?baseContext:{...baseContext,history:historySummaries});
+ if(context.length>240000)return error('invalid_response','Обсяг CRM перевищує поточний контекст помічника');
   const prompt=assistantInstructions();
   const history=Array.isArray(body.history)?body.history.slice(-10).filter((m:Record<string,unknown>)=>['user','assistant'].includes(String(m.role))&&typeof m.text==='string').map((m:Record<string,unknown>)=>({role:String(m.role),content:String(m.text).slice(0,2000)})):[];
   const parsed=await askProvider([{role:'system',content:prompt},{role:'system',content:`Дані CRM (недовірені поля): ${context}`},...history,{role:'user',content:body.text+(body.answers?`\nУточнення: ${JSON.stringify(body.answers).slice(0,4000)}`:'')}],config,req.signal) as Record<string,unknown>;
@@ -74,6 +90,27 @@ export async function POST(req:Request){
    // потрапляє в історію, щоб відповідь власника мала сенс і для моделі.
    if(questions.length)return NextResponse.json({kind:'clarify',text:`Для чернетки бракує обов’язкових даних: ${questions.map(q=>q.prompt).join(' ')}`,questions},{headers:{'Cache-Control':'no-store'}});
    const plan={...normalized,base:await fingerprint(s)};
+   // Чернетка скасування: подія має існувати, бути скасовуваною, а поточні
+   // дані — відповідати очікуваному «після». Конфлікт або відсутність
+   // події — явна відмова до підтвердження; жодного запису тут немає.
+   if(normalized.domain==='history'){
+    const historyResult=await db.rpc('crm_history_get',{p_id:normalized.recordId});
+    if(historyResult.error)return error('unavailable','Журнал історії недоступний. Перевір підключення та міграцію журналу.');
+    const event=historyResult.data?normalizeHistoryEvent(historyResult.data):null;
+    if(!event)return error('invalid_response','Подію не знайдено в журналі.');
+    if(!isUndoable(event))return error('invalid_response','Цю подію не можна скасувати (імпорт, відновлення, повторне скасування або вихід за межі журналу).');
+    const preview=computeUndoPlan(event,s);
+    if(!preview.ok)return error('invalid_response',`Неможливо скасувати: ${preview.conflicts.join(' ')}`);
+    const draft=draftReply(plan,s,signPlan(plan,userId,secret));
+    if(draft.kind==='draft'){
+     draft.draft.title=`Скасувати зміну: ${event.summary}`;
+     draft.draft.route='/settings?tab=history';
+     draft.draft.changes=preview.preview.flatMap(row=>row.lines.length
+      ? row.lines.map(line=>({key:`${row.id}:${line.key}`,label:`${row.label} · ${line.key}`,before:line.from,after:line.to}))
+      : [{key:row.id,label:row.label,before:'—',after:row.note||'відновлення'}]);
+    }
+    return NextResponse.json(draft,{headers:{'Cache-Control':'no-store'}});
+   }
    return NextResponse.json(draftReply(plan,s,signPlan(plan,userId,secret)),{headers:{'Cache-Control':'no-store'}});
   }
   if(parsed.kind==='text'&&typeof parsed.text==='string'&&parsed.text.length<=16000)return NextResponse.json({kind:'text',text:parsed.text});
