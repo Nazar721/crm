@@ -387,10 +387,13 @@ test('локальний E2E: конфлікт «null замість відсу�
     assert.equal(outcome.ok, true);
   };
   // Подія: description додано, потім прибрано → подія прибирання.
+  // Вибір — детерміновано за різницею ID операції (не за at/порядком).
   await saveVia([{ ...project, description: 'note' }]);
+  const beforeRemove = new Set((await listAll()).map(e => e.id));
   await saveVia([{ ...project }]);
   const removeEvent = (await listAll()).find(
-    e => e.changes.some(c => (c.fields ?? []).some(f => f.key === 'description' && f.before !== undefined)),
+    e => !beforeRemove.has(e.id) && e.action === 'update'
+      && e.changes.some(c => (c.fields ?? []).some(f => f.key === 'description' && f.before !== undefined)),
   )!;
   // Пізніша зміна: поле встановлено в явний null.
   await saveVia([{ ...project, description: null } as unknown as Project]);
@@ -414,18 +417,7 @@ test('локальний undo: відсутнє поле «до» прибира
   await bootStore();
   const project = makeProject({ id: 'p_d', name: 'Проєкт', clientName: 'Клієнт' });
   await store.saveCollection('projectsActive', [project]);
-  // Подія 1: додано description.
-  assert.equal((await store.atomicAction(async () => {
-    const outcome = await store.saveCollection('projectsActive', [{ ...project, description: 'note' }]);
-    return outcome.ok ? { ok: true } : { ok: false, errors: [{ message: outcome.issue.message }] };
-  })).ok, true);
-  const addEvent = (await listAll()).find(e => e.changes.some(c => (c.fields ?? []).some(f => f.key === 'description')))!;
-  const undoneAdd = await store.undoHistory({ eventId: addEvent.id, requestId: crypto.randomUUID(), source: 'Форма' });
-  assert.equal(undoneAdd.ok, true);
-  const afterUndoAdd = store.getSnapshot().projectsActive[0] as unknown as Record<string, unknown>;
-  assert.equal('description' in afterUndoAdd, false, 'ключ прибрано, не null');
-  // Подія 2/3: додаємо description, потім прибираємо — undo прибирання
-  // повертає значення (зміна «значення → відсутність»).
+  const idsNow = async () => new Set((await listAll()).map(e => e.id));
   const saveVia = async (value: unknown[]) => {
     const outcome = await store.atomicAction(async () => {
       const result = await store.saveCollection('projectsActive', value);
@@ -433,15 +425,42 @@ test('локальний undo: відсутнє поле «до» прибира
     });
     assert.equal(outcome.ok, true);
   };
+  // Подія 1: додано description. Вибір — за різницею ID до/після операції.
+  const beforeAdd = await idsNow();
   await saveVia([{ ...project, description: 'note' }]);
+  const addEvent = (await listAll()).find(
+    e => !beforeAdd.has(e.id) && e.changes.some(c => (c.fields ?? []).some(f => f.key === 'description')),
+  )!;
+  const undoneAdd = await store.undoHistory({ eventId: addEvent.id, requestId: crypto.randomUUID(), source: 'Форма' });
+  assert.equal(undoneAdd.ok, true);
+  const afterUndoAdd = store.getSnapshot().projectsActive[0] as unknown as Record<string, unknown>;
+  assert.equal('description' in afterUndoAdd, false, 'ключ прибрано, не null');
+  // Подія 2/3: додаємо description, потім прибираємо — undo прибирання
+  // повертає значення (зміна «значення → відсутність»).
+  await saveVia([{ ...project, description: 'note' }]);
+  const beforeRemove = await idsNow();
   await saveVia([{ ...project }]);
+  // Регресія P2 (нестабільний вибір): кілька подій можуть мати ОДНАКОВИЙ at
+  // (мілісекунди) — порядок за at/id випадковий. Вибір події детермінований:
+  // новий ID (різниця журналу до/після) + action=update; undo-подія раніше
+  // має такий самий description-ключ і без цього фільтру «вигравала» б.
+  const stamped = new Date().toISOString();
+  const historyRaw = JSON.parse(String(localStorage.getItem('crm_history_v1'))) as { events: { at: string }[] };
+  historyRaw.events = historyRaw.events.map(e => ({ ...e, at: stamped }));
+  localStorage.setItem('crm_history_v1', JSON.stringify(historyRaw));
   const removeEvent = (await listAll()).find(
-    e => e.id !== addEvent.id && !e.undoneBy
+    e => !beforeRemove.has(e.id) && e.action === 'update'
       && e.changes.some(c => (c.fields ?? []).some(f => f.key === 'description' && f.before !== undefined)),
   )!;
+  assert.equal(removeEvent.action, 'update', 'вибрано саме подію-оновлення, не undo');
   const undoneRemove = await store.undoHistory({ eventId: removeEvent.id, requestId: crypto.randomUUID(), source: 'Форма' });
   assert.equal(undoneRemove.ok, true);
   assert.equal((store.getSnapshot().projectsActive[0] as unknown as Record<string, unknown>).description, 'note');
+  // Стару undo-подію (фаза 1) скасувати не можна — правило не послаблено.
+  const undoPhaseOne = (await listAll()).find(e => e.action === 'undo')!;
+  const repeat = await store.undoHistory({ eventId: undoPhaseOne.id, requestId: crypto.randomUUID(), source: 'Форма' });
+  assert.equal(repeat.ok, false);
+  assert.equal(repeat.ok === false && repeat.reason, 'not_undoable');
 });
 
 // ------------------------------------------------------------
