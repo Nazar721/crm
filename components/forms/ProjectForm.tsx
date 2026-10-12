@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import type { Project, Specialist, Partner } from '@/types';
 import { project as calcProject } from '@/lib/calc';
 import { autoMyPercent, resolveMyShare } from '@/lib/my-share';
@@ -16,13 +16,21 @@ import AutocompleteInput from '@/components/ui/AutocompleteInput';
 interface ProjectFormProps {
   isOpen: boolean;
   project?: Project | null;
+  /**
+   * Пакет 02: початкові поля копії завершеного проєкту. Форма лишається
+   * формою СТВОРЕННЯ (project === null), але із заповненими умовами;
+   * скинуті поля (оплати/дати/банк) примусово порожні.
+   */
+  copyPrefill?: Partial<Project> | null;
+  /** Попередження: пов'язану сутність видалено — поле треба обрати заново. */
+  copyWarnings?: string[];
   specialists: Specialist[];
   partners: Partner[];
-  onSave: (data: Partial<Project>) => void;
+  onSave: (data: Partial<Project>) => void | Promise<void>;
   onCancel: () => void;
 }
 
-export default function ProjectForm({ isOpen, project, specialists, partners, onSave, onCancel }: ProjectFormProps) {
+export default function ProjectForm({ isOpen, project, copyPrefill, copyWarnings, specialists, partners, onSave, onCancel }: ProjectFormProps) {
   const [name, setName] = useState('');
   const [type, setType] = useState('');
   const [status, setStatus] = useState('Очікування оплати');
@@ -46,6 +54,10 @@ export default function ProjectForm({ isOpen, project, specialists, partners, on
   const [partnerCommission, setPartnerCommission] = useState('');
   const [description, setDescription] = useState('');
   const [selectedClientId, setSelectedClientId] = useState('');
+  // Подвійне натискання «Зберегти» не має створювати дубль: реф ловить
+  // другий клік у тому ж такті, стан — гасить кнопку після ре-рендера.
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
 
   useEffect(() => {
     if (project) {
@@ -73,6 +85,34 @@ export default function ProjectForm({ isOpen, project, specialists, partners, on
       setSelectedClientId(project.clientId || '');
       // Наявний проєкт: відсоток лишається як є, автозастосування вимкнене.
       setAutoPercent(false);
+    } else if (copyPrefill) {
+      // Пакет 02: копія. Умови — із заповнених полів; усі скинуті поля
+      // (оплати/виплати/дати/банк) примусово порожні, статус і старт —
+      // типові для нового проєкту. Автовідсоток вимкнено: підставлена
+      // умова показується явно і лишається ручною до збереження.
+      setName(copyPrefill.name || '');
+      setType(copyPrefill.type || '');
+      setStatus('Очікування оплати');
+      setStartDate(copyPrefill.startDate || today());
+      setDeadlineDays(copyPrefill.deadlineDays !== undefined && copyPrefill.deadlineDays !== null ? String(copyPrefill.deadlineDays) : '');
+      setEndDate('');
+      setDeveloperId(copyPrefill.developerId || '');
+      setPartnerId(copyPrefill.partnerId || '');
+      setClientName(copyPrefill.clientName || '');
+      setClientTelegram(copyPrefill.clientTelegram || '');
+      setClientSource(copyPrefill.clientSource || 'Інше');
+      setBudget(copyPrefill.budget !== undefined && copyPrefill.budget !== null ? String(copyPrefill.budget) : '');
+      setCurrency(copyPrefill.currency || 'UAH');
+      setBank('');
+      setPrepayment('');
+      setPaidToSpecialist('');
+      setMyPercent(copyPrefill.myPercent !== undefined && copyPrefill.myPercent !== null ? String(copyPrefill.myPercent) : '');
+      setProfitTaken('');
+      setFop(copyPrefill.fop !== undefined && copyPrefill.fop !== null ? String(copyPrefill.fop) : '');
+      setPartnerCommission(copyPrefill.partnerCommission !== undefined && copyPrefill.partnerCommission !== null ? String(copyPrefill.partnerCommission) : '');
+      setDescription(copyPrefill.description || '');
+      setSelectedClientId(copyPrefill.clientId || '');
+      setAutoPercent(false);
     } else {
       setName(''); setType(''); setStatus('Очікування оплати'); setStartDate(today());
       setDeadlineDays(''); setEndDate(''); setDeveloperId(''); setPartnerId('');
@@ -83,7 +123,7 @@ export default function ProjectForm({ isOpen, project, specialists, partners, on
       // Новий проєкт: автоправило фахівця увімкнене.
       setAutoPercent(true);
     }
-  }, [project, isOpen]);
+  }, [project, isOpen, copyPrefill]);
 
   useEffect(() => {
     if (Number(prepayment) > 0 && status === 'Очікування оплати') {
@@ -170,28 +210,44 @@ export default function ProjectForm({ isOpen, project, specialists, partners, on
     } as Project);
   }, [budget, currency, prepayment, paidToSpecialist, effectiveMyPercent, profitTaken, fop, partnerCommission]);
 
-  const handleSave = () => {
-    onSave({
-      name, type, status, startDate,
-      deadlineDays: Number(deadlineDays) || 0,
-      endDate,
-      developerId, partnerId,
-      clientName, clientTelegram, clientSource,
-      budget: Number(budget) || 0,
-      currency,
-      bank,
-      prepayment: Number(prepayment) || 0,
-      paidToSpecialist: Number(paidToSpecialist) || 0,
-      myPercent: Number(effectiveMyPercent) || 0,
-      profitTaken: Number(profitTaken) || 0,
-      fop: Number(fop) || 0,
-      partnerCommission: Number(partnerCommission) || 0,
-      description,
-    });
+  const handleSave = async () => {
+    if (savingRef.current) return;
+    savingRef.current = true;
+    setSaving(true);
+    try {
+      await onSave({
+        name, type, status, startDate,
+        deadlineDays: Number(deadlineDays) || 0,
+        endDate,
+        developerId, partnerId,
+        clientName, clientTelegram, clientSource,
+        budget: Number(budget) || 0,
+        currency,
+        bank,
+        prepayment: Number(prepayment) || 0,
+        paidToSpecialist: Number(paidToSpecialist) || 0,
+        myPercent: Number(effectiveMyPercent) || 0,
+        profitTaken: Number(profitTaken) || 0,
+        fop: Number(fop) || 0,
+        partnerCommission: Number(partnerCommission) || 0,
+        description,
+      });
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
   };
 
   return (
     <Modal isOpen={isOpen} onClose={onCancel} title={project ? 'Редагувати проєкт' : 'Новий проєкт'} size="lg">
+      {copyWarnings && copyWarnings.length > 0 && (
+        <div className="backup-warning" style={{ marginBottom: 12 }}>
+          <strong>Копіювання: перевірте підставлений проєкт</strong>
+          <ul style={{ margin: '6px 0 0 18px', padding: 0 }}>
+            {copyWarnings.map((w, i) => <li key={i} style={{ marginBottom: 4 }}>{w}</li>)}
+          </ul>
+        </div>
+      )}
       <div className="form-grid">
         <div className="form-group form-group--full">
           <label className="form-label">Назва проєкту *</label>
@@ -377,7 +433,7 @@ export default function ProjectForm({ isOpen, project, specialists, partners, on
           <textarea className="form-input form-textarea" value={description} onChange={e => setDescription(e.target.value)} placeholder="Деталі проєкту..." />
         </div>
       </div>
-      <ModalFooter onCancel={onCancel} onSave={handleSave} />
+      <ModalFooter onCancel={onCancel} onSave={handleSave} disabled={saving} saveLabel={saving ? 'Зберігаю…' : 'Зберегти'} />
     </Modal>
   );
 }
