@@ -4,7 +4,13 @@ import { useApp } from '@/context/AppContext';
 import { getBackupInfo, shouldShowBackupReminder, snoozeBackupReminder, exportData, markManualBackup } from '@/lib/storage';
 import { previewImport, applyImport, restoreFromPreviousCopy, type ImportPreview, type ImportReport } from '@/lib/importer';
 import { getBackupRuntimeStatus, type BackupRuntimeStatus } from '@/lib/backup';
-import { SETTINGS_TABS, normalizeSettingsTabId, type SettingsTabId } from '@/lib/settings-tabs';
+import {
+  SETTINGS_TABS,
+  normalizeSettingsTabId,
+  parseSettingsTabFromSearch,
+  settingsTabHref,
+  type SettingsTabId,
+} from '@/lib/settings-tabs';
 import { usePersistedState } from '@/hooks/useUiState';
 import FinanceSettingsSection from '@/components/settings/FinanceSettingsSection';
 import AssistantSettingsSection from '@/components/settings/AssistantSettingsSection';
@@ -31,6 +37,9 @@ const COLLECTION_LABELS: Record<string, string> = {
 
 export default function SettingsPage() {
   const { triggerRefresh, reinitialize, snapshot, storageIssues, refreshKey } = useApp();
+  // P2: пріоритет вкладки — валідний `?tab=` в URL → sessionStorage → базова.
+  // Перший рендер збігається з SSR (finance), синхронізація з URL — лише на
+  // клієнті в effect, щоб не було hydration-розбіжності.
   const [activeTab, setActiveTab] = usePersistedState<SettingsTabId>('settings:tab', 'finance');
   const tab: SettingsTabId = normalizeSettingsTabId(activeTab);
   const [info, setInfo] = useState({ lastSavedAt: '', lastManualBackupAt: '', backupSnoozedUntil: '' });
@@ -49,6 +58,36 @@ export default function SettingsPage() {
     setInfo(getBackupInfo());
     setShowWarning(shouldShowBackupReminder());
     setBackupStatus(getBackupRuntimeStatus());
+  };
+
+  // P2: читаємо `?tab=` лише на клієнті після монтування (SSR бачить finance
+  // в обох місцях — розбіжності немає). Валідний query перемагає sessionStorage.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const syncFromUrl = () => {
+      try {
+        const fromUrl = parseSettingsTabFromSearch(window.location.search);
+        if (fromUrl) setActiveTab(fromUrl);
+      } catch {
+        // Немає доступу до location — лишається fallback sessionStorage.
+      }
+    };
+    syncFromUrl();
+    window.addEventListener('popstate', syncFromUrl);
+    return () => window.removeEventListener('popstate', syncFromUrl);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // P2: клік по вкладці оновлює URL (?tab=), щоб банер/помічник і
+  // back/forward працювали з потрібним розділом.
+  const selectTab = (next: SettingsTabId) => {
+    setActiveTab(next);
+    if (typeof window === 'undefined') return;
+    try {
+      window.history.pushState(null, '', settingsTabHref(next));
+    } catch {
+      // Немає доступу до history — вкладка все одно перемкнулася локально.
+    }
   };
 
   useEffect(() => {
@@ -222,21 +261,28 @@ export default function SettingsPage() {
       </div>
       <div className="tabs" role="tablist" aria-label="Розділи налаштувань">
         {SETTINGS_TABS.map(t => (
-          <button
+          <a
             key={t.id}
-            type="button"
             role="tab"
             aria-selected={tab === t.id}
             className={`tab${tab === t.id ? ' active' : ''}`}
             title={t.hint}
-            onClick={() => setActiveTab(t.id)}
+            href={settingsTabHref(t.id)}
+            onClick={e => { e.preventDefault(); selectTab(t.id); }}
           >
             {t.label}
-          </button>
+          </a>
         ))}
       </div>
-      {tab === 'finance' && <FinanceSettingsSection onChanged={reloadAfterSettingsChange} />}
-      {tab === 'assistant' && <AssistantSettingsSection />}
+      {/* P2: усі секції лишаються змонтованими — незбережений ввід
+          (курси, провайдер до збереження) не знищується перемиканням.
+          Приховані секції ховаються через hidden, а не розмонтування. */}
+      <div hidden={tab !== 'finance'} aria-hidden={tab !== 'finance'}>
+        <FinanceSettingsSection onChanged={reloadAfterSettingsChange} />
+      </div>
+      <div hidden={tab !== 'assistant'} aria-hidden={tab !== 'assistant'}>
+        <AssistantSettingsSection />
+      </div>
       {tab === 'backup' && (
         <BackupSettingsSection
           backupStatus={backupStatus}

@@ -226,7 +226,7 @@ export function StorageWriteBanner() {
     <div className="write-block-banner" role="alert">
       <strong>Запис даних заблоковано.</strong>
       <span>{writeBlock}</span>
-      <Link className="btn btn-ghost btn--sm" href="/settings">Налаштування / експорт</Link>
+      <Link className="btn btn-ghost btn--sm" href="/settings?tab=backup">Налаштування / експорт</Link>
     </div>
   );
 }

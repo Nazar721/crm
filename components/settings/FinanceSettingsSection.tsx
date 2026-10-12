@@ -1,8 +1,14 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useApp } from '@/context/AppContext';
 import { saveRates, setDisplayCurrency } from '@/lib/actions';
 import { emitToast } from '@/lib/toast-bus';
+import {
+  syncRatesDraft,
+  isRatesDraftDirty,
+  CLEAN_RATES_DIRTY,
+  type RatesDirty,
+} from '@/lib/settings-tabs';
 
 /**
  * Вкладка «Фінанси»: валюта відображення + курси.
@@ -10,6 +16,11 @@ import { emitToast } from '@/lib/toast-bus';
  * (`setDisplayCurrency`, `saveRates`) — другого сховища немає.
  * displayCurrency при збереженні курсів не скидається
  * (гарантія `_saveRates`: чинне значення зберігається).
+ *
+ * P2: чернетка курсів живе на рівні секції й syncRatesDraft НЕ затирає
+ * поля, які користувач уже редагує. Перемикання вкладок тепер не
+ * розмонтовує секцію (сторінка тримає всі секції змонтованими), тож
+ * незбережений ввід не губиться мовчки.
  */
 export default function FinanceSettingsSection({ onChanged }: { onChanged: () => void }) {
   const { snapshot, triggerRefresh } = useApp();
@@ -17,14 +28,36 @@ export default function FinanceSettingsSection({ onChanged }: { onChanged: () =>
   const [usdRate, setUsdRate] = useState('');
   const [eurRate, setEurRate] = useState('');
   const [usdtRate, setUsdtRate] = useState('');
+  const [ratesDirty, setRatesDirty] = useState<RatesDirty>({ ...CLEAN_RATES_DIRTY });
   const [saving, setSaving] = useState(false);
+  const lastSyncedRates = useRef('');
+
+  const financeSettings = snapshot.financeSettings;
+
+  // Підтягуємо актуальні курси лише в чисті поля; брудні (редаговані)
+  // лишаємо як є — effect на весь snapshot більше не стирає ввід,
+  // коли поруч змінюється displayCurrency.
+  useEffect(() => {
+    const next = syncRatesDraft({ usdRate, eurRate, usdtRate }, financeSettings, ratesDirty);
+    const key = `${financeSettings.usdRate}|${financeSettings.eurRate}|${financeSettings.usdtRate ?? ''}`;
+    if (key === lastSyncedRates.current) return;
+    lastSyncedRates.current = key;
+    if (!ratesDirty.usd) setUsdRate(next.usdRate);
+    if (!ratesDirty.eur) setEurRate(next.eurRate);
+    if (!ratesDirty.usdt) setUsdtRate(next.usdtRate);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [financeSettings]);
 
   useEffect(() => {
-    setDisplayCurrencyValue(snapshot.financeSettings.displayCurrency || 'UAH');
-    setUsdRate(String(snapshot.financeSettings.usdRate));
-    setEurRate(String(snapshot.financeSettings.eurRate));
-    setUsdtRate(String(snapshot.financeSettings.usdtRate ?? snapshot.financeSettings.usdRate));
-  }, [snapshot.financeSettings]);
+    setDisplayCurrencyValue(financeSettings.displayCurrency || 'UAH');
+  }, [financeSettings.displayCurrency]);
+
+  const markRateDirty = (field: keyof RatesDirty, value: string, set: (v: string) => void) => {
+    set(value);
+    setRatesDirty(prev => (prev[field] ? prev : { ...prev, [field]: true }));
+  };
+
+  const ratesUnsaved = isRatesDraftDirty({ usdRate, eurRate, usdtRate }, financeSettings);
 
   const changeDisplayCurrency = async (cur: string) => {
     const result = await setDisplayCurrency(cur as 'UAH' | 'USD' | 'EUR');
@@ -46,6 +79,7 @@ export default function FinanceSettingsSection({ onChanged }: { onChanged: () =>
         return;
       }
       emitToast('Курси збережено', 'success');
+      setRatesDirty({ ...CLEAN_RATES_DIRTY });
       triggerRefresh();
       onChanged();
     } finally {
@@ -79,19 +113,22 @@ export default function FinanceSettingsSection({ onChanged }: { onChanged: () =>
         <div className="form-grid" style={{ marginTop: 12 }}>
           <div className="form-group">
             <label className="form-label">USD → UAH</label>
-            <input className="form-input" inputMode="decimal" type="number" min="0" step="0.01" value={usdRate} onChange={e => setUsdRate(e.target.value)} />
+            <input className="form-input" inputMode="decimal" type="number" min="0" step="0.01" value={usdRate} onChange={e => markRateDirty('usd', e.target.value, setUsdRate)} />
           </div>
           <div className="form-group">
             <label className="form-label">EUR → UAH</label>
-            <input className="form-input" inputMode="decimal" type="number" min="0" step="0.01" value={eurRate} onChange={e => setEurRate(e.target.value)} />
+            <input className="form-input" inputMode="decimal" type="number" min="0" step="0.01" value={eurRate} onChange={e => markRateDirty('eur', e.target.value, setEurRate)} />
           </div>
           <div className="form-group">
             <label className="form-label">USDT → UAH</label>
-            <input className="form-input" inputMode="decimal" type="number" min="0" step="0.01" value={usdtRate} onChange={e => setUsdtRate(e.target.value)} />
+            <input className="form-input" inputMode="decimal" type="number" min="0" step="0.01" value={usdtRate} onChange={e => markRateDirty('usdt', e.target.value, setUsdtRate)} />
           </div>
         </div>
         <div className="header-actions" style={{ marginTop: 12 }}>
           <button className="btn btn-primary" onClick={handleSaveRates} disabled={saving}>{saving ? 'Зберігаю…' : 'Зберегти курси'}</button>
+          {ratesUnsaved && !saving && (
+            <span style={{ color: 'var(--accent-orange)', fontSize: '0.82rem' }}>Є незбережені зміни курсів</span>
+          )}
         </div>
       </div>
     </div>

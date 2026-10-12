@@ -33,3 +33,80 @@ export function isSettingsTabId(value: unknown): value is SettingsTabId {
 export function getSettingsTab(id: SettingsTabId): (typeof SETTINGS_TABS)[number] {
   return SETTINGS_TABS.find(t => t.id === id) ?? SETTINGS_TABS[0];
 }
+
+// ------------------------------------------------------------
+// URL-навігація (P2): валідний `?tab=` має пріоритет над
+// sessionStorage; невідомий нормалізується до базової.
+// Чисті функції — покриті тестами без браузера.
+// ------------------------------------------------------------
+
+/** Витягти вкладку з query (`?tab=backup`). `null` — параметра немає або він невалідний. */
+export function parseSettingsTabFromSearch(search: string | null | undefined): SettingsTabId | null {
+  if (!search || typeof search !== 'string') return null;
+  const query = search.startsWith('?') ? search.slice(1) : search;
+  const params = new URLSearchParams(query);
+  const raw = params.get('tab');
+  if (!raw) return null;
+  const found = SETTINGS_TABS.find(t => t.id === raw);
+  return found ? found.id : null;
+}
+
+/**
+ * Розв'язати активну вкладку: query (URL) → збережена (sessionStorage) → базова.
+ * Невідомі значення на кожному рівні ігноруються, а не кидають.
+ */
+export function resolveSettingsTab(input: { search?: string | null; stored?: unknown }): SettingsTabId {
+  const fromUrl = parseSettingsTabFromSearch(input.search ?? null);
+  if (fromUrl) return fromUrl;
+  return normalizeSettingsTabId(input.stored);
+}
+
+/** Канонічне посилання на вкладку (для банерів і оновлення URL). */
+export function settingsTabHref(tab: SettingsTabId): string {
+  return `/settings?tab=${normalizeSettingsTabId(tab)}`;
+}
+
+// ------------------------------------------------------------
+// Чернетки (P1/P2): чисті помічники життєвого циклу форм.
+// ------------------------------------------------------------
+
+export interface RatesDraft {
+  usdRate: string;
+  eurRate: string;
+  usdtRate: string;
+}
+
+export interface RatesDirty {
+  usd: boolean;
+  eur: boolean;
+  usdt: boolean;
+}
+
+export const CLEAN_RATES_DIRTY: RatesDirty = { usd: false, eur: false, usdt: false };
+
+/**
+ * Синхронізувати чернетку курсів зі snapshot, НЕ затираючи поля,
+ * які користувач уже редагує (dirty). Чисті поля підтягують актуальні
+ * значення (напр. після зміни displayCurrency поруч), брудні лишаються.
+ */
+export function syncRatesDraft(
+  draft: RatesDraft,
+  snapshot: { usdRate: unknown; eurRate: unknown; usdtRate?: unknown },
+  dirty: RatesDirty,
+): RatesDraft {
+  const fallbackUsd = String(snapshot.usdRate ?? '');
+  return {
+    usdRate: dirty.usd ? draft.usdRate : String(snapshot.usdRate ?? ''),
+    eurRate: dirty.eur ? draft.eurRate : String(snapshot.eurRate ?? ''),
+    usdtRate: dirty.usdt ? draft.usdtRate : String(snapshot.usdtRate ?? fallbackUsd),
+  };
+}
+
+/** Чи збігається чернетка курсів зі snapshot (чи є незбережені зміни). */
+export function isRatesDraftDirty(
+  draft: RatesDraft,
+  snapshot: { usdRate: unknown; eurRate: unknown; usdtRate?: unknown },
+): boolean {
+  const clean = syncRatesDraft(draft, snapshot, CLEAN_RATES_DIRTY);
+  return draft.usdRate !== clean.usdRate || draft.eurRate !== clean.eurRate || draft.usdtRate !== clean.usdtRate;
+}

@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { KeyCheckResult, ProviderId, ProviderSettings } from '@/lib/assistant/contract';
 import { PROVIDERS, PROVIDER_LABELS, PROVIDER_MODELS } from '@/lib/assistant/contract';
 import { checkKeyFormat } from '@/lib/assistant/prefs';
@@ -19,6 +19,30 @@ export default function ProviderSettingsCard({ settings, onSave }: ProviderSetti
   const [keyValue, setKeyValue] = useState('');
   const [check, setCheck] = useState<KeyCheckResult | null>(null);
   const [saved, setSaved] = useState(false);
+  // P1: форма не перезаписується типовими props. Синхронізація йде лише
+  // коли зовнішні налаштування ЗМІНИЛИСЯ (напр. після першого завантаження
+  // з localStorage або збереження в іншому місці) І користувач ще не почав
+  // власне редагування (dirty=false). Будь-який ручний ввід блокує
+  // подальшу автосинхронізацію до наступного збереження.
+  const [dirty, setDirty] = useState(false);
+  const [syncedKey, setSyncedKey] = useState(
+    `${settings.provider}|${settings.model}|${settings.baseUrl || ''}|${settings.demo ? '1' : '0'}`,
+  );
+
+  useEffect(() => {
+    const key = `${settings.provider}|${settings.model}|${settings.baseUrl || ''}|${settings.demo ? '1' : '0'}`;
+    if (key === syncedKey) return;
+    setSyncedKey(key);
+    // Незбережений ввід користувача важливіший за зовнішнє оновлення:
+    // не затираємо його мовчки (вимога пакета 01, P2).
+    if (dirty) return;
+    setProvider(settings.provider);
+    setModel(settings.model);
+    setBaseUrl(settings.baseUrl || '');
+    setDemo(settings.demo);
+    setCheck(null);
+    setSaved(false);
+  }, [settings, syncedKey, dirty]);
 
   const models = PROVIDER_MODELS[provider];
 
@@ -29,6 +53,7 @@ export default function ProviderSettingsCard({ settings, onSave }: ProviderSetti
     setModel(PROVIDER_MODELS[next][0].id);
     setCheck(null);
     setSaved(false);
+    setDirty(true);
   };
 
   const runCheck = () => {
@@ -39,6 +64,11 @@ export default function ProviderSettingsCard({ settings, onSave }: ProviderSetti
   const save = () => {
     onSave({ provider, model, baseUrl: baseUrl || undefined, demo });
     setSaved(true);
+    // Після явного збереження форма знову чиста: наступне зовнішнє
+    // оновлення (напр. з іншої вкладки) можна безпечно підтягнути.
+    setDirty(false);
+    setKeyValue('');
+    setCheck(null);
   };
 
   return (
@@ -57,14 +87,14 @@ export default function ProviderSettingsCard({ settings, onSave }: ProviderSetti
         </div>
         <div className="form-group">
           <label className="form-label">Модель</label>
-          <select className="form-input" value={model} onChange={e => { setModel(e.target.value); setSaved(false); }}>
+          <select className="form-input" value={model} onChange={e => { setModel(e.target.value); setSaved(false); setDirty(true); }}>
             {models.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
           </select>
         </div>
         {provider === 'custom' && (
           <div className="form-group form-group--full">
             <label className="form-label">Base URL</label>
-            <input className="form-input" value={baseUrl} onChange={e => setBaseUrl(e.target.value)} placeholder="https://…" />
+            <input className="form-input" value={baseUrl} onChange={e => { setBaseUrl(e.target.value); setSaved(false); setDirty(true); }} placeholder="https://…" />
           </div>
         )}
         {!['opencode','openrouter'].includes(provider) && <div className="form-group form-group--full">
@@ -95,7 +125,7 @@ export default function ProviderSettingsCard({ settings, onSave }: ProviderSetti
         {provider === 'opencode' && <p className="settings-text">OpenCode Zen використовує ключ на сервері. Ключ налаштований на сервері. MiMo Free відхиляє прямий API-доступ із CRM; для робочого чату потрібно обрати іншу API-доступну модель.</p>}
         <div className="form-group form-group--full">
           <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-            <input type="checkbox" checked={demo} onChange={e => { setDemo(e.target.checked); setSaved(false); }} />
+            <input type="checkbox" checked={demo} onChange={e => { setDemo(e.target.checked); setSaved(false); setDirty(true); }} />
             Demo-режим (без реальних записів)
           </label>
           <small className="form-hint">
