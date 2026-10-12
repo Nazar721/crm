@@ -69,6 +69,18 @@ function fieldAfterExists(field: HistoryFieldChange): boolean {
   return typeof field.afterExists === 'boolean' ? field.afterExists : field.after !== undefined;
 }
 
+/**
+ * Ключ реально присутній у поточному записі/налаштуваннях: власна
+ * властивість зі значенням, відмінним від undefined (undefined ≈ відсутній
+ * після JSON-серіалізації; явний null — ЦІЛКОМ СУПЕРЕЧНИЙ значення).
+ * Саме так перевіряє сервер (SQL NULL від `->` = відсутність), і локальний
+ * engine мусить збігатися з ним, а не прирівнювати null до undefined.
+ */
+function hasOwnKey(obj: unknown, key: string): boolean {
+  const rec = asRecord(obj);
+  return !!rec && Object.prototype.hasOwnProperty.call(rec, key) && rec[key] !== undefined;
+}
+
 function displayValue(value: unknown): string {
   if (value === undefined || value === null || value === '') return '—';
   if (typeof value === 'boolean') return value ? 'так' : 'ні';
@@ -429,9 +441,12 @@ export function computeUndoPlan(event: HistoryEvent, current: DataSnapshot): Und
       for (const field of fields) {
         const currentValue = currentSettings[field.key];
         const afterExists = fieldAfterExists(field);
+        // Наявність ключа, а не «null ≈ відсутність»: якщо подія прибрала
+        // поле, а потім його явно встановили в null — це пізніша зміна,
+        // яку не можна затирати старим undo (сервер так само відмовляє).
         const matches = afterExists
-          ? deepEqual(currentValue, field.after)
-          : currentValue === undefined || currentValue === null;
+          ? hasOwnKey(currentSettings, field.key) && deepEqual(currentValue, field.after)
+          : !hasOwnKey(currentSettings, field.key);
         if (!matches) {
           conflicts.push(`Налаштування «${humanizeKey(field.key)}» змінилося після цієї події — не перезаписую.`);
         } else {
@@ -505,11 +520,12 @@ export function computeUndoPlan(event: HistoryEvent, current: DataSnapshot): Und
     for (const field of fields) {
       const currentValue = record[field.key];
       const afterExists = fieldAfterExists(field);
-      // «Після» враховує НАЯВНІСТЬ ключа, не лише значення:
-      // відсутній ключ ≠ явний JSON-null (ревізія 3).
+      // «Після» враховує НАЯВНІСТЬ ключа: відсутній ключ ≠ явний JSON-null.
+      // Якщо подія прибрала поле, а потім його встановили в null — це
+      // пізніша зміна: undo не сміє її затирати (збіг із серверною перевіркою).
       const matches = afterExists
-        ? deepEqual(currentValue, field.after)
-        : currentValue === undefined || currentValue === null;
+        ? hasOwnKey(record, field.key) && deepEqual(currentValue, field.after)
+        : !hasOwnKey(record, field.key);
       if (!matches) {
         conflicts.push(`«${change.label ?? change.id}», поле «${humanizeKey(field.key)}» змінилося після цієї події — не перезаписую.`);
       } else {

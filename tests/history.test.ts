@@ -19,7 +19,7 @@ import { buildExportPayload } from '@/lib/export';
 import { SupabaseDataSource } from '@/lib/datasource/supabase';
 import { LocalDataSource } from '@/lib/datasource/local';
 import { clearAll, bootStore, emptySnapshot, makeClient, makeProject, makeTransaction } from './helpers';
-import type { DataSnapshot } from '@/types';
+import type { Client, DataSnapshot, Project } from '@/types';
 
 // ============================================================
 // Пакет 03: журнал історії та скасування.
@@ -317,6 +317,96 @@ test('undo-plan: наявність поля окремо від значенн�
   assert.ok(sqlPlan.ok, 'прапорець afterExists=false: поточний без ключа → ОК');
   const sqlRestored = sqlPlan.ok && sqlPlan.patch.collections!.clients![0] as Record<string, unknown>;
   assert.equal(sqlRestored!.tg, '@old', 'відновлено поле з before');
+});
+
+test('undo-plan: явний null після прибирання поля — КОНФЛІКТ, не «відсутність» (регресія P1)', () => {
+  // Подія прибрала ключ telegram (afterExists=false). Потім дані змінилися:
+  // telegram = null (явне значення). Старий engine прирівнював null до
+  // відсутності й дозволяв затерти пізнішу зміну — сервер уже відмовляє,
+  // локальний preview/engine має збігатися з ним.
+  const before = snapshotOf({ clients: [{ id: 'c1', name: 'Client', telegram: '@old' }] });
+  const after = snapshotOf({ clients: [{ id: 'c1', name: 'Client' }] });
+  const event = buildEventFromSnapshots(before, after, { source: 'Форма' })!;
+  const telegramField = event.changes[0].fields!.find(f => f.key === 'telegram')!;
+  assert.equal(telegramField.after, undefined);
+  // null у даних можливий попри суворі типи (JSON/legacy-записи) — моделюємо явно.
+  const current = snapshotOf({ clients: [{ id: 'c1', name: 'Client', telegram: null } as unknown as Client] });
+
+  const plan = computeUndoPlan(event, current);
+  assert.equal(plan.ok, false, 'явний null ≠ відсутній ключ → конфлікт');
+  assert.ok(!plan.ok && plan.conflicts.some(c => c.includes('telegram')));
+});
+
+test('undo-plan: прибирання поля у налаштуваннях, потім явний null — конфлікт (регресія P1)', () => {
+  const before = snapshotOf({});
+  const afterSettings = { usdRate: 41, eurRate: 44, displayCurrency: 'UAH' } as DataSnapshot['financeSettings'];
+  const after = snapshotOf({ financeSettings: afterSettings });
+  const event = buildEventFromSnapshots(before, after, { source: 'Форма' })!;
+  const usdtField = event.changes.flatMap(c => c.fields ?? []).find(f => f.key === 'usdtRate')!;
+  assert.equal(usdtField.after, undefined, 'подія прибрала usdtRate');
+  const current = snapshotOf({ financeSettings: { usdRate: 41, eurRate: 44, usdtRate: null, displayCurrency: 'UAH' } as unknown as DataSnapshot['financeSettings'] });
+
+  const plan = computeUndoPlan(event, current);
+  assert.equal(plan.ok, false, 'явний null usdtRate ≠ відсутність → конфлікт');
+  // humanizeKey показує підпис «курс USDT» — саме воно в конфлікті.
+  assert.ok(!plan.ok && plan.conflicts.some(c => c.includes('курс USDT')));
+});
+
+test('undo-plan: позитиви відсутність→відсутність і null→null лишаються дозволеними', () => {
+  // відсутній → відсутній: подія прибрала telegram, поточний і без нього.
+  const before = snapshotOf({ clients: [{ id: 'c1', name: 'Client', telegram: '@old' }] });
+  const after = snapshotOf({ clients: [{ id: 'c1', name: 'Client' }] });
+  const event = buildEventFromSnapshots(before, after, { source: 'Форма' })!;
+  const planOk = computeUndoPlan(event, snapshotOf({ clients: [{ id: 'c1', name: 'Client' }] }));
+  assert.ok(planOk.ok, 'відсутнє «після» + відсутній поточний ключ → дозволено');
+  const restored = planOk.ok && planOk.patch.collections!.clients![0] as Record<string, unknown>;
+  assert.equal(restored!.telegram, '@old', 'повертається значення «до»');
+
+  // null → null: явне значення null «після» і «до» — дозволено, null повертається.
+  const nullEvent = changeEvent([{
+    collection: 'clients', id: 'c1', change: 'update',
+    fields: [{ key: 'telegram', before: null, after: null, beforeExists: true, afterExists: true }],
+  }]);
+  const nullPlan = computeUndoPlan(nullEvent, snapshotOf({ clients: [{ id: 'c1', name: 'Client', telegram: null } as unknown as Client] }));
+  assert.ok(nullPlan.ok, 'null → null (обидва рази явні) → дозволено');
+  const nullRestored = nullPlan.ok && nullPlan.patch.collections!.clients![0] as Record<string, unknown>;
+  assert.equal('telegram' in nullRestored!, true, 'ключ зберігається');
+  assert.equal(nullRestored!.telegram, null);
+});
+
+test('локальний E2E: конфлікт «null замість відсутності» не змінює дані та журнал (preview = сервер)', async () => {
+  clearAll();
+  await bootStore();
+  const project = makeProject({ id: 'p_x', name: 'Проєкт', clientName: 'Клієнт' });
+  await store.saveCollection('projectsActive', [project]);
+  const saveVia = async (value: unknown[]) => {
+    const outcome = await store.atomicAction(async () => {
+      const result = await store.saveCollection('projectsActive', value);
+      return result.ok ? { ok: true } : { ok: false, errors: [{ message: result.issue.message }] };
+    });
+    assert.equal(outcome.ok, true);
+  };
+  // Подія: description додано, потім прибрано → подія прибирання.
+  await saveVia([{ ...project, description: 'note' }]);
+  await saveVia([{ ...project }]);
+  const removeEvent = (await listAll()).find(
+    e => e.changes.some(c => (c.fields ?? []).some(f => f.key === 'description' && f.before !== undefined)),
+  )!;
+  // Пізніша зміна: поле встановлено в явний null.
+  await saveVia([{ ...project, description: null } as unknown as Project]);
+
+  const journalBefore = await listAll();
+  const snapshotBefore = structuredClone(store.getSnapshot());
+  const result = await store.undoHistory({
+    eventId: removeEvent.id, requestId: crypto.randomUUID(), source: 'Форма',
+  });
+  assert.equal(result.ok, false, 'конфлікт: preview той самий engine, що й серверна перевірка');
+  assert.equal(result.ok === false && result.reason, 'conflict');
+  // Дані й журнал недоторкані; оригінал не позначено.
+  assert.equal((store.getSnapshot().projectsActive[0] as unknown as Record<string, unknown>).description, null, 'пізніший null збережено');
+  assert.deepEqual(store.getSnapshot(), snapshotBefore, 'snapshot без змін');
+  assert.deepEqual(await listAll(), journalBefore, 'журнал без нових подій');
+  assert.equal((await listAll()).find(e => e.id === removeEvent.id)!.undoneBy, null, 'подія не позначена');
 });
 
 test('локальний undo: відсутнє поле «до» прибирає ключ, а не пише null', async () => {
