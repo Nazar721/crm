@@ -274,6 +274,86 @@ test('undo-plan: група атомарна — один конфлікт ві�
   assert.equal(plan.ok, false);
 });
 
+test('undo-plan: наявність поля окремо від значення (ревізія 3)', () => {
+  // значення → відсутність: «після» = ключа немає → поточний без ключа проходить.
+  const noDesc = makeClient({ id: 'c1', name: 'A' });
+  const removeDesc = changeEvent([{
+    collection: 'clients', id: 'c1', change: 'update',
+    fields: [{ key: 'description', before: 'note', after: undefined }],
+  }]);
+  const removePlan = computeUndoPlan(removeDesc, snapshotOf({ clients: [noDesc] }));
+  assert.ok(removePlan.ok, 'відсутність «після» не є конфліктом, якщо ключа немає');
+  const restored = removePlan.ok && removePlan.patch.collections!.clients![0] as Record<string, unknown>;
+  assert.equal(restored!.description, 'note');
+
+  // відсутність → значення: undo прибирає КЛЮЧ, а не пише null.
+  const withDesc = { ...makeClient({ id: 'c1', name: 'A' }), description: 'new' };
+  const addDesc = changeEvent([{
+    collection: 'clients', id: 'c1', change: 'update',
+    fields: [{ key: 'description', before: undefined, after: 'new' }],
+  }]);
+  const addPlan = computeUndoPlan(addDesc, snapshotOf({ clients: [withDesc] }));
+  assert.ok(addPlan.ok);
+  const stripped = addPlan.ok && addPlan.patch.collections!.clients![0] as Record<string, unknown>;
+  assert.equal('description' in stripped!, false, 'відсутнє «до» прибирає ключ, а не null');
+
+  // значення → явний null: null «після» — теж присутнє значення.
+  const nullDesc = { ...makeClient({ id: 'c1', name: 'A' }), description: null };
+  const toNull = changeEvent([{
+    collection: 'clients', id: 'c1', change: 'update',
+    fields: [{ key: 'description', before: 'note', after: null }],
+  }]);
+  const nullPlan = computeUndoPlan(toNull, snapshotOf({ clients: [nullDesc] }));
+  assert.ok(nullPlan.ok, 'явний JSON-null як «після» — валідний стан');
+  const backValue = nullPlan.ok && nullPlan.patch.collections!.clients![0] as Record<string, unknown>;
+  assert.equal(backValue!.description, 'note');
+
+  // SQL-подія з явними прапорцями: afterExists=false → чекаємо відсутність.
+  const sqlStyle = changeEvent([{
+    collection: 'clients', id: 'c1', change: 'update',
+    fields: [{ key: 'tg', before: '@old', after: null, beforeExists: true, afterExists: false }],
+  }]);
+  const sqlPlan = computeUndoPlan(sqlStyle, snapshotOf({ clients: [makeClient({ id: 'c1', name: 'A' })] }));
+  assert.ok(sqlPlan.ok, 'прапорець afterExists=false: поточний без ключа → ОК');
+  const sqlRestored = sqlPlan.ok && sqlPlan.patch.collections!.clients![0] as Record<string, unknown>;
+  assert.equal(sqlRestored!.tg, '@old', 'відновлено поле з before');
+});
+
+test('локальний undo: відсутнє поле «до» прибирає ключ, а не пише null', async () => {
+  clearAll();
+  await bootStore();
+  const project = makeProject({ id: 'p_d', name: 'Проєкт', clientName: 'Клієнт' });
+  await store.saveCollection('projectsActive', [project]);
+  // Подія 1: додано description.
+  assert.equal((await store.atomicAction(async () => {
+    const outcome = await store.saveCollection('projectsActive', [{ ...project, description: 'note' }]);
+    return outcome.ok ? { ok: true } : { ok: false, errors: [{ message: outcome.issue.message }] };
+  })).ok, true);
+  const addEvent = (await listAll()).find(e => e.changes.some(c => (c.fields ?? []).some(f => f.key === 'description')))!;
+  const undoneAdd = await store.undoHistory({ eventId: addEvent.id, requestId: crypto.randomUUID(), source: 'Форма' });
+  assert.equal(undoneAdd.ok, true);
+  const afterUndoAdd = store.getSnapshot().projectsActive[0] as unknown as Record<string, unknown>;
+  assert.equal('description' in afterUndoAdd, false, 'ключ прибрано, не null');
+  // Подія 2/3: додаємо description, потім прибираємо — undo прибирання
+  // повертає значення (зміна «значення → відсутність»).
+  const saveVia = async (value: unknown[]) => {
+    const outcome = await store.atomicAction(async () => {
+      const result = await store.saveCollection('projectsActive', value);
+      return result.ok ? { ok: true } : { ok: false, errors: [{ message: result.issue.message }] };
+    });
+    assert.equal(outcome.ok, true);
+  };
+  await saveVia([{ ...project, description: 'note' }]);
+  await saveVia([{ ...project }]);
+  const removeEvent = (await listAll()).find(
+    e => e.id !== addEvent.id && !e.undoneBy
+      && e.changes.some(c => (c.fields ?? []).some(f => f.key === 'description' && f.before !== undefined)),
+  )!;
+  const undoneRemove = await store.undoHistory({ eventId: removeEvent.id, requestId: crypto.randomUUID(), source: 'Форма' });
+  assert.equal(undoneRemove.ok, true);
+  assert.equal((store.getSnapshot().projectsActive[0] as unknown as Record<string, unknown>).description, 'note');
+});
+
 // ------------------------------------------------------------
 // Локальний журнал: реальні доменні дії
 // ------------------------------------------------------------

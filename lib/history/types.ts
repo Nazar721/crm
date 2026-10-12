@@ -30,6 +30,13 @@ export interface HistoryFieldChange {
   key: string;
   before: unknown;
   after: unknown;
+  /**
+   * Наявність ключа в записі ОКРЕМО від значення (ревізія 3):
+   * відсутній ключ ≠ явний JSON-null. Події без прапорців (старі
+   * TS-події) трактуються за наявністю самого ключя в JSON.
+   */
+  beforeExists?: boolean;
+  afterExists?: boolean;
 }
 
 export interface HistoryCounts {

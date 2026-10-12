@@ -59,6 +59,16 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
 
+/** Наявність ключа «ДО»: явний прапорець або наявність самого ключа в JSON. */
+function fieldBeforeExists(field: HistoryFieldChange): boolean {
+  return typeof field.beforeExists === 'boolean' ? field.beforeExists : field.before !== undefined;
+}
+
+/** Наявність ключа «ПІСЛЯ»: явний прапорець або наявність самого ключа в JSON. */
+function fieldAfterExists(field: HistoryFieldChange): boolean {
+  return typeof field.afterExists === 'boolean' ? field.afterExists : field.after !== undefined;
+}
+
 function displayValue(value: unknown): string {
   if (value === undefined || value === null || value === '') return '—';
   if (typeof value === 'boolean') return value ? 'так' : 'ні';
@@ -415,20 +425,27 @@ export function computeUndoPlan(event: HistoryEvent, current: DataSnapshot): Und
       const currentSettings = asRecord(current.financeSettings) ?? {};
       const fields = change.fields ?? [];
       const lines: UndoPreviewRow['lines'] = [];
+      const settingsConflictsBefore = conflicts.length;
       for (const field of fields) {
         const currentValue = currentSettings[field.key];
-        if (!deepEqual(currentValue, field.after)) {
+        const afterExists = fieldAfterExists(field);
+        const matches = afterExists
+          ? deepEqual(currentValue, field.after)
+          : currentValue === undefined || currentValue === null;
+        if (!matches) {
           conflicts.push(`Налаштування «${humanizeKey(field.key)}» змінилося після цієї події — не перезаписую.`);
         } else {
-          lines.push({ key: humanizeKey(field.key), from: displayValue(currentValue), to: displayValue(field.before) });
+          lines.push({ key: humanizeKey(field.key), from: displayValue(currentValue), to: fieldBeforeExists(field) ? displayValue(field.before) : '— (поле прибрано)' });
         }
       }
-      if (lines.length) {
+      if (lines.length && conflicts.length === settingsConflictsBefore) {
         preview.push({ collection: 'settings', id: 'settings', label: 'Налаштування фінансів', change: 'update', lines });
-        settingsPatch = {
-          ...current.financeSettings,
-          ...Object.fromEntries(fields.map(f => [f.key, f.before])),
-        } as FinanceSettings;
+        const restoredSettings: Record<string, unknown> = { ...asRecord(current.financeSettings) };
+        for (const field of fields) {
+          if (fieldBeforeExists(field)) restoredSettings[field.key] = field.before;
+          else delete restoredSettings[field.key];
+        }
+        settingsPatch = restoredSettings as unknown as FinanceSettings;
       }
       continue;
     }
@@ -484,20 +501,32 @@ export function computeUndoPlan(event: HistoryEvent, current: DataSnapshot): Und
     const fields = change.fields ?? [];
     const lines: UndoPreviewRow['lines'] = [];
     const restored: Record<string, unknown> = {};
+    const removedKeys: string[] = [];
     for (const field of fields) {
       const currentValue = record[field.key];
-      if (!deepEqual(currentValue, field.after)) {
+      const afterExists = fieldAfterExists(field);
+      // «Після» враховує НАЯВНІСТЬ ключа, не лише значення:
+      // відсутній ключ ≠ явний JSON-null (ревізія 3).
+      const matches = afterExists
+        ? deepEqual(currentValue, field.after)
+        : currentValue === undefined || currentValue === null;
+      if (!matches) {
         conflicts.push(`«${change.label ?? change.id}», поле «${humanizeKey(field.key)}» змінилося після цієї події — не перезаписую.`);
       } else {
-        lines.push({ key: humanizeKey(field.key), from: displayValue(currentValue), to: displayValue(field.before) });
-        restored[field.key] = field.before;
+        lines.push({ key: humanizeKey(field.key), from: displayValue(currentValue), to: fieldBeforeExists(field) ? displayValue(field.before) : '— (поле прибрано)' });
+        if (fieldBeforeExists(field)) restored[field.key] = field.before;
+        else removedKeys.push(field.key);
       }
     }
     if (lines.length) {
       preview.push({ collection: key, id: change.id, label: change.label ?? change.id, change: 'update', lines });
       patches.set(key, next.map(item => {
         const rec = asRecord(item);
-        return rec && rec.id === change.id ? { ...rec, ...restored } : item;
+        if (!rec || rec.id !== change.id) return item;
+        const merged: Record<string, unknown> = { ...rec, ...restored };
+        // Відсутнє «до» прибирає ключ, а не пише null.
+        for (const removeKey of removedKeys) delete merged[removeKey];
+        return merged;
       }));
     }
   }
@@ -623,7 +652,13 @@ function normalizeChange(raw: unknown): HistoryChange | null {
   if (Array.isArray(r.fields)) {
     out.fields = r.fields
       .filter((f): f is Record<string, unknown> => !!f && typeof f === 'object' && typeof (f as Record<string, unknown>).key === 'string')
-      .map(f => ({ key: String(f.key).slice(0, 80), before: stripSecrets(f.before), after: stripSecrets(f.after) }))
+      .map(f => {
+        const field: HistoryFieldChange = { key: String(f.key).slice(0, 80), before: stripSecrets(f.before), after: stripSecrets(f.after) };
+        // Прапорці наявності (SQL-події ревізії 3); для старих — за ключем JSON.
+        if (typeof f.beforeExists === 'boolean') field.beforeExists = f.beforeExists;
+        if (typeof f.afterExists === 'boolean') field.afterExists = f.afterExists;
+        return field;
+      })
       .slice(0, 200);
   }
   if (r.before && typeof r.before === 'object' && !Array.isArray(r.before)) out.before = stripSecrets(r.before as Record<string, unknown>);

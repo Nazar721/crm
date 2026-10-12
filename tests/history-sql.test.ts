@@ -12,8 +12,10 @@ import { randomUUID } from 'node:crypto';
 // Це НЕ перевірка Supabase/PostgREST, живого RLS, мережі чи production —
 // для них потрібен окремий прогін основного агента (див. HANDOFF).
 //
-// Залежність НЕ входить у package.json: для прогону встановити
-// `npm i --no-save @electric-sql/pglite`. Без неї тест пропускається.
+// Залежність закріплена як devDependency (`@electric-sql/pglite` 0.5.9,
+// package.json + lock): `npm ci` відтворює прогін. Без неї тест НЕ
+// пропускається, а валюється (огляд P1: skip ≠ PASS); фокус-гейт —
+// `npm run test:sql` (scripts/run-sql-tests.mjs).
 // ============================================================
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -71,21 +73,28 @@ async function bootDb(): Promise<any> {
 }
 
 async function expectSqlError(db: any, sql: string, params: unknown[], needle: string): Promise<void> {
+  // СИНТЕТИЧНИЙ ПОМИЛКОВИЙ ПРОХІД (огляд P1): assert НЕ може бути всередині
+  // catch запиту — інакше успішний запит виглядав би як «очікувана відмова».
+  let error: any = null;
   try {
     await db.query(sql, params);
-    assert.fail(`очікувався помилка з «${needle}»`);
-  } catch (err: any) {
-    assert.ok(
-      String(err?.message || '').includes(needle),
-      `повідомлення «${err?.message}» має містити «${needle}»`,
-    );
+  } catch (e) {
+    error = e;
   }
+  assert.ok(error, `очікувався помилка з «${needle}», але запит виконався`);
+  assert.ok(
+    String(error?.message || '').includes(needle),
+    `повідомлення «${error?.message}» має містити «${needle}»`,
+  );
 }
 
 test('SQL-інтеграція 003: міграція, commit, undo, ліміти, доступ (PGlite)', {
-  skip: PGliteCtor ? false : 'потрібен @electric-sql/pglite (npm i --no-save @electric-sql/pglite)',
   timeout: 180000,
 }, async () => {
+  assert.ok(
+    PGliteCtor,
+    '@electric-sql/pglite обов’язковий (devDependency 0.5.9): виконай npm ci. SQL-прогін пакета 03 — гейт приймання (npm run test:sql).',
+  );
   // Тестове середовище встановлює браузерні глобалі (window); PGlite в Node
   // очікує pure-Node режим — ховаємо їх на час прогону і повертаємо назад.
   const g = globalThis as unknown as Record<string, unknown>;
@@ -103,6 +112,18 @@ test('SQL-інтеграція 003: міграція, commit, undo, ліміти
 
 async function runSqlIntegration(): Promise<void> {
   const db = await bootDb();
+  // Самоперевірка helper (огляд P1): успішний запит має ВАЛЮВАТИ очікувану
+  // відмову, а чужа помилка — не проходити за «нашу».
+  await assert.rejects(
+    () => expectSqlError(db, 'select 1 as ok', [], 'CRM_'),
+    /але запит виконався/,
+    'helper не приймає успішний запит як відмову',
+  );
+  await assert.rejects(
+    () => expectSqlError(db, 'select 1/0 as boom', [], 'CRM_'),
+    /має містити/,
+    'helper вимагає саме очікуваний код помилки',
+  );
   let rev = 0;
   const COUNT_SQL = "select count(*)::int as n from public.crm_history where owner_id=$1";
   const historyCount = async (): Promise<number> =>
@@ -123,8 +144,13 @@ async function runSqlIntegration(): Promise<void> {
   };
   const settingsNow = async (): Promise<AnyRecord> =>
     (await db.query('select settings from public.crm_state where owner_id=$1', [OWNER])).rows[0].settings as AnyRecord;
-  const undo = (eventId: string, request = randomUUID(), expectedRevision: number | null = rev) =>
-    db.query('select public.crm_history_undo($1,$2,$3,$4) as r', [eventId, request, expectedRevision, 'Форма']);
+  // Допоміжник оновлює rev після КОЖНОГО успішного скасування (rev підвищується).
+  const undo = async (eventId: string, request = randomUUID(), expectedRevision: number | null = rev) => {
+    const res = await db.query('select public.crm_history_undo($1,$2,$3,$4) as r', [eventId, request, expectedRevision, 'Форма']);
+    const row = res.rows[0].r as AnyRecord;
+    if (row && row.revision !== undefined && row.revision !== null) rev = Number(row.revision);
+    return res;
+  };
 
   // ---- Доступ ----
   await db.exec("set app.uid = ''");
@@ -331,6 +357,84 @@ async function runSqlIntegration(): Promise<void> {
   }), { source: 'Форма' });
   void withoutDepClient;
   await expectSqlError(db, 'select public.crm_history_undo($1,$2,$3,$4)', [String(removedEvent.id), randomUUID(), rev, 'Форма'], 'CRM_UNDO_DEPENDENCY');
+
+  // ---- P1 (огляд 2): скасування зміни посилання; text=text, не text=jsonb ----
+  const refClients = [{ id: 'cA', name: 'A' }, { id: 'cB', name: 'B' }];
+  await commit(snap({ clients: refClients, financeSettings: await settingsNow() }), { source: 'Форма' });
+  const refWithA = snap({
+    clients: refClients,
+    projectsActive: [{ id: 'p_ref', name: 'Проєкт_ref', clientId: 'cA', clientName: 'A' }],
+    financeSettings: await settingsNow(),
+  });
+  await commit(refWithA, { source: 'Форма' });
+  const refSwitchB = snap({
+    clients: refClients,
+    projectsActive: [{ id: 'p_ref', name: 'Проєкт_ref', clientId: 'cB', clientName: 'B' }],
+    financeSettings: await settingsNow(),
+  });
+  const switchCommit1 = await commit(refSwitchB, { source: 'Форма' });
+  const switchEvent1 = await eventByRequest(switchCommit1.request);
+  const undoRef1 = await undo(String(switchEvent1.id));
+  assert.equal((undoRef1.rows[0].r as AnyRecord).duplicate, false, 'undo зміни посилання працює (без text=jsonb)');
+  rev = Number((undoRef1.rows[0].r as AnyRecord).revision);
+  const pRefRestored = (await db.query("select payload from public.crm_records where owner_id=$1 and collection='projectsActive' and id='p_ref'", [OWNER])).rows[0].payload as AnyRecord;
+  assert.equal(pRefRestored.clientId, 'cA', 'посилання відкочено до A');
+  // Друга зміна посилання, потім видалення A: undo → залежність, без запису.
+  const switchCommit2 = await commit(refSwitchB, { source: 'Форма' });
+  const switchEvent2 = await eventByRequest(switchCommit2.request);
+  const withoutA = snap({
+    clients: [refClients[1]],
+    projectsActive: [{ id: 'p_ref', name: 'Проєкт_ref', clientId: 'cB', clientName: 'B' }],
+    financeSettings: await settingsNow(),
+  });
+  await commit(withoutA, { source: 'Форма' });
+  const revBeforeDep = (await db.query('select revision from public.crm_state where owner_id=$1', [OWNER])).rows[0].revision;
+  const undoEventsBeforeDep = (await db.query("select count(*)::int as n from public.crm_history where owner_id=$1 and action='undo'", [OWNER])).rows[0].n;
+  await expectSqlError(db, 'select public.crm_history_undo($1,$2,$3,$4)', [String(switchEvent2.id), randomUUID(), rev, 'Форма'], 'CRM_UNDO_DEPENDENCY');
+  assert.equal((await db.query('select revision from public.crm_state where owner_id=$1', [OWNER])).rows[0].revision, revBeforeDep, 'ревізія незмінна після залежності');
+  assert.equal((await db.query("select count(*)::int as n from public.crm_history where owner_id=$1 and action='undo'", [OWNER])).rows[0].n, undoEventsBeforeDep, 'подій не додано');
+  assert.equal(((await db.query("select payload from public.crm_records where owner_id=$1 and collection='projectsActive' and id='p_ref'", [OWNER])).rows[0].payload as AnyRecord).clientId, 'cB', 'запис не змінено');
+
+  // ---- P1 (огляд 2): наявність поля окремо від значення (beforeExists/afterExists) ----
+  const descBase = { id: 'p_desc', name: 'З описом', clientId: 'cB', clientName: 'B' };
+  await commit(snap({ clients: [refClients[1]], projectsActive: [{ ...descBase, description: 'old note' }], financeSettings: await settingsNow() }), { source: 'Форма' });
+  const removeDesc = await commit(snap({ clients: [refClients[1]], projectsActive: [{ ...descBase }], financeSettings: await settingsNow() }), { source: 'Форма' });
+  const removeDescEvent = await eventByRequest(removeDesc.request);
+  const removeDescField = ((removeDescEvent.changes as AnyRecord[])[0].fields as AnyRecord[]).find(f => f.key === 'description')!;
+  assert.equal(removeDescField.afterExists, false, 'прапорець: після — поля немає');
+  assert.equal(removeDescField.beforeExists, true, 'прапорець: до — поле було');
+  const undoRemoveDesc = await undo(String(removeDescEvent.id));
+  assert.equal((undoRemoveDesc.rows[0].r as AnyRecord).duplicate, false, 'undo прибирання опису (раніше падав CRM_UNDO_CHANGED)');
+  const descRestored = (await db.query("select payload from public.crm_records where owner_id=$1 and collection='projectsActive' and id='p_desc'", [OWNER])).rows[0].payload as AnyRecord;
+  assert.equal(descRestored.description, 'old note', 'опис відкочено');
+  // Відсутність → значення: спершу прибираємо опис (без скасування), потім
+  // додаємо — undo має прибрати КЛЮЧ, а не записати JSON-null.
+  await commit(snap({ clients: [refClients[1]], projectsActive: [{ ...descBase }], financeSettings: await settingsNow() }), { source: 'Форма' });
+  const addDesc = await commit(snap({ clients: [refClients[1]], projectsActive: [{ ...descBase, description: 'new note' }], financeSettings: await settingsNow() }), { source: 'Форма' });
+  const addDescEvent = await eventByRequest(addDesc.request);
+  const undoAddDesc = await undo(String(addDescEvent.id));
+  assert.equal((undoAddDesc.rows[0].r as AnyRecord).duplicate, false);
+  const descRemovedAgain = (await db.query("select payload from public.crm_records where owner_id=$1 and collection='projectsActive' and id='p_desc'", [OWNER])).rows[0].payload as AnyRecord;
+  assert.equal('description' in descRemovedAgain, false, 'відсутнє «до» прибирає ключ, а не null');
+  // Значення → явний JSON-null → undo повертає значення; null → значення → undo повертає null.
+  await commit(snap({ clients: [refClients[1]], projectsActive: [{ ...descBase, description: null }], financeSettings: await settingsNow() }), { source: 'Форма' });
+  const toNull = await commit(snap({ clients: [refClients[1]], projectsActive: [{ ...descBase, description: 'x' }], financeSettings: await settingsNow() }), { source: 'Форма' });
+  const undoToNull = await undo(String((await eventByRequest(toNull.request)).id));
+  assert.equal((undoToNull.rows[0].r as AnyRecord).duplicate, false);
+  const backToNull = (await db.query("select payload from public.crm_records where owner_id=$1 and collection='projectsActive' and id='p_desc'", [OWNER])).rows[0].payload as AnyRecord;
+  assert.equal('description' in backToNull, true, 'явний null зберігається ключем');
+  assert.equal(backToNull.description, null);
+  // Відсутній у налаштуваннях usdtRate: commit додає — undo прибирає ключ.
+  const noUsdt = { usdRate: 40, eurRate: 44, displayCurrency: 'UAH' };
+  await commit(snap({ clients: [refClients[1]], financeSettings: noUsdt }), { source: 'Форма' });
+  const settingsBeforeUsdt = (await db.query('select settings from public.crm_state where owner_id=$1', [OWNER])).rows[0].settings as AnyRecord;
+  assert.equal('usdtRate' in settingsBeforeUsdt, false);
+  const withUsdt = { usdRate: 40, eurRate: 44, usdtRate: 99, displayCurrency: 'UAH' };
+  const addUsdt = await commit(snap({ clients: [refClients[1]], financeSettings: withUsdt }), { source: 'Форма' });
+  const undoUsdt = await undo(String((await eventByRequest(addUsdt.request)).id));
+  assert.equal((undoUsdt.rows[0].r as AnyRecord).duplicate, false);
+  const settingsAfterUsdtUndo = (await db.query('select settings from public.crm_state where owner_id=$1', [OWNER])).rows[0].settings as AnyRecord;
+  assert.deepEqual(settingsAfterUsdtUndo, settingsBeforeUsdt, 'повний стан налаштувань відкочено, включно з відсутнім usdtRate');
 
   // ---- Імпорт: підсумок, без скасування ----
   const importCommit = await commit(snap({ clients: [{ id: 'i1', name: 'І1' }, { id: 'i2', name: 'І2' }] }), { source: 'Імпорт' });

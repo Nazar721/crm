@@ -10,6 +10,11 @@ begin;
 --   унікальність проєктів перевіряється за ФІНАЛЬНИМ станом,
 --   ревізія обов'язкова, ідемпотентність прив'язана до події,
 --   bulk/невідновлювані події та обхід залежностей відхиляються.
+-- Ревізія 3 (другий огляд): порівняння посилань text/text (text = jsonb
+-- більше немає); поля зберігають прапорці НАЯВНОСТІ (beforeExists/
+-- afterExists) — відсутній ключ не змішується з JSON-null, відсутнє «до»
+-- прибирає ключ; події без прапорців (старий формат) не скасовуються
+-- (CRM_UNDO_NOT_ALLOWED) — чесна відмова замість вгадування стану.
 --
 -- ЗАСТОСУВАННЯ: після 001-crm.sql (наявна база) І ДО публікації
 -- клієнта пакета 03. Старий клієнт працює і без цієї міграції;
@@ -121,8 +126,14 @@ begin
       ) keys
     loop
       if (v_row.oo->v_key) is distinct from (v_row.nn->v_key) then
+        -- Наявність поля фіксується окремо від значення: відсутній ключ (SQL NULL
+        -- від ->) не змішується з явним JSON-null. До прапорців старі події
+        -- скасовувати не можна (див. CRM_UNDO_NOT_ALLOWED нижче).
         v_fields := v_fields || jsonb_build_array(jsonb_build_object(
-          'key', v_key, 'before', v_row.oo->v_key, 'after', v_row.nn->v_key));
+          'key', v_key,
+          'before', v_row.oo->v_key, 'after', v_row.nn->v_key,
+          'beforeExists', (v_row.oo->v_key) is not null,
+          'afterExists', (v_row.nn->v_key) is not null));
       end if;
     end loop;
     if jsonb_array_length(v_fields) > 0 then
@@ -145,7 +156,10 @@ begin
   for v_key in select * from unnest(array['usdRate','eurRate','usdtRate','displayCurrency']) loop
     if (p_old->v_key) is distinct from (p_new->v_key) then
       v_fields := v_fields || jsonb_build_array(jsonb_build_object(
-        'key', v_key, 'before', p_old->v_key, 'after', p_new->v_key));
+        'key', v_key,
+        'before', p_old->v_key, 'after', p_new->v_key,
+        'beforeExists', (p_old->v_key) is not null,
+        'afterExists', (p_new->v_key) is not null));
     end if;
   end loop;
   if jsonb_array_length(v_fields) = 0 then return null; end if;
@@ -491,7 +505,9 @@ end $$;
 -- «після» для кожної сутності/поля (CRM_UNDO_CHANGED); фінальна
 -- унікальність ID проєктів; перевірка залежностей (CRM_UNDO_DEPENDENCY);
 -- налаштування — лише allowlist-поля події. Непов'язані пізніші зміни
--- поза змінами події не чіпаються.
+-- поза змінами події не чіпаються. Порівняння посилань — text/text;
+-- наявність поля перевіряється за прапорцями beforeExists/afterExists
+-- (без них — CRM_UNDO_NOT_ALLOWED, без вгадування).
 -- ------------------------------------------------------------
 create or replace function public.crm_history_undo(p_event_id uuid,p_request uuid,p_expected_revision bigint,p_source text) returns jsonb
 language plpgsql security definer set search_path = '' as $$
@@ -545,11 +561,27 @@ begin
     if v_change->>'change' = 'bulk' then raise exception 'CRM_UNDO_NOT_ALLOWED'; end if;
     if v_change->>'collection' = 'settings' then
       for v_field in select value from jsonb_array_elements(coalesce(v_change->'fields','[]'::jsonb)) loop
-        if (v_settings->(v_field->>'key')) is distinct from (v_field->'after') then
-          raise exception 'CRM_UNDO_CHANGED';
+        -- Подія старого формату (без прапорців наявності) — чесна відмова,
+        -- не вгадування стану.
+        if jsonb_typeof(v_field->'afterExists') is distinct from 'boolean'
+           or jsonb_typeof(v_field->'beforeExists') is distinct from 'boolean' then
+          raise exception 'CRM_UNDO_NOT_ALLOWED';
         end if;
-        -- Відновлюємо лише поля, зафіксовані в події (allowlist за побудовою).
-        v_settings := v_settings || jsonb_build_object(v_field->>'key', v_field->'before');
+        v_key := v_field->>'key';
+        if (v_field->>'afterExists')::boolean then
+          if (v_settings->v_key) is distinct from (v_field->'after') then
+            raise exception 'CRM_UNDO_CHANGED';
+          end if;
+        else
+          if (v_settings->v_key) is not null then
+            raise exception 'CRM_UNDO_CHANGED';
+          end if;
+        end if;
+        if (v_field->>'beforeExists')::boolean then
+          v_settings := v_settings || jsonb_build_object(v_key, v_field->'before');
+        else
+          v_settings := v_settings #- array[v_key];
+        end if;
       end loop;
     else
       v_arr := v_state->(v_change->>'collection');
@@ -574,10 +606,28 @@ begin
           if not found then raise exception 'CRM_UNDO_CHANGED'; end if;
           v_new_rec := v_rec;
           for v_field in select value from jsonb_array_elements(coalesce(v_change->'fields','[]'::jsonb)) loop
-            if (v_rec->(v_field->>'key')) is distinct from (v_field->'after') then
-              raise exception 'CRM_UNDO_CHANGED';
+            -- Подія старого формату (без прапорців наявності) — чесна відмова.
+            if jsonb_typeof(v_field->'afterExists') is distinct from 'boolean'
+               or jsonb_typeof(v_field->'beforeExists') is distinct from 'boolean' then
+              raise exception 'CRM_UNDO_NOT_ALLOWED';
             end if;
-            v_new_rec := v_new_rec || jsonb_build_object(v_field->>'key', v_field->'before');
+            v_key := v_field->>'key';
+            if (v_field->>'afterExists')::boolean then
+              if (v_rec->v_key) is distinct from (v_field->'after') then
+                raise exception 'CRM_UNDO_CHANGED';
+              end if;
+            else
+              -- «Після» = відсутність поля: поточний запис теж не повинен його мати.
+              if (v_rec->v_key) is not null then
+                raise exception 'CRM_UNDO_CHANGED';
+              end if;
+            end if;
+            if (v_field->>'beforeExists')::boolean then
+              v_new_rec := v_new_rec || jsonb_build_object(v_key, v_field->'before');
+            else
+              -- «До» = відсутність поля: прибрати ключ, а не писати JSON-null.
+              v_new_rec := v_new_rec #- array[v_key];
+            end if;
           end loop;
           v_arr := (select coalesce(jsonb_agg(case when t.e->>'id' = v_change->>'id' then v_new_rec else t.e end order by t.n), '[]'::jsonb)
                     from jsonb_array_elements(v_arr) with ordinality as t(e,n));
@@ -665,13 +715,13 @@ begin
   for v_change in select value from jsonb_array_elements(ev.changes) c where c->>'change' = 'update' and c->>'collection' <> 'settings' loop
     for v_field in select value from jsonb_array_elements(coalesce(v_change->'fields','[]'::jsonb)) f
                    where f->>'key' in ('clientId','developerId','partnerId','projectId') and coalesce(f->>'before','') <> '' loop
-      if v_field->>'key' = 'clientId' and not exists (select 1 from jsonb_array_elements(v_clients) x where x->>'id' = v_field->'before') then
+      if v_field->>'key' = 'clientId' and not exists (select 1 from jsonb_array_elements(v_clients) x where x->>'id' = v_field->>'before') then
         raise exception 'CRM_UNDO_DEPENDENCY';
-      elsif v_field->>'key' = 'developerId' and not exists (select 1 from jsonb_array_elements(v_specialists) x where x->>'id' = v_field->'before') then
+      elsif v_field->>'key' = 'developerId' and not exists (select 1 from jsonb_array_elements(v_specialists) x where x->>'id' = v_field->>'before') then
         raise exception 'CRM_UNDO_DEPENDENCY';
-      elsif v_field->>'key' = 'partnerId' and not exists (select 1 from jsonb_array_elements(v_partners) x where x->>'id' = v_field->'before') then
+      elsif v_field->>'key' = 'partnerId' and not exists (select 1 from jsonb_array_elements(v_partners) x where x->>'id' = v_field->>'before') then
         raise exception 'CRM_UNDO_DEPENDENCY';
-      elsif v_field->>'key' = 'projectId' and not exists (select 1 from jsonb_array_elements(v_projects) x where x->>'id' = v_field->'before') then
+      elsif v_field->>'key' = 'projectId' and not exists (select 1 from jsonb_array_elements(v_projects) x where x->>'id' = v_field->>'before') then
         raise exception 'CRM_UNDO_DEPENDENCY';
       end if;
     end loop;
