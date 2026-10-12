@@ -4,9 +4,13 @@ import { useApp } from '@/context/AppContext';
 import { getBackupInfo, shouldShowBackupReminder, snoozeBackupReminder, exportData, markManualBackup } from '@/lib/storage';
 import { previewImport, applyImport, restoreFromPreviousCopy, type ImportPreview, type ImportReport } from '@/lib/importer';
 import { getBackupRuntimeStatus, type BackupRuntimeStatus } from '@/lib/backup';
-import { setDisplayCurrency } from '@/lib/actions';
+import { SETTINGS_TABS, normalizeSettingsTabId, type SettingsTabId } from '@/lib/settings-tabs';
+import { usePersistedState } from '@/hooks/useUiState';
+import FinanceSettingsSection from '@/components/settings/FinanceSettingsSection';
+import AssistantSettingsSection from '@/components/settings/AssistantSettingsSection';
+import BackupSettingsSection from '@/components/settings/BackupSettingsSection';
+import SystemSettingsSection from '@/components/settings/SystemSettingsSection';
 import * as store from '@/lib/store';
-import { clearIssues } from '@/lib/store';
 import { emitToast } from '@/lib/toast-bus';
 import { formatDateTime } from '@/lib/utils';
 import Modal from '@/components/ui/Modal';
@@ -27,11 +31,11 @@ const COLLECTION_LABELS: Record<string, string> = {
 
 export default function SettingsPage() {
   const { triggerRefresh, reinitialize, snapshot, storageIssues, refreshKey } = useApp();
+  const [activeTab, setActiveTab] = usePersistedState<SettingsTabId>('settings:tab', 'finance');
+  const tab: SettingsTabId = normalizeSettingsTabId(activeTab);
   const [info, setInfo] = useState({ lastSavedAt: '', lastManualBackupAt: '', backupSnoozedUntil: '' });
   const [backupStatus, setBackupStatus] = useState<BackupRuntimeStatus | null>(null);
   const [showWarning, setShowWarning] = useState(false);
-  const [displayCurrency, setDisplayCurrencyValue] = useState('UAH');
-  const [settings, setSettings] = useState({ usdRate: 41, eurRate: 44, usdtRate: 41 });
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [rawPayload, setRawPayload] = useState<unknown>(null);
   const [fileName, setFileName] = useState('');
@@ -49,12 +53,6 @@ export default function SettingsPage() {
 
   useEffect(() => {
     refreshStatuses();
-    setDisplayCurrencyValue(snapshot.financeSettings.displayCurrency || 'UAH');
-    setSettings({
-      usdRate: snapshot.financeSettings.usdRate,
-      eurRate: snapshot.financeSettings.eurRate,
-      usdtRate: snapshot.financeSettings.usdtRate ?? snapshot.financeSettings.usdRate,
-    });
     setIssues(storageIssues);
     setCorrupt(store.getCorruptCollections());
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -205,151 +203,65 @@ export default function SettingsPage() {
 
   const snooze = async () => { await snoozeBackupReminder(); refreshStatuses(); emitToast('Нагадаю пізніше', 'info'); };
 
-  const changeDisplayCurrency = async (cur: string) => {
-    const result = await setDisplayCurrency(cur as 'UAH' | 'USD' | 'EUR');
-    if (!result.ok) {
-      emitToast(result.errors.map(e => e.message).join('; '), 'error');
-      return;
-    }
-    setDisplayCurrencyValue(cur);
+  const reloadAfterSettingsChange = () => {
+    refreshStatuses();
     triggerRefresh();
+  };
+
+  const subtitle: Record<SettingsTabId, string> = {
+    finance: 'Валюта відображення та курси',
+    assistant: 'Провайдер і модель AI-помічника',
+    backup: 'Резервні копії, експорт та відновлення CRM',
+    system: 'Збереження, стан даних і журнал',
   };
 
   return (
     <section className="page active">
       <div className="page-header">
-        <div><h1 className="page-title">Налаштування</h1><p className="page-subtitle">Резервні копії, експорт та відновлення CRM</p></div>
+        <div><h1 className="page-title">Налаштування</h1><p className="page-subtitle">{subtitle[tab]}</p></div>
       </div>
-      <div className="settings-grid">
-        <div className="settings-card">
-          <h3 className="settings-title">Валюта відображення</h3>
-          <p className="settings-text">Усі суми в CRM відображатимуться у вибраній валюті.</p>
-          <div style={{ marginTop: 12 }}>
-            <label className="form-label" style={{ marginBottom: 6, display: 'block' }}>Показувати все в:</label>
-            <select className="form-input" style={{ maxWidth: 220 }} value={displayCurrency} onChange={e => changeDisplayCurrency(e.target.value)}>
-              <option value="UAH">₴ Гривня (UAH)</option>
-              <option value="USD">$ Долар (USD)</option>
-              <option value="EUR">€ Євро (EUR)</option>
-            </select>
-          </div>
-          <div style={{ marginTop: 12, color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-            <span>Поточні курси: </span>
-            <strong>1$ = {settings.usdRate}₴</strong> · <strong>1€ = {settings.eurRate}₴</strong> · <strong>1 USDT = {settings.usdtRate}₴</strong>
-            <span style={{ marginLeft: 8 }}>(редагуються на сторінці Фінанси)</span>
-          </div>
-        </div>
-
-        <div className="settings-card">
-          <h3 className="settings-title">Резервна копія</h3>
-          <p className="settings-text">
-            Експорт та імпорт усіх локальних даних CRM у JSON-файл. Файл містить версію схеми,
-            дати, зв’язки, усі записи та налаштування; секрети виключені.
-          </p>
-          <div className="header-actions">
-            <button className="btn btn-primary" onClick={doBackup}>Завантажити резервну копію</button>
-            <label className="btn btn-ghost" style={{ cursor: 'pointer' }}>
-              Імпорт даних
-              <input
-                type="file"
-                data-import-source
-                accept="application/json,.json"
-                style={{ display: 'none' }}
-                onChange={e => { startImport(e.target.files?.[0]); e.target.value = ''; }}
-              />
-            </label>
-          </div>
-          {backupStatus && (
-            <div style={{ marginTop: 12, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-              <div>Повна копія: {backupStatus.lastRotationAt ? formatDateTime(backupStatus.lastRotationAt) : 'ще не створювалась'}</div>
-              <div>
-                Стан:{' '}
-                {backupStatus.pending
-                  ? <strong style={{ color: 'var(--accent-orange)' }}>є незбережені зміни (копія оновлюється)</strong>
-                  : <strong style={{ color: 'var(--accent-green)' }}>актуальна</strong>}
-              </div>
-              {backupStatus.lastError && <div style={{ color: 'var(--danger)' }}>{backupStatus.lastError}</div>}
-            </div>
-          )}
-        </div>
-
-        {incident && (
-          <div className="settings-card" style={{ gridColumn: '1 / -1', border: '1px solid rgba(255,69,58,0.45)' }}>
-            <h3 className="settings-title" style={{ color: 'var(--danger)' }}>Незавершений імпорт</h3>
-            <p className="settings-text">{incident.reason}</p>
-            <div className="settings-info-row">
-              <span>Зафіксовано</span>
-              <strong>{incident.at ? formatDateTime(incident.at) : '—'}</strong>
-            </div>
-            {incident.stage && (
-              <div className="settings-info-row"><span>Етап</span><strong>{incident.stage}</strong></div>
-            )}
-            <div className="settings-info-row">
-              <span>Стан</span>
-              <strong style={{ color: incident.recovered === false ? 'var(--danger)' : 'var(--accent-orange)' }}>
-                {incident.recovered === false ? 'відновлення не вдалося — дані можуть бути змішаними' : 'стан не підтверджено'}
-              </strong>
-            </div>
-            <p className="settings-text" style={{ fontSize: '0.82rem' }}>
-              Перегляд і експорт JSON доступні. Запис даних заблоковано, допоки стан не відновлено
-              через копію або не підтверджено вручну. Повторна ініціалізація та перезапуск
-              цю позначку не знімають.
-            </p>
-            <div className="header-actions" style={{ marginTop: 10 }}>
-              <button className="btn btn-primary" onClick={doRestoreCopy}>Відновити з копії</button>
-              <button className="btn btn-ghost" onClick={doAcknowledgeIncident}>Підтвердити відновлення</button>
-              <button className="btn btn-ghost" onClick={doBackup}>Експортувати JSON</button>
-            </div>
-          </div>
-        )}
-
-        <div className="settings-card" style={{ gridColumn: '1 / -1' }}>
-          <h3 className="settings-title">Стан збереження</h3>
-          <div className="settings-info-row"><span>Останнє збереження</span><strong>{info.lastSavedAt ? `${formatDateTime(info.lastSavedAt)} ✓` : '—'}</strong></div>
-          <div className="settings-info-row"><span>Остання резервна копія</span><strong>{info.lastManualBackupAt ? `${formatDateTime(info.lastManualBackupAt)} 💾` : '—'}</strong></div>
-          <div className="settings-info-row"><span>Записів у базі</span><strong>
-            {snapshot.projectsActive.length + snapshot.projectsCompleted.length} проєктів · {snapshot.clients.length} клієнтів · {snapshot.transactions.length} транзакцій
-          </strong></div>
-          <div className="settings-info-row">
-            <span>Колекції з пошкодженими даними</span>
-            <strong style={{ color: corrupt.length ? 'var(--danger)' : 'var(--accent-green)' }}>
-              {corrupt.length
-                ? `${corrupt.map(c => COLLECTION_LABELS[c] || c).join(', ')} — запис заблоковано до відновлення`
-                : 'немає'}
-            </strong>
-          </div>
-          <p className="settings-text" style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>
-            Стан даних не залежить від журналу нижче: очищення журналу прибирає лише повідомлення,
-            а не робить пошкоджені дані валідними.
-          </p>
-          {issues.length > 0 && (
-            <div className="backup-warning" style={{ marginTop: 12 }}>
-              <strong>Проблеми з локальним сховищем ({issues.length})</strong>
-              <ul style={{ margin: '8px 0 0 18px', padding: 0 }}>
-                {issues.map(i => (
-                  <li key={i.id} style={{ marginBottom: 4 }}>
-                    {i.message}
-                    {i.preservedAt && <span> — оригінал збережено в «{i.preservedAt}»</span>}
-                  </li>
-                ))}
-              </ul>
-              <div className="header-actions" style={{ marginTop: 10 }}>
-                <button className="btn btn-ghost" onClick={() => { clearIssues(); setIssues([]); }}>Очистити журнал</button>
-              </div>
-            </div>
-          )}
-          {showWarning && (
-            <div className="backup-warning">
-              <strong>Ви давно не створювали резервну копію.</strong>
-              <span>Рекомендуємо завантажити JSON-файл.</span>
-              <div className="header-actions">
-                <button className="btn btn-primary" onClick={doBackup}>Створити зараз</button>
-                <button className="btn btn-ghost" onClick={() => { void snooze(); }}>Нагадати пізніше</button>
-              </div>
-            </div>
-          )}
-        </div>
+      <div className="tabs" role="tablist" aria-label="Розділи налаштувань">
+        {SETTINGS_TABS.map(t => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            aria-selected={tab === t.id}
+            className={`tab${tab === t.id ? ' active' : ''}`}
+            title={t.hint}
+            onClick={() => setActiveTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
-
+      {tab === 'finance' && <FinanceSettingsSection onChanged={reloadAfterSettingsChange} />}
+      {tab === 'assistant' && <AssistantSettingsSection />}
+      {tab === 'backup' && (
+        <BackupSettingsSection
+          backupStatus={backupStatus}
+          incident={incident}
+          showWarning={showWarning}
+          onBackup={doBackup}
+          onSnooze={snooze}
+          onImportFile={startImport}
+          onRestoreCopy={doRestoreCopy}
+          onAcknowledgeIncident={doAcknowledgeIncident}
+        />
+      )}
+      {tab === 'system' && (
+        <SystemSettingsSection
+          info={info}
+          counts={{
+            projects: snapshot.projectsActive.length + snapshot.projectsCompleted.length,
+            clients: snapshot.clients.length,
+            transactions: snapshot.transactions.length,
+          }}
+          corrupt={corrupt}
+          issues={issues}
+          onIssuesCleared={() => setIssues([])}
+        />
+      )}
       <Modal isOpen={!!preview} onClose={() => { if (!importing) setPreview(null); }} title={`Імпорт: ${fileName || 'файл'}`} size="lg">
         {preview && (
           <>
