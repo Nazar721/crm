@@ -42,11 +42,14 @@ export interface CopyProjectResult {
 /**
  * Дозволені умови нового замовлення: їх копія переносить і їх AI може
  * явно уточнити разом із copyFromId. Скинуті поля сюди не потрапляють.
+ * `clientId` — явний вибір чинної картки клієнта для копії: він має
+ * проходити через overrides (інакше вибір іншого клієнта модель
+ * не зможе висловити, а джерельний ID лишився б єдиним).
  */
 export const COPY_CONDITION_FIELDS = [
   'name', 'type', 'description', 'budget', 'currency',
   'myPercent', 'fop', 'partnerCommission', 'deadlineDays',
-  'clientName', 'clientTelegram', 'clientSource',
+  'clientName', 'clientTelegram', 'clientSource', 'clientId',
   'developerId', 'partnerId',
 ] as const;
 
@@ -108,7 +111,9 @@ export function initialProjectForCopy(source: Project, sources: CopyProjectSourc
 /**
  * З полів AI-чернетки залишити лише дозволені умови; скинуті, службові
  * та службовий copyFromId відкинути. Порожні значення не переносяться,
- * щоб не затирати умови копії порожніми полями.
+ * щоб не затирати умови копії порожніми полями. `clientId: null` або
+ * порожній рядок не передаються — явним вибором вважається лише
+ * непорожній ID чинної картки.
  */
 export function pickCopyOverrides(fields: Record<string, unknown>): Partial<Project> {
   const out: Partial<Project> = {};

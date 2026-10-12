@@ -70,7 +70,9 @@ export async function POST(req:Request){
   if(parsed.kind==='draft'){
    const normalized=normalizePlan(parsed,s);
    const questions=missingQuestions(normalized,s);
-   if(questions.length)return NextResponse.json({kind:'clarify',text:'Для чернетки бракує обов’язкових даних.',questions});
+   // Уточнення не створює чернетки й нічого не пише; текст із питаннями
+   // потрапляє в історію, щоб відповідь власника мала сенс і для моделі.
+   if(questions.length)return NextResponse.json({kind:'clarify',text:`Для чернетки бракує обов’язкових даних: ${questions.map(q=>q.prompt).join(' ')}`,questions},{headers:{'Cache-Control':'no-store'}});
    const plan={...normalized,base:await fingerprint(s)};
    return NextResponse.json(draftReply(plan,s,signPlan(plan,userId,secret)),{headers:{'Cache-Control':'no-store'}});
   }

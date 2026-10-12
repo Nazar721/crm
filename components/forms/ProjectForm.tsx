@@ -7,6 +7,7 @@ import { formatMoney, today, displayCurrency, currencySymbol } from '@/lib/utils
 import { rateForCurrency } from '@/lib/calc';
 import { getClients, getAllProjects } from '@/lib/storage';
 import { normalizeBank, bankLabel } from '@/lib/banks';
+import { buildProjectPayload } from '@/lib/project-payload';
 import type { Client } from '@/types';
 
 import Modal from '@/components/ui/Modal';
@@ -24,13 +25,19 @@ interface ProjectFormProps {
   copyPrefill?: Partial<Project> | null;
   /** Попередження: пов'язану сутність видалено — поле треба обрати заново. */
   copyWarnings?: string[];
+  /**
+   * Пакет 02: картку клієнта в джерелі копії видалено. Форма вимагає
+   * явного рішення — обрати наявного клієнта зі списку або підтвердити
+   * створення нової картки; без цього збереження не відбувається.
+   */
+  copyNeedsClientChoice?: boolean;
   specialists: Specialist[];
   partners: Partner[];
   onSave: (data: Partial<Project>) => void | Promise<void>;
   onCancel: () => void;
 }
 
-export default function ProjectForm({ isOpen, project, copyPrefill, copyWarnings, specialists, partners, onSave, onCancel }: ProjectFormProps) {
+export default function ProjectForm({ isOpen, project, copyPrefill, copyWarnings, copyNeedsClientChoice, specialists, partners, onSave, onCancel }: ProjectFormProps) {
   const [name, setName] = useState('');
   const [type, setType] = useState('');
   const [status, setStatus] = useState('Очікування оплати');
@@ -54,13 +61,23 @@ export default function ProjectForm({ isOpen, project, copyPrefill, copyWarnings
   const [partnerCommission, setPartnerCommission] = useState('');
   const [description, setDescription] = useState('');
   const [selectedClientId, setSelectedClientId] = useState('');
+  // Копія з видаленою карткою клієнта: явна згода на створення нової картки
+  // (обрати наявного клієнта зі списку — інший, достатній шлях).
+  const [confirmNewClient, setConfirmNewClient] = useState(false);
+  const [clientChoiceError, setClientChoiceError] = useState('');
   // Подвійне натискання «Зберегти» не має створювати дубль: реф ловить
   // другий клік у тому ж такті, стан — гасить кнопку після ре-рендера.
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
 
   useEffect(() => {
+    // Кожне відкриття форми починає з чистої згоди/помилки вибору клієнта.
+    setConfirmNewClient(false);
+    setClientChoiceError('');
     if (project) {
+      // Картка клієнта (якщо ще існує) показується як джерело істини для
+      // імені та контактів — форма показує саме те, що збереже спільна дія.
+      const card = project.clientId ? getClients().find(c => c.id === project.clientId) : undefined;
       setName(project.name || '');
       setType(project.type || '');
       setStatus(project.status || 'Очікування оплати');
@@ -69,9 +86,9 @@ export default function ProjectForm({ isOpen, project, copyPrefill, copyWarnings
       setEndDate(project.endDate || '');
       setDeveloperId(project.developerId || '');
       setPartnerId(project.partnerId || '');
-      setClientName(project.clientName || '');
-      setClientTelegram(project.clientTelegram || '');
-      setClientSource(project.clientSource || 'Інше');
+      setClientName(card ? card.name : project.clientName || '');
+      setClientTelegram(card ? (card.telegram || '') : project.clientTelegram || '');
+      setClientSource(card ? (card.source || 'Інше') : project.clientSource || 'Інше');
       setBudget(String(project.budget || ''));
       setCurrency(project.currency || 'UAH');
       setBank(project.bank || '');
@@ -98,9 +115,13 @@ export default function ProjectForm({ isOpen, project, copyPrefill, copyWarnings
       setEndDate('');
       setDeveloperId(copyPrefill.developerId || '');
       setPartnerId(copyPrefill.partnerId || '');
-      setClientName(copyPrefill.clientName || '');
-      setClientTelegram(copyPrefill.clientTelegram || '');
-      setClientSource(copyPrefill.clientSource || 'Інше');
+      // Клієнт: якщо картка з ID копії ще існує — показуємо її поточні
+      // ім'я/контакти (історичні значення проєкту не маскуємо як чинні);
+      // якщо картку видалено — лишаємо історичний текст, але ID не підставляємо.
+      const copyCard = copyPrefill.clientId ? getClients().find(c => c.id === copyPrefill.clientId) : undefined;
+      setClientName(copyCard ? copyCard.name : copyPrefill.clientName || '');
+      setClientTelegram(copyCard ? (copyCard.telegram || '') : copyPrefill.clientTelegram || '');
+      setClientSource(copyCard ? (copyCard.source || 'Інше') : copyPrefill.clientSource || 'Інше');
       setBudget(copyPrefill.budget !== undefined && copyPrefill.budget !== null ? String(copyPrefill.budget) : '');
       setCurrency(copyPrefill.currency || 'UAH');
       setBank('');
@@ -212,27 +233,37 @@ export default function ProjectForm({ isOpen, project, copyPrefill, copyWarnings
 
   const handleSave = async () => {
     if (savingRef.current) return;
+    // Копія з видаленою карткою клієнта: без явного вибору наявного клієнта
+    // або підтвердження створення нової картки — збереження не відбувається.
+    if (copyNeedsClientChoice && !selectedClientId && !confirmNewClient) {
+      setClientChoiceError('Оберіть клієнта зі списку або підтвердьте створення нової картки.');
+      return;
+    }
     savingRef.current = true;
     setSaving(true);
+    setClientChoiceError('');
     try {
-      await onSave({
+      // Одне явне payload зі стану форми. Джерело clientId — поточний
+      // selectedClientId (prefill лише ініціалізує); дані клієнта за наявної
+      // картки беруться з неї ж (без fallback на історичні контакти стану).
+      await onSave(buildProjectPayload({
         name, type, status, startDate,
-        deadlineDays: Number(deadlineDays) || 0,
+        deadlineDays,
         endDate,
         developerId, partnerId,
         clientName, clientTelegram, clientSource,
-        budget: Number(budget) || 0,
+        budget,
         currency,
         bank,
-        prepayment: Number(prepayment) || 0,
-        paidToSpecialist: Number(paidToSpecialist) || 0,
-        myPercent: Number(effectiveMyPercent) || 0,
-        profitTaken: Number(profitTaken) || 0,
-        fop: Number(fop) || 0,
-        partnerCommission: Number(partnerCommission) || 0,
+        prepayment,
+        paidToSpecialist,
+        myPercent: effectiveMyPercent,
+        profitTaken,
+        fop,
+        partnerCommission,
         description,
-        clientId: copyPrefill?.clientId || selectedClientId,
-      });
+        selectedClientId,
+      }, getClients()));
     } finally {
       savingRef.current = false;
       setSaving(false);
@@ -247,6 +278,25 @@ export default function ProjectForm({ isOpen, project, copyPrefill, copyWarnings
           <ul style={{ margin: '6px 0 0 18px', padding: 0 }}>
             {copyWarnings.map((w, i) => <li key={i} style={{ marginBottom: 4 }}>{w}</li>)}
           </ul>
+        </div>
+      )}
+      {copyNeedsClientChoice && !selectedClientId && (
+        <div className="backup-warning" style={{ marginBottom: 12 }}>
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={confirmNewClient}
+              onChange={e => { setConfirmNewClient(e.target.checked); setClientChoiceError(''); }}
+              style={{ marginTop: 3 }}
+            />
+            <span>
+              Створити нову картку клієнта «{clientName || '—'}» при збереженні.
+              Або спочатку оберіть наявного клієнта у полі «Ім&apos;я клієнта».
+            </span>
+          </label>
+          {clientChoiceError && (
+            <div style={{ color: '#b91c1c', marginTop: 6, fontSize: 13 }}>{clientChoiceError}</div>
+          )}
         </div>
       )}
       <div className="form-grid">

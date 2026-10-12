@@ -184,26 +184,61 @@ async function _saveProject(input: Partial<Project>, editId?: string): Promise<A
   const errors = validateProjectInput(input);
   if (errors.length) return fail(errors);
 
+  // Початковий зв'язок: для редагування — чинний ID запису, якщо поле
+  // clientId не передано взагалі (AI-update без клієнтських полів).
   let clientId = editId
     ? (Storage.getProjects().find(p => p.id === editId)?.clientId || Storage.getCompleted().find(p => p.id === editId)?.clientId || '')
     : '';
+  let clientName = input.clientName;
+  let clientTelegram = input.clientTelegram;
+  let clientSource = input.clientSource;
 
-  // Явний clientId (вибір клієнта в формі або змовна умова копії AI) завжди
-  // перемагає пошук за ім'ям. Пошук за clientName використовується лише тоді,
-  // коли користувач не вкаже конкретну картку.
-  if (input.clientId) {
-    clientId = input.clientId;
-  } else if (input.clientName) {
+  // Явний clientId — це конкретна картка, а не пошук за ім'ям. Невідомий,
+  // видалений або неправильного типу ID відхиляємо ДО будь-якого запису.
+  // Вхідний об'єкт НЕ мутуємо: нормалізуємо окремий payload нижче.
+  const rawClientId: unknown = input.clientId;
+  if (rawClientId !== undefined) {
+    if (rawClientId === null || rawClientId === '') {
+      // Явне від'єднання (порожнє значення): зв'язок визначається за ім'ям.
+      clientId = '';
+    } else if (typeof rawClientId !== 'string') {
+      return fail([{ field: 'clientId', message: 'ID клієнта має бути рядком' }]);
+    } else {
+      clientId = rawClientId;
+    }
+  }
+
+  if (clientId) {
+    // Остаточне приведення в спільній доменній дії: наявна картка —
+    // джерело істини для імені та контактів («ID A, ім'я B» не зберігаємо),
+    // порожні telegram/source картки — теж значення (історичні контакти
+    // проєкту не підставляються), саму картку не перезаписуємо.
+    const match = Storage.getClients().find(c => c.id === clientId);
+    if (!match) {
+      return fail([{ field: 'clientId', message: `Клієнта з ID ${clientId} не знайдено. Обери чинного клієнта.` }]);
+    }
+    clientName = match.name;
+    clientTelegram = match.telegram || '';
+    clientSource = match.source || 'Інше';
+  } else if (clientName) {
     const resolved = await _resolveClient({
-      name: input.clientName,
-      telegram: input.clientTelegram,
-      source: input.clientSource,
+      name: clientName,
+      telegram: clientTelegram,
+      source: clientSource,
     });
     if (!resolved.ok) return resolved;
     clientId = resolved.value!.clientId;
+    // Підібрана/створена картка теж стає джерелом істини — форма й AI
+    // зберігають однакові дані незалежно від шляху визначення зв'язку.
+    const card = Storage.getClients().find(c => c.id === clientId);
+    if (card) {
+      clientName = card.name;
+      clientTelegram = card.telegram || '';
+      clientSource = card.source || 'Інше';
+    }
   }
 
-  const payload: Partial<Project> = { ...input, clientId };
+  const payload: Partial<Project> = { ...input, clientId, clientName, clientTelegram, clientSource };
   // AI може створити проєкт без явно заданого відсотка — тоді діє те саме
   // правило фахівця, що й у формі. Явно задане значення не змінюється.
   const explicitPercent: unknown = payload.myPercent;

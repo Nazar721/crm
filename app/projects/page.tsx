@@ -34,6 +34,8 @@ export default function ProjectsPage() {
   // Пакет 02: чернетка копії завершеного проєкту (форма створення з умовами).
   const [copyPrefill, setCopyPrefill] = useState<Partial<Project> | null>(null);
   const [copyWarnings, setCopyWarnings] = useState<string[]>([]);
+  // Картку клієнта в джерелі копії видалено: форма вимагає явного вибору.
+  const [copyNeedsClientChoice, setCopyNeedsClientChoice] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const { isOpen: confirmOpen, title: confirmTitle, text: confirmText, confirm, handleConfirm, cancel } = useConfirm();
@@ -245,6 +247,7 @@ export default function ProjectsPage() {
   const resetCopy = () => {
     setCopyPrefill(null);
     setCopyWarnings([]);
+    setCopyNeedsClientChoice(false);
   };
 
   const handleSave = async (data: Partial<Project>) => {
@@ -269,6 +272,7 @@ export default function ProjectsPage() {
     setEditProject(null);
     setCopyPrefill(prefill);
     setCopyWarnings(copyMissingWarnings(source, missing));
+    setCopyNeedsClientChoice(missing.client);
     setFormOpen(true);
   };
 
@@ -515,6 +519,7 @@ export default function ProjectsPage() {
         project={editProject}
         copyPrefill={copyPrefill}
         copyWarnings={copyWarnings}
+        copyNeedsClientChoice={copyNeedsClientChoice}
         specialists={specialists}
         partners={partners}
         onSave={handleSave}

@@ -1,12 +1,12 @@
 import {incomeHistory} from '@/lib/income-report';
 import {accountBalances} from './balance-report';
-import type {DataSnapshot} from '@/types';
+import type {Client,DataSnapshot} from '@/types';
 import type {AssistantActionType,AssistantDomain,AssistantField,AssistantReply} from './contract';
 import {BANKS} from '@/lib/banks';
 import {dashboardStats,project,toDisplay} from '@/lib/calc';
 import {today} from '@/lib/utils';
 import {initialProjectForCopy,pickCopyOverrides} from '@/lib/copy-project';
-export type Plan={domain:AssistantDomain;action:AssistantActionType;recordId?:string;fields:Record<string,string|number|boolean|null>;base:string};
+export type Plan={domain:AssistantDomain;action:AssistantActionType;recordId?:string;fields:Record<string,string|number|boolean|null>;base:string,copyClientMissing?: boolean};
 type Spec={label:string;kind:AssistantField['kind'];options?:string[]};
 const text=(label:string):Spec=>({label,kind:'text'});
 const number=(label:string):Spec=>({label,kind:'number'});
@@ -29,6 +29,11 @@ export function records(domain:AssistantDomain,s:DataSnapshot):Record<string,unk
  const maps:Partial<Record<AssistantDomain,unknown[]>>={projects:[...s.projectsActive,...s.projectsCompleted],payments:[...s.projectsActive,...s.projectsCompleted],clients:s.clients,finance:s.transactions,specialists:s.specialists,partners:s.partners,debts:s.personalDebts,savings:s.savings};
  return (maps[domain]||[]) as Record<string,unknown>[];
 }
+/** Порівняння імен клієнтів так само, як це робить підбір у збереженні. */
+function sameClientName(a:unknown,b:unknown):boolean{return String(a??'').trim().toLowerCase()===String(b??'').trim().toLowerCase();}
+function clientByName(s:DataSnapshot,name:unknown):Client|undefined{return String(name??'').trim()?s.clients.find(c=>sameClientName(c.name,name)):undefined;}
+/** Дані клієнта в чернетці беруться з картки — жодного «ID A, ім'я B». */
+function applyClientCard(fields:Plan['fields'],card:Client):void{fields.clientId=card.id;fields.clientName=card.name;fields.clientTelegram=card.telegram||'';fields.clientSource=card.source||'Інше';}
 function canonical(v:unknown):unknown {
  if(Array.isArray(v))return v.map(canonical);
  if(v&&typeof v==='object')return Object.fromEntries(Object.entries(v).filter(([,x])=>x!==undefined).sort(([a],[b])=>a.localeCompare(b)).map(([k,x])=>[k,canonical(x)]));
@@ -75,6 +80,10 @@ export function normalizePlan(raw:unknown,s:DataSnapshot):Omit<Plan,'base'>{
  }
  delete rawFields.copyFromId;
  const fields=cleanFields(domain,rawFields);
+ // Прапорець «клієнта копії не вибрано» переживає підписання й повторну
+ // нормалізацію/confirm (підписана чернетка вже не містить copyFromId).
+ // Знімається він лише явним чинним clientId — втрата чи обхід неможливі.
+ let clientMissing=r.copyClientMissing===true;
  if(action==='create'){
   if(domain==='projects'&&copyFromId){
    const source=[...s.projectsActive,...s.projectsCompleted].find(p=>p.id===copyFromId);
@@ -84,13 +93,74 @@ export function normalizePlan(raw:unknown,s:DataSnapshot):Omit<Plan,'base'>{
    for(const key of Object.keys(fields))delete (fields as Record<string,unknown>)[key];
    // Нульові оплати явно; умови копії; дозволені умови моделі поверх.
    Object.assign(fields,{prepayment:0,paidToSpecialist:0,profitTaken:0},prefill,overrides);
-   // Копіювання: службові параметри не зберігаються. clientId (зв'язок з
-   // клієнтом) та copyFromId (джерело) визначаються системою під час збереження,
-   // тому не потрапляють в дані проєкту й backup.
+   // Копіювання: службовий copyFromId не є даними проєкту й не зберігається.
    for(const key of Object.keys(fields))if(!(key in schemas.projects!))delete (fields as Record<string,unknown>)[key];
+   // Вибір клієнта копії: явний overrides.clientId (перевіряється за чинними
+   // clients) → картка за точним ім'ям з overrides → картка джерела. Якщо
+   // вибрати нічого (картку видалено або ім'я не відповідає жодній картці) —
+   // прапорець copyClientMissing: чернетка зупиняється на уточненні, повторна
+   // нормалізація/confirm теж не пропустить запис без явного вибору.
+   const sourceCard=prefill.clientId?s.clients.find(c=>c.id===prefill.clientId):undefined;
+   const nameOverride=overrides.clientName;
+   const nameEcho=nameOverride!==undefined&&(sameClientName(nameOverride,source.clientName)||!!(sourceCard&&sameClientName(nameOverride,sourceCard.name)));
+   let chosen='';
+   if(overrides.clientId){
+    if(!s.clients.some(c=>c.id===overrides.clientId))throw new Error(`Клієнта з ID ${overrides.clientId} не знайдено`);
+    chosen=overrides.clientId;
+   }else if(nameOverride!==undefined&&!nameEcho){
+    const match=clientByName(s,nameOverride);
+    if(match)chosen=match.id;else clientMissing=true;
+   }else if(sourceCard){
+    chosen=sourceCard.id;
+   }else if(source.clientId){
+    clientMissing=true;
+   }
+   if(chosen){fields.clientId=chosen;clientMissing=false;}else{delete (fields as Record<string,unknown>).clientId;}
   }else{
    const defaults:Partial<Record<AssistantDomain,Plan['fields']>>={projects:{status:'Очікування оплати',currency:'UAH',prepayment:0,paidToSpecialist:0,fop:0,partnerCommission:0,profitTaken:0,startDate:today()},finance:{date:today(),hidden:false},clients:{isRegular:false,source:'Інше'},debts:{currency:'UAH',date:today()},savings:{currency:'UAH',amount:0,date:today()},partners:{currency:'UAH'}};
    Object.assign(fields,{...defaults[domain],...fields});
+  }
+  // Створення проєкту з явним clientId: перевірка за чинними clients і
+  // приведення полів до картки (невідомий ID → зрозуміла відмова до запису).
+  if(domain==='projects'&&typeof fields.clientId==='string'&&fields.clientId){
+   const card=s.clients.find(c=>c.id===fields.clientId);
+   if(!card)throw new Error(`Клієнта з ID ${fields.clientId} не знайдено`);
+   applyClientCard(fields,card);
+  }else if(!clientMissing&&!copyFromId&&domain==='projects'&&typeof fields.clientName==='string'&&fields.clientName){
+   // Створення за ім'ям: якщо картка вже існує — збереження підбере саме її,
+   // тому в чернетці показуємо її дані, а не потенційно розійдені.
+   const match=clientByName(s,fields.clientName);
+   if(match)applyClientCard(fields,match);
+  }
+  // Явний чинний clientId (відповідь на уточнення) знімає прапорець.
+  if(clientMissing&&typeof fields.clientId==='string'&&fields.clientId&&s.clients.some(c=>c.id===fields.clientId))clientMissing=false;
+ }
+ // projects/update: зміна клієнта має бути явною. Сама лише назва не лишає
+ // ID старого клієнта з іншою назвою: назва збігається з чинною карткою →
+ // приведення; збігається з іншою наявною карткою → зв'язок міняється видимо
+ // в чернетці (clientId); інакше — зрозуміла відмова з підказкою.
+ if(action==='update'&&domain==='projects'){
+  const rec=records(domain,s).find(x=>x.id===recordId);
+  const recClientId=typeof rec?.clientId==='string'?rec.clientId:'';
+  const recClientName=typeof rec?.clientName==='string'?rec.clientName:'';
+  if(typeof fields.clientId==='string'&&fields.clientId){
+   const card=s.clients.find(c=>c.id===fields.clientId);
+   if(!card)throw new Error(`Клієнта з ID ${fields.clientId} не знайдено`);
+   applyClientCard(fields,card);
+  }else if(!('clientId' in fields)&&typeof fields.clientName==='string'){
+   const linked=recClientId?s.clients.find(c=>c.id===recClientId):undefined;
+   if(linked&&(sameClientName(linked.name,fields.clientName)||fields.clientName===recClientName)){
+    applyClientCard(fields,linked);
+   }else{
+    const match=clientByName(s,fields.clientName);
+    if(match)applyClientCard(fields,match);
+    else if(!recClientId){/* проєкт без картки: зв'язок визначить збереження за ім'ям */}
+    else throw new Error(`Клієнта «${fields.clientName}» не знайдено. Щоб змінити клієнта, вкажи явний clientId (або clientId: null — тоді картку підберуть або створять за ім'ям).`);
+   }
+  }else if(!('clientId' in fields)&&!('clientName' in fields)&&('clientTelegram' in fields||'clientSource' in fields)){
+   // Контакти проєкту не можуть розійтися з карткою: показуємо дані картки.
+   const linked=recClientId?s.clients.find(c=>c.id===recClientId):undefined;
+   if(linked)applyClientCard(fields,linked);
   }
  }
  if(domain==='payments'&&!fields.date)fields.date=today();
@@ -100,14 +170,18 @@ export function normalizePlan(raw:unknown,s:DataSnapshot):Omit<Plan,'base'>{
  for(const [field,target] of [['developerId','specialists'],['partnerId','partners'],['projectId','projects']] as const){
   if(fields[field]&&!records(target,s).some(x=>x.id===fields[field]))throw new Error(`Не знайдено ${field}`);
  }
- return {domain,action,recordId,fields};
+ return {domain,action,recordId,fields,copyClientMissing:clientMissing};
 }
 export function missingQuestions(plan:Omit<Plan,'base'>,s:DataSnapshot){
- if(plan.action==='delete')return [];
+ //Прапорець видаленого/невибраного клієнта копії ніколи не ховається: без
+ // явного вибору уточнення повертається і при першій нормалізації, і при
+ // повторній/confirm — тобто запис без вибору неможливий.
+ const list:{key:string;prompt:string;options?:string[]}[]=plan.copyClientMissing?[{key:'client',prompt:'Картку клієнта для копії не вибрано (її видалено або не існує). Оберіть чинного клієнта — вкажіть точне ім’я або ID — або підтвердьте створення нової картки окремою дією.'}]:[];
+ if(plan.action==='delete')return list;
  const required:Partial<Record<AssistantDomain,string[]>>={projects:['name','type','clientName','budget'],clients:['name'],finance:['type','amount','bank'],payments:['amount'],specialists:['name','specialization'],partners:['name'],debts:['type','person','amount'],savings:['bank','goal']};
  const previous=plan.action==='update'&&plan.domain!=='payments'?records(plan.domain,s).find(x=>x.id===plan.recordId):undefined;
  const input={...previous,...plan.fields};
- return (required[plan.domain]||[]).filter(k=>input[k]===undefined||input[k]===null||input[k]==='').map(k=>({key:k,prompt:`Уточни: ${schemas[plan.domain]![k].label}`,options:schemas[plan.domain]![k].options}));
+ return [...list,...(required[plan.domain]||[]).filter(k=>input[k]===undefined||input[k]===null||input[k]==='').map(k=>({key:k,prompt:`Уточни: ${schemas[plan.domain]![k].label}`,options:schemas[plan.domain]![k].options}))];
 }
 export function draftReply(plan:Plan,s:DataSnapshot,id:string):AssistantReply{
  const specs=schemas[plan.domain]!,prev=plan.domain==='settings'?s.financeSettings as unknown as Record<string,unknown>:records(plan.domain,s).find(x=>x.id===plan.recordId);
@@ -117,7 +191,7 @@ export function draftReply(plan:Plan,s:DataSnapshot,id:string):AssistantReply{
  if(plan.action==='delete')changes.push({key:'record',label:'Видалити запис',before:String(prev?.name||prev?.person||prev?.description||plan.recordId),after:'Буде видалено'});
  const routes:Partial<Record<AssistantDomain,string>>={settings:'/settings',payments:'/projects',projects:'/projects',finance:'/finance',clients:'/clients',specialists:'/specialists',partners:'/partners',debts:'/debts',savings:'/savings'};
  const target=plan.domain==='settings'?'Фінансові налаштування':String(prev?.name||prev?.person||prev?.description||plan.fields.name||plan.recordId||'');
- return {kind:'draft',draft:{id,domain:plan.domain,action:plan.action,title:`${plan.action==='delete'?'Видалити':plan.action==='create'?'Створити':'Змінити'}: ${target}`,fields,changes,questions:[],recordId:plan.recordId,route:routes[plan.domain]}};
+ return {kind:'draft',draft:{id,domain:plan.domain,action:plan.action,title:`${plan.action==='delete'?'Видалити':plan.action==='create'?'Створити':'Змінити'}: ${target}`,fields,changes,questions:missingQuestions(plan,s),recordId:plan.recordId,route:routes[plan.domain]}};
 }
 export function projectSummary(s:DataSnapshot){
  const currency=s.financeSettings.displayCurrency||'UAH';
