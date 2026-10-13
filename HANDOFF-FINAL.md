@@ -85,3 +85,10 @@
 1. Звірити встановлену базу й застосувати за потреби 003 → 004 → 005 (без повторного накочування SETUP на чинну базу), прогнати репродукції з пакетних HANDOFF і цього документа; `npm ci` + `npm run test:sql` (обидва SQL-файли) як гейт.
 2. Перевірити diff `31c2ce7 → f7cfd8c`; UI `/hosting` і `/tasks` на ноутбуці та вузькому екрані; навігація не запускає міграцій/експорту (виміряно на синтетиці вище).
 3. Після застосування SQL і перевірки — публікація коміта `f7cfd8c` основним агентом (ця сесія публікацію не виконує). Статус: **готовий код + готові SQL-файли, виконані на ізольованому PostgreSQL (PGlite)**; production/Supabase/PostgREST/RLS/ручний UI — окремо перед випуском.
+
+
+## Primary review — final ISO offset correction
+
+Reviewed 5d05ce2; form partial-reminder and Kyiv DST-gap scenarios now reject correctly. The final independent check found that isIsoInstant read regex group 2 (fractional seconds) instead of group 3 (timezone), so +15:00 passed despite the stated limit. Corrected timezone group and rejected offsets beyond ±14:00, including ±14:01. Added regression assertions with/without seconds, fractional seconds, compact offsets, and allowed ±14:00 boundaries.
+
+Independent validation after correction: npm test 287/287 PASS, 0 skipped; test:sql 2/2 PASS (history and hosting/tasks); typecheck exit 0; lint exit 0 with existing warnings; build exit 0; git diff --check clean. No production SQL, push or deployment. Code review for 04–06 accepted; real Supabase/PostgREST, authenticated browser flows and installed CRM remain release verification steps. On an existing database, inspect state first and apply only needed 003→004→005; do not reapply SETUP blindly.

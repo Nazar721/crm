@@ -78,11 +78,11 @@ export function isIsoInstant(value: string): boolean {
   const h = Number(value.slice(11, 13));
   const mi = Number(value.slice(14, 16));
   if (h > 23 || mi > 59) return false;
-  const offset = m[2];
+  const offset = m[3];
   if (offset && offset !== 'Z') {
     const oh = Number(offset.slice(1, 3));
     const om = Number(offset.slice(-2));
-    if (oh > 14 || om > 59) return false;
+    if (oh > 14 || om > 59 || (oh === 14 && om !== 0)) return false;
   }
   return Number.isFinite(Date.parse(value));
 }

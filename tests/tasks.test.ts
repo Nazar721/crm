@@ -115,6 +115,14 @@ test('нормалізація дат: нагадування лише за яв
   assert.equal(isIsoInstant('2026-02-30T07:00:00Z'), false, '30 лютого — неможлива календарна дата');
   assert.equal(isIsoInstant('2024-02-29T10:00:00Z'), true, 'високосний 29 лютого — ок');
   assert.equal(isIsoInstant('2026-10-14T07:00:00+99:00'), false, 'неможливий зсув');
+  for (const offset of ['+15:00', '-15:00', '+14:01', '-14:01', '+1401']) {
+    for (const seconds of [':00', ':00.123', '']) {
+      assert.equal(isIsoInstant(`2026-10-14T07:00${seconds}${offset}`), false, 'зсув поза межею ±14:00');
+    }
+  }
+  for (const offset of ['+14:00', '-14:00', '+1400', '-1400']) {
+    assert.equal(isIsoInstant(`2026-10-14T07:00:00.123${offset}`), true, 'граничний зсув дозволений');
+  }
   assert.equal(
     validateTaskInput({ title: 'OK', reminderAt: '2026-10-14T07:00:00' }).some(e => e.field === 'reminderAt'),
     true,
