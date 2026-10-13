@@ -24,6 +24,7 @@ const moreItems: TabItem[] = [
   { href: '/partners', label: 'Партнери', icon: 'users2', badge: 'partners' },
   { href: '/debts', label: 'Борги', icon: 'dollar' },
   { href: '/savings', label: 'Відкладення', icon: 'wallet' },
+  { href: '/hosting', label: 'Хостинг', icon: 'target' },
   { href: '/clients', label: 'Клієнти', icon: 'users', badge: 'clients' },
 ];
 

@@ -47,6 +47,11 @@ export interface ImportReport {
   restoreSkipped?: CollectionKey[];
   issue?: string;
   errors: BackupIssue[];
+  /**
+   * Пакет 04: колекції, які копія НЕ містить (старий формат) — їхні поточні
+   * дані під час імпорту збережено (не перезаписано порожнім).
+   */
+  kept?: CollectionKey[];
 }
 
 interface RestoreContext {
@@ -68,7 +73,7 @@ type FailureOutcome = {
   restoreSkipped: CollectionKey[];
 };
 
-type ImportOutcome = { ok: true; written: CollectionKey[] } | FailureOutcome;
+type ImportOutcome = { ok: true; written: CollectionKey[]; kept?: CollectionKey[] } | FailureOutcome;
 
 function countSnapshot(snapshot: DataSnapshot): CollectionCounts {
   return {
@@ -80,6 +85,8 @@ function countSnapshot(snapshot: DataSnapshot): CollectionCounts {
     transactions: snapshot.transactions.length,
     personalDebts: snapshot.personalDebts.length,
     savings: snapshot.savings.length,
+    hostingServices: snapshot.hostingServices.length,
+    hostingPayments: snapshot.hostingPayments.length,
   };
 }
 
@@ -91,13 +98,14 @@ function emptyValidation(message: string): BackupValidation {
   const counts = countSnapshot({
     projectsActive: [], projectsCompleted: [], clients: [], specialists: [], partners: [],
     transactions: [], personalDebts: [], savings: [],
+    hostingServices: [], hostingPayments: [],
     financeSettings: { usdRate: 41, eurRate: 44, usdtRate: 41, displayCurrency: 'UAH' },
     meta: { lastSavedAt: '', lastManualBackupAt: '', backupSnoozedUntil: '' },
   });
   return {
     ok: false, format: 'unknown', version: null, exportedAt: null,
     errors: [{ message }], recordIssues: [], counts, skipped: { ...counts },
-    warnings: [], content: null, settings: null,
+    warnings: [], content: null, settings: null, missing: [],
   };
 }
 
@@ -295,7 +303,14 @@ export async function applyImport(raw: unknown, options: ImportOptions = {}): Pr
 
     // 3. Запис колекцій.
     const written: CollectionKey[] = [];
+    const kept: CollectionKey[] = [];
     for (const key of COLLECTION_KEYS) {
+      // Пакет 04: колекція відсутня у копії (старий формат) — поточні дані
+      // НЕ стираються; явний порожній масив v3 перезаписує (визначений сенс).
+      if (validation.missing.includes(key)) {
+        kept.push(key);
+        continue;
+      }
       if (mode === 'restore-previous') {
         const incomingRaw = incomingCorruptRaw?.[key];
         if (incomingRaw !== undefined) {
@@ -356,7 +371,7 @@ export async function applyImport(raw: unknown, options: ImportOptions = {}): Pr
     }
 
     await store.reloadStore();
-    return { ok: true, written };
+    return { ok: true, written, kept };
   });
 
   if (result.ok) {
@@ -367,7 +382,7 @@ export async function applyImport(raw: unknown, options: ImportOptions = {}): Pr
       source: 'Імпорт',
       hint: mode === 'restore-previous' ? 'restore' : 'import',
     });
-    return { ok: true, stage: 'done', validation, written: result.written, errors: [] };
+    return { ok: true, stage: 'done', validation, written: result.written, kept: result.kept, errors: [] };
   }
 
   return {
@@ -437,6 +452,8 @@ async function applyCloudImport(raw:unknown, options:ImportOptions):Promise<Impo
     const copy = await store.saveBackupCopy(JSON.stringify({payload:buildExportPayload(store.getSnapshot())}));
     if (!copy.ok) { copyFailed = true; return {ok:false,errors:[{message:copy.issue.message}]}; }
     for (const key of COLLECTION_KEYS) {
+      // Пакет 04: відсутня у копії колекція не стирає поточні дані.
+      if (validation.missing.includes(key)) continue;
       const saved = await store.saveCollection(key,validation.content![key],'import');
       if (!saved.ok) return {ok:false,errors:[{message:saved.issue.message}]};
     }
@@ -446,5 +463,5 @@ async function applyCloudImport(raw:unknown, options:ImportOptions):Promise<Impo
     }
     return {ok:true,errors:[] as {message:string}[]};
   }, { source: 'Імпорт', hint: restore ? 'restore' : 'import' });
-  return {ok:result.ok,stage:result.ok ? 'done':copyFailed ? 'safety-copy':'write',validation,written:result.ok ? [...COLLECTION_KEYS]:[],errors:result.errors};
+  return {ok:result.ok,stage:result.ok ? 'done':copyFailed ? 'safety-copy':'write',validation,written:result.ok ? COLLECTION_KEYS.filter(k=>!validation.missing.includes(k)):[],kept:result.ok ? validation.missing : undefined,errors:result.errors};
 }

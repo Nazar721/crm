@@ -39,6 +39,8 @@ export function buildExportPayload(
       transactions: snapshot.transactions,
       personalDebts: snapshot.personalDebts,
       savings: snapshot.savings,
+      hostingServices: snapshot.hostingServices,
+      hostingPayments: snapshot.hostingPayments,
     }),
     financeSettings: stripSecrets(snapshot.financeSettings),
   };

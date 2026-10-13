@@ -7,7 +7,7 @@
 
 export const ASSISTANT_DOMAINS = [
   'finance', 'projects', 'payments', 'clients', 'specialists',
-  'partners', 'debts', 'savings', 'settings', 'reports', 'history',
+  'partners', 'debts', 'savings', 'hosting', 'hostingPayments', 'settings', 'reports', 'history',
 ] as const;
 export type AssistantDomain = (typeof ASSISTANT_DOMAINS)[number];
 
@@ -23,6 +23,8 @@ export const DOMAIN_LABELS: Record<AssistantDomain, string> = {
   settings: 'Налаштування',
   reports: 'Звіти',
   history: 'Історія змін',
+  hosting: 'Хостинг',
+  hostingPayments: 'Оплати хостингу',
 };
 
 export type AssistantActionType = 'create' | 'update' | 'delete' | 'query';

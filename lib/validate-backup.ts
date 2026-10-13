@@ -1,10 +1,11 @@
-import type { Client, DataSnapshot, FinanceSettings, Project } from '@/types';
+import type { Client, DataSnapshot, FinanceSettings, HostingPayment, HostingService, Project } from '@/types';
 import { EXPORT_FORMAT_ID, EXPORT_SCHEMA_VERSION } from '@/types';
 import type { CollectionKey } from '@/lib/datasource/types';
 import { COLLECTION_KEYS } from '@/lib/datasource/types';
 import { normalizeSettings } from '@/lib/settings';
 import { kyivDateString } from '@/lib/dates';
 import { toFiniteNumber } from '@/lib/validate';
+import { HOSTING_CURRENCIES } from '@/lib/hosting';
 
 // ============================================================
 // Runtime-валідація backup. Невідомий JSON відхиляється ДО будь-якого
@@ -12,7 +13,7 @@ import { toFiniteNumber } from '@/lib/validate';
 // окремо від основного (поточного) формату.
 // ============================================================
 
-export type BackupFormat = 'v2' | 'v1' | 'legacy-flat' | 'unknown';
+export type BackupFormat = 'v3' | 'v2' | 'v1' | 'legacy-flat' | 'unknown';
 
 export type CollectionCounts = Record<CollectionKey, number>;
 
@@ -54,9 +55,18 @@ export interface BackupValidation {
   warnings: BackupIssue[];
   content: BackupContent | null;
   settings: FinanceSettings | null;
+  /**
+   * Пакет 04: колекції, відсутні у файлі (старі v1/v2/legacy). При імпорті
+   * такі колекції НЕ перезаписуються — поточні дані зберігаються.
+   */
+  missing: CollectionKey[];
 }
 
-const REQUIRED_ARRAY_KEYS = COLLECTION_KEYS;
+// Пакет 04: колекції хостингу відсутні у старих файлах (v1/v2/legacy) —
+// це НЕ помилка валідації; їхня відсутність фіксується в `missing`, а при
+// імпорті поточний хостинг за замовчуванням зберігається.
+const OPTIONAL_ARRAY_KEYS = new Set<CollectionKey>(['hostingServices', 'hostingPayments']);
+const REQUIRED_ARRAY_KEYS = COLLECTION_KEYS.filter(k => !OPTIONAL_ARRAY_KEYS.has(k));
 
 function emptyCounts(): CollectionCounts {
   return {
@@ -68,6 +78,8 @@ function emptyCounts(): CollectionCounts {
     transactions: 0,
     personalDebts: 0,
     savings: 0,
+    hostingServices: 0,
+    hostingPayments: 0,
   };
 }
 
@@ -367,6 +379,77 @@ function validateSaving(rec: unknown, ctx: Ctx, acc: Acc): Record<string, unknow
 
 type RecordValidator = (rec: unknown, ctx: Ctx, acc: Acc) => unknown;
 
+function validateHostingServiceRecord(rec: unknown, ctx: Ctx, acc: Acc): HostingService | null {
+  if (!isPlainObject(rec)) {
+    acc.errors.push({ collection: ctx.collection, index: ctx.index, message: 'запис має бути об’єктом' });
+    return null;
+  }
+  const name = str(rec.name).trim();
+  if (!name) {
+    acc.errors.push({ collection: ctx.collection, index: ctx.index, id: ctx.id, message: 'відсутня назва послуги' });
+    return null;
+  }
+  if (rec.currency !== undefined && rec.currency !== '' && !(HOSTING_CURRENCIES as readonly string[]).includes(str(rec.currency))) {
+    acc.warnings.push({ collection: ctx.collection, index: ctx.index, id: ctx.id, message: 'невідома валюта — використано UAH' });
+  }
+  if (rec.expectedPrice !== undefined && rec.expectedPrice !== null && toFiniteNumber(rec.expectedPrice) === null) {
+    acc.warnings.push({ collection: ctx.collection, index: ctx.index, id: ctx.id, message: 'некоректна очікувана ціна — поле очищено' });
+  }
+  const service: HostingService = {
+    id: ctx.id,
+    name: name.slice(0, 200),
+    site: str(rec.site).slice(0, 300) || undefined,
+    provider: str(rec.provider).slice(0, 200) || undefined,
+    plan: str(rec.plan).slice(0, 200) || undefined,
+    currency: (HOSTING_CURRENCIES as readonly string[]).includes(str(rec.currency)) ? str(rec.currency) : 'UAH',
+    expectedPrice: toFiniteNumber(rec.expectedPrice) ?? undefined,
+    note: str(rec.note).slice(0, 2000) || undefined,
+    archived: rec.archived === true,
+    createdAt: typeof rec.createdAt === 'string' ? rec.createdAt : undefined,
+  };
+  ctx.id = service.id;
+  return service;
+}
+
+function validateHostingPaymentRecord(rec: unknown, ctx: Ctx, acc: Acc): HostingPayment | null {
+  if (!isPlainObject(rec)) {
+    acc.errors.push({ collection: ctx.collection, index: ctx.index, message: 'запис має бути об’єктом' });
+    return null;
+  }
+  const serviceId = str(rec.serviceId).trim();
+  const date = str(rec.date).trim();
+  const periodStart = str(rec.periodStart).trim();
+  const periodEnd = str(rec.periodEnd).trim();
+  const amount = toFiniteNumber(rec.amount);
+  const bad: string[] = [];
+  if (!validId(rec.serviceId)) bad.push('serviceId');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) bad.push('date');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(periodStart)) bad.push('periodStart');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(periodEnd)) bad.push('periodEnd');
+  if (amount === null || amount <= 0) bad.push('amount');
+  if (bad.length) {
+    acc.errors.push({ collection: ctx.collection, index: ctx.index, id: ctx.id, message: `некоректні поля: ${bad.join(', ')}` });
+    return null;
+  }
+  const payment: HostingPayment = {
+    id: ctx.id,
+    serviceId,
+    date,
+    amount: amount ?? 0,
+    currency: (HOSTING_CURRENCIES as readonly string[]).includes(str(rec.currency)) ? str(rec.currency) : 'UAH',
+    periodStart,
+    periodEnd,
+    note: str(rec.note).slice(0, 2000) || undefined,
+    createdAt: typeof rec.createdAt === 'string' ? rec.createdAt : undefined,
+  };
+  if (periodStart > periodEnd) {
+    acc.errors.push({ collection: ctx.collection, index: ctx.index, id: payment.id, message: 'кінець періоду раніший за початок' });
+    return null;
+  }
+  ctx.id = payment.id;
+  return payment;
+}
+
 const VALIDATORS: Record<CollectionKey, RecordValidator> = {
   projectsActive: (rec, ctx, acc) => validateProject(rec, ctx, acc),
   projectsCompleted: (rec, ctx, acc) => validateProject(rec, ctx, acc),
@@ -376,6 +459,8 @@ const VALIDATORS: Record<CollectionKey, RecordValidator> = {
   transactions: (rec, ctx, acc) => validateTransaction(rec, ctx, acc),
   personalDebts: (rec, ctx, acc) => validateDebt(rec, ctx, acc),
   savings: (rec, ctx, acc) => validateSaving(rec, ctx, acc),
+  hostingServices: (rec, ctx, acc) => validateHostingServiceRecord(rec, ctx, acc),
+  hostingPayments: (rec, ctx, acc) => validateHostingPaymentRecord(rec, ctx, acc),
 };
 
 function detectFormat(raw: Record<string, unknown>): { format: BackupFormat; version: number | null; data: Record<string, unknown> | null } {
@@ -385,7 +470,7 @@ function detectFormat(raw: Record<string, unknown>): { format: BackupFormat; ver
       return { format: 'unknown', version: null, data: null };
     }
     const data = isPlainObject(raw.data) ? raw.data : null;
-    return { format: version >= 2 ? 'v2' : version === 1 ? 'v1' : 'unknown', version, data };
+    return { format: version >= 3 ? 'v3' : version === 2 ? 'v2' : version === 1 ? 'v1' : 'unknown', version, data };
   }
   // Старий (явно визначений) плоский формат: усі колекції на верхньому рівні.
   const hasAllCollections = REQUIRED_ARRAY_KEYS.every(k => Array.isArray(raw[k]));
@@ -404,7 +489,7 @@ export function validateBackup(raw: unknown, options: ValidateBackupOptions = {}
   const skipped = emptyCounts();
 
   const fail = (format: BackupFormat = 'unknown', version: number | null = null, exportedAt: string | null = null): BackupValidation => ({
-    ok: false, format, version, exportedAt, errors, recordIssues, counts, skipped, warnings, content: null, settings: null,
+    ok: false, format, version, exportedAt, errors, recordIssues, counts, skipped, warnings, content: null, settings: null, missing: [],
   });
 
   if (!isPlainObject(raw)) {
@@ -459,8 +544,19 @@ export function validateBackup(raw: unknown, options: ValidateBackupOptions = {}
   const content = emptyCounts() as unknown as BackupContent;
   for (const key of COLLECTION_KEYS) content[key] = [];
 
+  const missing: CollectionKey[] = [];
   for (const key of COLLECTION_KEYS) {
-    const list = data[key] as unknown[];
+    const value = data[key];
+    if (value === undefined) {
+      // Обов'язкові вже перевірені вище; опціональні (хостинг) — фіксуємо.
+      if (OPTIONAL_ARRAY_KEYS.has(key)) missing.push(key);
+      continue;
+    }
+    if (!Array.isArray(value)) {
+      if (OPTIONAL_ARRAY_KEYS.has(key)) errors.push({ collection: key, message: `колекція «${key}» має бути масивом` });
+      continue;
+    }
+    const list = value as unknown[];
     const validator = VALIDATORS[key];
     list.forEach((item, index) => {
       const ctx: Ctx = { collection: key, index, id: '' };
@@ -501,6 +597,18 @@ export function validateBackup(raw: unknown, options: ValidateBackupOptions = {}
     const projectId = typeof t.projectId === 'string' ? t.projectId : '';
     if (projectId && !projects.some(p => p.id === projectId)) {
       warnings.push({ id: t.id, message: `транзакція посилається на невідомий проєкт ${projectId}` });
+    }
+  });
+
+  // Пакет 04: оплати хостингу посилаються лише на наявні картки хостингу.
+  const hostingServiceIds = new Set(content.hostingServices.map(h => h.id));
+  content.hostingPayments.forEach(p => {
+    if (!hostingServiceIds.has(p.serviceId)) {
+      errors.push({
+        collection: 'hostingPayments',
+        id: p.id,
+        message: `оплата хостингу «${p.id}» посилається на невідому картку ${p.serviceId}`,
+      });
     }
   });
 
@@ -545,6 +653,13 @@ export function validateBackup(raw: unknown, options: ValidateBackupOptions = {}
     });
   });
 
+  for (const key of missing) {
+    warnings.push({
+      collection: key,
+      message: `копія не містить колекцію «${key}» (старий формат) — при імпорті поточні дані цієї колекції зберігаються`,
+    });
+  }
+
   const totalRecords = Object.values(counts).reduce((a, b) => a + b, 0);
   const totalSkipped = Object.values(skipped).reduce((a, b) => a + b, 0);
   if (totalSkipped > 0) {
@@ -558,14 +673,14 @@ export function validateBackup(raw: unknown, options: ValidateBackupOptions = {}
   }
 
   if (errors.length) {
-    return { ok: false, format, version, exportedAt, errors, recordIssues, counts, skipped, warnings, content: null, settings };
+    return { ok: false, format, version, exportedAt, errors, recordIssues, counts, skipped, warnings, content: null, settings, missing };
   }
 
   if (options.strict && recordIssues.length > 0) {
     errors.push({
       message: `Строгий режим: ${recordIssues.length} записів містять помилки — імпорт відхилено, дані не замінено`,
     });
-    return { ok: false, format, version, exportedAt, errors, recordIssues, counts, skipped, warnings, content: null, settings };
+    return { ok: false, format, version, exportedAt, errors, recordIssues, counts, skipped, warnings, content: null, settings, missing };
   }
 
   return {
@@ -580,5 +695,6 @@ export function validateBackup(raw: unknown, options: ValidateBackupOptions = {}
     warnings,
     content,
     settings,
+    missing,
   };
 }

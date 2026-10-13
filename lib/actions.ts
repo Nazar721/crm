@@ -1,6 +1,7 @@
 import {fingerprint,records,type Plan} from '@/lib/assistant/plan';
 import type {
-  Client, FinanceSettings, Partner, PersonalDebt, Project, Saving, Specialist, Transaction,
+  Client, FinanceSettings, HostingPayment, HostingService,
+  Partner, PersonalDebt, Project, Saving, Specialist, Transaction,
 } from '@/types';
 import type { FieldError } from '@/lib/validate';
 import {
@@ -8,6 +9,7 @@ import {
   validateEnum, validatePercent, validatePositiveNumber, validateProjectBank, validateRate,
   validateRequiredText, validateTelegram, toFiniteNumber,
 } from '@/lib/validate';
+import { validateHostingPaymentInput, validateHostingServiceInput } from '@/lib/hosting';
 import { autoMyPercent, DEFAULT_MY_SHARE } from '@/lib/my-share';
 import { generateId, today, daysBetween } from '@/lib/utils';
 import * as Storage from '@/lib/storage';
@@ -620,6 +622,123 @@ export const saveDebt = (...args: Parameters<typeof _saveDebt>) => store.atomicA
 export const deleteDebt = (...args: Parameters<typeof _deleteDebt>) => store.atomicAction(() => _deleteDebt(...args));
 export const saveSaving = (...args: Parameters<typeof _saveSaving>) => store.atomicAction(() => _saveSaving(...args));
 export const deleteSaving = (...args: Parameters<typeof _deleteSaving>) => store.atomicAction(() => _deleteSaving(...args));
+
+// ------------------------------------------------------------
+// Хостинг (пакет 04)
+//
+// Ручний облік послуг провайдера: картки та окремі записи оплат.
+// Жодних автоматичних транзакцій «Фінансів» — запис оплати хостингу є
+// лише обліком факту (не підтвердженням продовження у провайдері).
+// Кожна підтверджена оплата — одна група журналу історії (пакет 03).
+// ------------------------------------------------------------
+
+async function _saveHostingService(input: Partial<HostingService>, editId?: string): Promise<ActionResult<HostingService>> {
+  const errors = validateHostingServiceInput(input);
+  if (errors.length) return fail(errors);
+  const list = Storage.getHostingServices();
+  const name = String(input.name ?? '').trim();
+  const normalized: Partial<HostingService> = {
+    name,
+    site: (input.site ?? '').toString().trim() || undefined,
+    provider: (input.provider ?? '').toString().trim() || undefined,
+    plan: (input.plan ?? '').toString().trim() || undefined,
+    currency: input.currency || 'UAH',
+    expectedPrice: input.expectedPrice === undefined || input.expectedPrice === null || input.expectedPrice === ('' as unknown)
+      ? undefined
+      : toFiniteNumber(input.expectedPrice) ?? undefined,
+    note: (input.note ?? '').toString().trim() || undefined,
+  };
+  if (editId) {
+    const index = list.findIndex(h => h.id === editId);
+    if (index < 0) return fail([{ field: 'id', message: 'Послугу хостингу не знайдено' }]);
+    const next: HostingService = { ...list[index], ...normalized, id: editId };
+    list[index] = next;
+    const result = await persist(Storage.saveHostingServices(list));
+    return result.ok ? ok(next) : result;
+  }
+  const record: HostingService = {
+    id: generateId(),
+    name,
+    site: normalized.site,
+    provider: normalized.provider,
+    plan: normalized.plan,
+    currency: normalized.currency,
+    expectedPrice: normalized.expectedPrice,
+    note: normalized.note,
+    archived: false,
+    createdAt: new Date().toISOString(),
+  };
+  const result = await persist(Storage.saveHostingServices([...list, record]));
+  return result.ok ? ok(record) : result;
+}
+
+/** Архівування/повернення з архіву. Фізичне видалення картки в v1 не передбачено. */
+async function _archiveHostingService(id: string, archived: boolean): Promise<ActionResult<HostingService>> {
+  const list = Storage.getHostingServices();
+  const index = list.findIndex(h => h.id === id);
+  if (index < 0) return fail([{ field: 'id', message: 'Послугу хостингу не знайдено' }]);
+  const next: HostingService = { ...list[index], archived };
+  list[index] = next;
+  const result = await persist(Storage.saveHostingServices(list));
+  return result.ok ? ok(next) : result;
+}
+
+async function _saveHostingPayment(input: Partial<HostingPayment>, editId?: string): Promise<ActionResult<HostingPayment>> {
+  const errors = validateHostingPaymentInput(input);
+  if (errors.length) return fail(errors);
+  const serviceId = String(input.serviceId ?? '').trim();
+  if (!Storage.getHostingServices().some(h => h.id === serviceId)) {
+    return fail([{ field: 'serviceId', message: 'Послугу хостингу не знайдено — обери наявну картку' }]);
+  }
+  const amount = toFiniteNumber(input.amount);
+  const list = Storage.getHostingPayments();
+  const normalized: Partial<HostingPayment> = {
+    serviceId,
+    date: String(input.date ?? '').trim(),
+    amount: amount ?? 0,
+    currency: input.currency || 'UAH',
+    periodStart: String(input.periodStart ?? '').trim(),
+    periodEnd: String(input.periodEnd ?? '').trim(),
+    note: (input.note ?? '').toString().trim() || undefined,
+  };
+  if (editId) {
+    const index = list.findIndex(p => p.id === editId);
+    if (index < 0) return fail([{ field: 'id', message: 'Оплату не знайдено' }]);
+    const next: HostingPayment = { ...list[index], ...normalized, id: editId };
+    list[index] = next;
+    const result = await persist(Storage.saveHostingPayments(list));
+    return result.ok ? ok(next) : result;
+  }
+  const record: HostingPayment = {
+    id: generateId(),
+    serviceId: normalized.serviceId!,
+    date: normalized.date!,
+    amount: normalized.amount!,
+    currency: normalized.currency,
+    periodStart: normalized.periodStart!,
+    periodEnd: normalized.periodEnd!,
+    note: normalized.note,
+    createdAt: new Date().toISOString(),
+  };
+  const result = await persist(Storage.saveHostingPayments([...list, record]));
+  return result.ok ? ok(record) : result;
+}
+
+/** Видалення окремої помилкової оплати: явна дія UI з підтвердженням. */
+async function _deleteHostingPayment(id: string): Promise<ActionResult> {
+  const list = Storage.getHostingPayments();
+  if (!list.some(p => p.id === id)) return fail([{ field: 'id', message: 'Оплату не знайдено' }]);
+  return persist(Storage.saveHostingPayments(list.filter(p => p.id !== id)));
+}
+
+export const saveHostingService = (...args: Parameters<typeof _saveHostingService>) =>
+  store.atomicAction(() => _saveHostingService(...args));
+export const archiveHostingService = (...args: Parameters<typeof _archiveHostingService>) =>
+  store.atomicAction(() => _archiveHostingService(...args));
+export const saveHostingPayment = (...args: Parameters<typeof _saveHostingPayment>) =>
+  store.atomicAction(() => _saveHostingPayment(...args), { source: 'Форма', hint: 'payment' });
+export const deleteHostingPayment = (...args: Parameters<typeof _deleteHostingPayment>) =>
+  store.atomicAction(() => _deleteHostingPayment(...args));
 export const saveRates = (...args: Parameters<typeof _saveRates>) => store.atomicAction(() => _saveRates(...args));
 export const setDisplayCurrency = (...args: Parameters<typeof _setDisplayCurrency>) => store.atomicAction(() => _setDisplayCurrency(...args));
 
@@ -673,6 +792,8 @@ export const applyAssistantPlan=(plan:Plan):Promise<ActionResult<unknown>>=>plan
     case 'finance':return remove?_deleteTransaction(id!):_saveTransaction(input,edit);
     case 'payments':return _recordProjectPayment(id!,fields as {amount:number;bank?:string;date?:string;description?:string});
     case 'specialists':return remove?_deleteSpecialist(id!):_saveSpecialist(input,edit);
+    case 'hosting':return remove?fail([{field:'action',message:'Картку хостингу не видаляють — використай архів (archived: true)'}]):_saveHostingService(fields,edit);
+    case 'hostingPayments':return remove?_deleteHostingPayment(id!):_saveHostingPayment(fields,edit);
     case 'partners':return remove?_deletePartner(id!):_savePartner(input,edit);
     case 'debts':return remove?_deleteDebt(id!):_saveDebt(input,edit);
     case 'savings':return remove?_deleteSaving(id!):_saveSaving(input,edit);

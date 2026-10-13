@@ -48,6 +48,8 @@ const EMPTY_SNAPSHOT: DataSnapshot = {
   transactions: [],
   personalDebts: [],
   savings: [],
+  hostingServices: [],
+  hostingPayments: [],
   financeSettings: { usdRate: 41, eurRate: 44, usdtRate: 41, displayCurrency: 'UAH' },
   meta: { lastSavedAt: '', lastManualBackupAt: '', backupSnoozedUntil: '' },
 };

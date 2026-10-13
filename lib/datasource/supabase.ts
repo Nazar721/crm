@@ -35,6 +35,13 @@ export class SupabaseDataSource implements CrmDataSource {
     const row = result.data as {revision:number;snapshot:DataSnapshot};
     if (!row || !Number.isSafeInteger(row.revision) || !row.snapshot) throw new Error('Некоректна відповідь бази');
     this.current = row.snapshot; this.revision = row.revision; this.blocked = null; this.issues = [];
+    // Пакет 04: новий клієнт потребує колекцій хостингу в базі. Без міграції
+    // 004 старий crm_commit проігнорував би хостинг-ключі (тиха втрата даних) —
+    // тому запис блокується до застосування supabase/004-hosting.sql.
+    const snapshotRecord = row.snapshot as unknown as Record<string, unknown>;
+    if (!Array.isArray(snapshotRecord.hostingServices) || !Array.isArray(snapshotRecord.hostingPayments)) {
+      this.blocked = 'У базі ще немає колекцій хостингу: застосуй supabase/004-hosting.sql (пакет 04) і онови сторінку.';
+    }
     return {data:structuredClone(this.current),issues:[],corruptRaw:{}};
   }
   async saveSnapshot(next: DataSnapshot): Promise<WriteOutcome> {

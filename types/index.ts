@@ -151,9 +151,45 @@ export interface BackupInfo {
   importIncident?: ImportIncident | null;
 }
 
+// Пакет 04: хостинг — ручний облік послуг провайдера.
+// Назва проєкту — звичайний текст (без projectId/clientId); зв'язок
+// оплат існує лише всередині «Хостингу». Паролі/API-ключі не зберігаються.
+export interface HostingService {
+  id: string;
+  /** Назва проєкту/послуги — ручний текст, без карток «Проєктів». */
+  name: string;
+  /** Сайт/домен (необов'язково). */
+  site?: string;
+  provider?: string;
+  /** Тариф у провайдера (довільний текст). */
+  plan?: string;
+  currency?: string;
+  /** Очікувана ціна наступного продовження (оцінка, не факт). */
+  expectedPrice?: number;
+  note?: string;
+  /** Архівний стан; відсутній/ false — активний. Фізичне видалення в v1 не пропонується. */
+  archived?: boolean;
+  createdAt?: string;
+}
+
+/** Оплата провайдеру за карткою хостингу (не транзакція «Фінансів»). */
+export interface HostingPayment {
+  id: string;
+  serviceId: string;
+  /** Дата оплати — для підсумків витрат. */
+  date: string;
+  amount: number;
+  currency?: string;
+  /** Оплачений період: день завершення включно оплачений. */
+  periodStart: string;
+  periodEnd: string;
+  note?: string;
+  createdAt?: string;
+}
+
 // Export data
 export const EXPORT_FORMAT_ID = 'WebAgency CRM';
-export const EXPORT_SCHEMA_VERSION = 2;
+export const EXPORT_SCHEMA_VERSION = 3;
 
 export interface ExportData {
   projectsActive: Project[];
@@ -164,6 +200,9 @@ export interface ExportData {
   transactions: Transaction[];
   personalDebts: PersonalDebt[];
   savings: Saving[];
+  /** Пакет 04. У старих файлах (v1/v2) ключі відсутні — див. validate-backup. */
+  hostingServices: HostingService[];
+  hostingPayments: HostingPayment[];
 }
 
 export interface ExportPayload {

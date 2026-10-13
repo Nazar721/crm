@@ -26,6 +26,7 @@ const navSections = [
       { href: '/finance', label: 'Фінанси', icon: 'card', badge: null },
       { href: '/debts', label: 'Борги', icon: 'dollar', badge: null },
       { href: '/savings', label: 'Відкладення', icon: 'wallet', badge: null },
+      { href: '/hosting', label: 'Хостинг', icon: 'target', badge: null },
     ],
   },
   {

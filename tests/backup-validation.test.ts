@@ -21,6 +21,8 @@ function payload(overrides: Partial<Record<string, unknown>> = {}): ExportPayloa
       transactions: [makeTransaction()],
       personalDebts: [],
       savings: [],
+      hostingServices: [],
+      hostingPayments: [],
     },
     financeSettings: { usdRate: 40, eurRate: 45, usdtRate: 40, displayCurrency: 'UAH' },
     ...overrides,
@@ -66,6 +68,8 @@ test('старий (legacy-flat) формат підтримується явн�
     transactions: [],
     personalDebts: [],
     savings: [],
+    hostingServices: [],
+    hostingPayments: [],
   };
   const result = validateBackup(legacy);
   assert.equal(result.ok, true);

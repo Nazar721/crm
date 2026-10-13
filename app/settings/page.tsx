@@ -216,6 +216,7 @@ function SettingsTabsBody() {
       const emptyCounts = {
         projectsActive: 0, projectsCompleted: 0, clients: 0, specialists: 0,
         partners: 0, transactions: 0, personalDebts: 0, savings: 0,
+        hostingServices: 0, hostingPayments: 0,
       };
       let parsed: unknown;
       try {
@@ -230,7 +231,7 @@ function SettingsTabsBody() {
             ok: false, format: 'unknown', version: null, exportedAt: null,
             errors: [{ message }],
             recordIssues: [], counts: { ...emptyCounts }, skipped: { ...emptyCounts },
-            warnings: [], content: null, settings: null,
+            warnings: [], content: null, settings: null, missing: [],
           },
           previousCounts: { ...emptyCounts },
           previousTotal: 0,

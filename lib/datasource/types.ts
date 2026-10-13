@@ -20,6 +20,8 @@ export const COLLECTION_KEYS = [
   'transactions',
   'personalDebts',
   'savings',
+  'hostingServices',
+  'hostingPayments',
 ] as const;
 
 export type CollectionKey = (typeof COLLECTION_KEYS)[number];

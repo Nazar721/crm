@@ -393,6 +393,7 @@ const REFERENCES: Record<string, RefTarget> = {
   specialists: { from: ['projectsActive', 'projectsCompleted'], keys: ['developerId'] },
   partners: { from: ['projectsActive', 'projectsCompleted'], keys: ['partnerId'] },
   projects: { from: ['transactions'], keys: ['projectId'] },
+  hostingServices: { from: ['hostingPayments'], keys: ['serviceId'] },
 };
 
 const REF_TARGET_COLLECTIONS: Record<string, CollectionKey[]> = {
@@ -400,6 +401,7 @@ const REF_TARGET_COLLECTIONS: Record<string, CollectionKey[]> = {
   developerId: ['specialists'],
   partnerId: ['partners'],
   projectId: ['projectsActive', 'projectsCompleted'],
+  serviceId: ['hostingServices'],
 };
 
 function idSet(list: unknown[]): Set<string> {
@@ -700,7 +702,7 @@ export function normalizeHistoryEvent(raw: unknown): HistoryEvent | null {
   const r = raw as Record<string, unknown>;
   if (typeof r.id !== 'string' || !r.id.trim() || r.id.length > 100) return null;
   if (typeof r.at !== 'string' || Number.isNaN(Date.parse(r.at))) return null;
-  const section = (['projects', 'clients', 'finance', 'specialists', 'partners', 'debts', 'savings', 'settings', 'import'] as const)
+  const section = (['projects', 'clients', 'finance', 'specialists', 'partners', 'debts', 'savings', 'hosting', 'settings', 'import'] as const)
     .find(s => s === r.section);
   if (!section) return null;
   const action = (['create', 'update', 'delete', 'complete', 'payment', 'settings', 'import', 'restore', 'undo'] as const)
