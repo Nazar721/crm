@@ -1,6 +1,6 @@
-const CACHE_NAME = 'webagency-crm-v3';
-const STATIC_CACHE = 'webagency-crm-static-v3';
-const DYNAMIC_CACHE = 'webagency-crm-dynamic-v3';
+const CACHE_NAME = 'webagency-crm-v4';
+const STATIC_CACHE = 'webagency-crm-static-v4';
+const DYNAMIC_CACHE = 'webagency-crm-dynamic-v4';
 
 const STATIC_ASSETS = [
   '/icon-192x192.png',
@@ -60,13 +60,14 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       caches.open(STATIC_CACHE).then((cache) => {
         return cache.match(request).then((cached) => {
-          if (cached) return cached;
-          return fetch(request).then((response) => {
+          const network = fetch(request).then(async (response) => {
             if (response.ok) {
-              cache.put(request, response.clone());
+              await cache.put(request, response.clone());
             }
             return response;
           });
+          event.waitUntil(network.catch(() => {}));
+          return cached || network;
         });
       })
     );
