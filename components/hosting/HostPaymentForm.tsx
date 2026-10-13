@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import Modal from '@/components/ui/Modal';
 import ModalFooter from '@/components/ui/ModalFooter';
 import { HOSTING_CURRENCIES } from '@/lib/hosting';
+import { kyivDateString } from '@/lib/dates';
 import type { HostingPayment, HostingService } from '@/types';
 
 // ============================================================
@@ -44,7 +45,8 @@ export default function HostPaymentForm({
       setPeriodEnd(payment.periodEnd || '');
       setNote(payment.note || '');
     } else {
-      const today = new Date().toISOString().slice(0, 10);
+      // Kyiv-«сьогодні»: UTC-зріз біля півночі Kyiv дав би вчора.
+      const today = kyivDateString(new Date()) || new Date().toISOString().slice(0, 10);
       setDate(today);
       setAmount('');
       setCurrency(defaultCurrency || 'UAH');

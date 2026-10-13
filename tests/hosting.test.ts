@@ -4,8 +4,9 @@ import assert from 'node:assert/strict';
 import {
   addCalendarDays, addCalendarMonths, coverageOn, filterHostingServices,
   hostingCoverage, hostingSummary, hostingTotalsByCurrency, lastPaymentOf,
-  paymentsOfService, proposeExtension,
+  mergePeriods, paymentsOfService, proposeExtension,
 } from '@/lib/hosting';
+import { kyivDateString } from '@/lib/dates';
 import {
   applyAssistantPlan, archiveHostingService, deleteHostingPayment, saveHostingPayment, saveHostingService,
 } from '@/lib/actions';
@@ -142,6 +143,49 @@ test('підсумки та фільтри сторінки', () => {
   assert.equal(found[0].service.id, 'a');
   assert.equal(filterHostingServices(services, payments, { status: 'overdue' })[0].service.id, 'c');
   assert.equal(filterHostingServices(services, payments, { provider: 'Інший' })[0].service.id, 'c');
+});
+
+test('злиття періодів: безперервний ланцюжок, перекриття, хаос, прогалина', () => {
+  // Репродукція огляду: 01.01–31.01 + 01.02–31.12 при 20.01 → покриття до 31.12.
+  const s = service();
+  const payments = [
+    payment({ id: 'p1', date: '2025-12-20', periodStart: '2026-01-01', periodEnd: '2026-01-31' }),
+    payment({ id: 'p2', date: '2025-12-21', periodStart: '2026-02-01', periodEnd: '2026-12-31' }),
+  ];
+  const day = '2026-01-20';
+  const coverage = hostingCoverage(s, payments, day);
+  assert.equal(coverage.coverageEnd, '2026-12-31', 'суміжні періоди злиті в безперервне покриття');
+  assert.equal(coverage.status, 'paid', 'не «закінчується» через штучний розрив');
+  const proposed = proposeExtension(s, payments, 12, day)!;
+  assert.deepEqual(proposed, { start: '2027-01-01', end: '2027-12-31' }, 'продовження після РЕАЛЬНОГО кінця, не після першого періоду');
+
+  // Перекриття та хаотичний порядок
+  const overlap = mergePeriods([
+    { start: '2026-03-01', end: '2026-04-15' },
+    { start: '2026-04-01', end: '2026-05-01' },
+    { start: '2026-01-01', end: '2026-01-31' },
+  ]);
+  assert.deepEqual(overlap, [
+    { start: '2026-01-01', end: '2026-01-31' },
+    { start: '2026-03-01', end: '2026-05-01' },
+  ]);
+  // Справжня прогалина НЕ зливається; майбутня суто окрема оплата не дає покриття сьогодні
+  const gap = hostingCoverage(s, [
+    payment({ id: 'a', periodStart: '2026-01-01', periodEnd: '2026-01-31' }),
+    payment({ id: 'b', date: '2026-03-01', periodStart: '2026-03-15', periodEnd: '2027-03-14' }),
+  ], day);
+  assert.equal(gap.coverageEnd, '2026-01-31', 'береться лише ланцюжок, що містить сьогодні');
+  assert.equal(gap.nextPeriod!.start, '2026-03-15', 'окремий майбутній період не зливається');
+  assert.equal(gap.hasGap, false, 'сьогодні покрито періодом A — прогалини немає');
+  assert.equal(gap.status, 'ending', 'закінчується через 11 днів, але не «прострочено»');
+  // Архів: злиття не впливає на статус
+  assert.equal(hostingCoverage(service({ archived: true }), payments, day).status, 'archived');
+});
+
+test('Kyiv-півниця: дата за замовчуванням оплати не «вчора» біля ночі', () => {
+  // 22:30Z восени (UTC+3) → 01:30 наступного дня Kyiv.
+  assert.equal(kyivDateString(new Date('2026-10-13T22:30:00Z')), '2026-10-14');
+  assert.equal(kyivDateString(new Date('2026-10-13T20:30:00Z')), '2026-10-13', 'до півночі Kyiv — той самий день (23:30)');
 });
 
 // ------------------------------------------------------------

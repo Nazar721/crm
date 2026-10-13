@@ -10,7 +10,7 @@ import {
   validateRequiredText, validateTelegram, toFiniteNumber,
 } from '@/lib/validate';
 import { validateHostingPaymentInput, validateHostingServiceInput } from '@/lib/hosting';
-import { snoozeReminderIso, taskDateTimeFields, validateTaskInput } from '@/lib/tasks';
+import { snoozeReminderIso, taskDateTimeFields, validateTaskInput, type TaskDraftInput } from '@/lib/tasks';
 import { autoMyPercent, DEFAULT_MY_SHARE } from '@/lib/my-share';
 import { generateId, today, daysBetween } from '@/lib/utils';
 import * as Storage from '@/lib/storage';
@@ -747,9 +747,6 @@ export const deleteHostingPayment = (...args: Parameters<typeof _deleteHostingPa
 // Виконання завдання «оплатити» НЕ створює транзакцій «Фінансів».
 // ------------------------------------------------------------
 
-/** Вхід збереження: поля завдання + календарні значення нагадування від AI/форми. */
-export type TaskDraftInput = Partial<Task> & { reminderDate?: string; reminderTime?: string; reminderClear?: boolean };
-
 async function _saveTask(input: TaskDraftInput, editId?: string): Promise<ActionResult<Task>> {
   // Створення: назва обов'язкова. Редагування: назва обов'язкова лише якщо
   // її передано (часткове оновлення статусу/нагадування — без назви).
@@ -779,12 +776,14 @@ async function _saveTask(input: TaskDraftInput, editId?: string): Promise<Action
       // Явне прибирання нагадування (дедлайн не змінюється).
       delete next.reminderAt;
       delete next.reminderShownAt;
-    } else if (input.reminderDate !== undefined || input.reminderTime !== undefined) {
-      // Явне оновлення нагадування календарними значеннями: неповні дані
-      // (без часу) СКАСОВУЮТЬ нагадування — година не вигадується.
+    } else if (input.reminderDate && input.reminderTime) {
+      // Явне оновлення: ЛИШЕ повна пара дата+час (неповна відхилена
+      // validateTaskInput — чинне нагадування не видаляється мовчки).
       const dates = taskDateTimeFields({ reminderDate: input.reminderDate, reminderTime: input.reminderTime });
-      if (dates.reminderAt) next.reminderAt = dates.reminderAt; else delete next.reminderAt;
-      delete next.reminderShownAt;
+      if (dates.reminderAt) {
+        next.reminderAt = dates.reminderAt;
+        delete next.reminderShownAt;
+      }
     } else if (input.reminderAt !== undefined) {
       if (input.reminderAt && Number.isFinite(Date.parse(input.reminderAt))) next.reminderAt = input.reminderAt;
       else delete next.reminderAt;

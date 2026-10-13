@@ -6,6 +6,7 @@ import { normalizeSettings } from '@/lib/settings';
 import { kyivDateString } from '@/lib/dates';
 import { toFiniteNumber } from '@/lib/validate';
 import { HOSTING_CURRENCIES } from '@/lib/hosting';
+import { isValidTaskDate, isValidTaskTime } from '@/lib/tasks';
 
 // ============================================================
 // Runtime-валідація backup. Невідомий JSON відхиляється ДО будь-якого
@@ -465,11 +466,12 @@ function validateTaskRecord(rec: unknown, ctx: Ctx, acc: Acc): Task | null {
   const status = (['planned', 'done', 'cancelled'] as const).includes(str(rec.status) as TaskStatus) ? str(rec.status) as TaskStatus : 'planned';
   const dueDate = str(rec.dueDate).trim();
   const dueTime = str(rec.dueTime).trim();
-  if (dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
-    acc.warnings.push({ collection: ctx.collection, index: ctx.index, id: ctx.id, message: 'некоректний дедлайн — поле очищено' });
+  // Строга календарна перевірка («30 лютого» та 25:99 відкидаються).
+  if (dueDate && !isValidTaskDate(dueDate)) {
+    acc.warnings.push({ collection: ctx.collection, index: ctx.index, id: ctx.id, message: 'некоректний дедлайн (реальна дата) — поле очищено' });
   }
-  if (dueTime && !/^\d{2}:\d{2}$/.test(dueTime)) {
-    acc.warnings.push({ collection: ctx.collection, index: ctx.index, id: ctx.id, message: 'некоректний час дедлайну — поле очищено' });
+  if (dueTime && !isValidTaskTime(dueTime)) {
+    acc.warnings.push({ collection: ctx.collection, index: ctx.index, id: ctx.id, message: 'некоректний час дедлайну (00:00–23:59) — поле очищено' });
   }
   const task: Task = {
     id: ctx.id,
@@ -477,8 +479,8 @@ function validateTaskRecord(rec: unknown, ctx: Ctx, acc: Acc): Task | null {
     description: str(rec.description).slice(0, 2000) || undefined,
     priority,
     status,
-    dueDate: /^\d{4}-\d{2}-\d{2}$/.test(dueDate) ? dueDate : undefined,
-    dueTime: /^\d{2}:\d{2}$/.test(dueTime) ? dueTime : undefined,
+    dueDate: isValidTaskDate(dueDate) ? dueDate : undefined,
+    dueTime: isValidTaskTime(dueTime) ? dueTime : undefined,
     reminderAt: typeof rec.reminderAt === 'string' && Number.isFinite(Date.parse(rec.reminderAt)) ? rec.reminderAt : undefined,
     reminderShownAt: typeof rec.reminderShownAt === 'string' && Number.isFinite(Date.parse(rec.reminderShownAt)) ? rec.reminderShownAt : undefined,
     createdAt: typeof rec.createdAt === 'string' ? rec.createdAt : undefined,

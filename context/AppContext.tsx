@@ -8,6 +8,7 @@ import * as store from '@/lib/store';
 import { runMigrations, type MigrationReport } from '@/lib/migrations';
 import { emitToast } from '@/lib/toast-bus';
 import { dueReminders, inAppRemindersEnabled } from '@/lib/tasks';
+import { createReminderDeliveryGate, deliverDueReminders } from '@/lib/reminder-delivery';
 import { markRemindersShown } from '@/lib/actions';
 
 interface BadgeCounts {
@@ -95,27 +96,40 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return store.subscribe(sync);
   }, []);
 
-  // Пакет 05: сповіщення про нагадування ПОКАЗУЮТЬСЯ, поки застосунок
-  // відкритий (періодична перевірка + повернення на вкладку/фокус).
-  // Не є push при закритому застосунку. Захист від повторного показу —
-  // стійка позначка reminderShownAt у колекції (узгоджується між
-  // пристроями); показ виконується ОДНІЄЮ групою після успіху.
+  // Пакет 05 (огляд 04–06): показ нагадувань поки застосунок відкритий.
+  // Оркестрація винесена в чистий модуль lib/reminder-delivery.ts:
+  // показується ВСЯ пачка due (без прихованого slice), позначається лише
+  // реально показане; прихована вкладка не споживає нагадування; in-flight
+  // guard — проти одночасних interval/focus/visibility; збій позначки →
+  // синхронізація стану (reloadStore) без сліпого повтору. Push при
+  // закритому застосунку не реалізований і не обіцяється.
+  const deliveryGate = useRef(createReminderDeliveryGate());
   useEffect(() => {
     if (status !== 'ready') return;
     const check = () => {
-      try {
-        if (!inAppRemindersEnabled()) return;
-        const due = dueReminders(store.getSnapshot().tasks);
-        if (!due.length) return;
-        due.slice(0, 3).forEach(task => {
-          emitToast(`Нагадування: «${task.title}»${task.dueDate ? ` (дедлайн ${task.dueDate})` : ''}`, 'info');
+      void deliveryGate.current.run(async () => {
+        const result = await deliverDueReminders({
+          tasks: store.getSnapshot().tasks,
+          enabled: inAppRemindersEnabled(),
+          visible: document.visibilityState === 'visible',
+          deliver: task => {
+            emitToast(`Нагадування: «${task.title}»${task.dueDate ? ` (дедлайн ${task.dueDate})` : ''}`, 'info');
+          },
+          claim: async ids => {
+            const outcome = await markRemindersShown(ids);
+            if (outcome.ok) setBadges(countBadges(store.getSnapshot()));
+            return outcome;
+          },
+          onClaimFailed: () => {
+            // Конкурентна доставка або застарілий snapshot: перечитати
+            // актуальний стан; наступна перевірка вже без сліпого повтору.
+            void store.reloadStore()
+              .then(() => setBadges(countBadges(store.getSnapshot())))
+              .catch(() => undefined);
+          },
         });
-        void markRemindersShown(due.map(t => t.id)).then(result => {
-          if (result.ok) setBadges(countBadges(store.getSnapshot()));
-        });
-      } catch {
-        // Перевірка нагадувань не повинна ламати роботу застосунку.
-      }
+        void result;
+      });
     };
     const interval = window.setInterval(check, 60_000);
     const onVisible = () => { if (document.visibilityState === 'visible') check(); };

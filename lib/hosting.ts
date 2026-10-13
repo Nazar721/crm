@@ -52,6 +52,25 @@ function toPeriod(payment: HostingPayment): HostingPeriod | null {
   return { start, end };
 }
 
+/**
+ * Злиття суміжних/перекривних періодів (кінець включний: 31.01 + 01.02 →
+ * один ланцюжок). Безперервне оплачене покриття не розривається штучно;
+ * справжня прогалина (наступний старт > end+1) не зливається.
+ */
+export function mergePeriods(periods: HostingPeriod[]): HostingPeriod[] {
+  const sorted = [...periods].sort((a, b) => a.start.localeCompare(b.start));
+  const merged: HostingPeriod[] = [];
+  for (const period of sorted) {
+    const last = merged[merged.length - 1];
+    if (last && period.start <= addCalendarDays(last.end, 1)) {
+      if (period.end > last.end) last.end = period.end;
+    } else {
+      merged.push({ ...period });
+    }
+  }
+  return merged;
+}
+
 /** Покриття на день: існує період із start ≤ day ≤ end (день кінця включно). */
 export function coverageOn(periods: HostingPeriod[], day: string): HostingPeriod | null {
   let best: HostingPeriod | null = null;
@@ -96,8 +115,11 @@ export function hostingCoverage(
     if (period) periods.push(period);
   }
   const last = lastPaymentOf(own);
-  const covered = coverageOn(periods, day);
-  const future = periods
+  // Оплачені періоди зливаються: безперервний ланцюжок 01.01–31.01 + 01.02–31.12
+  // має покриття до 31.12 (пропонувати оплачений час повторно — помилка).
+  const merged = mergePeriods(periods);
+  const covered = coverageOn(merged, day);
+  const future = merged
     .filter(p => p.start > day)
     .sort((a, b) => a.start.localeCompare(b.start));
   const nextPeriod = future.length ? { start: future[0].start, end: future[0].end } : null;

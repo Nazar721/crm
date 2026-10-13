@@ -195,6 +195,12 @@ export function missingQuestions(plan:Omit<Plan,'base'>,s:DataSnapshot){
  // повторній/confirm — тобто запис без вибору неможливий.
  const list:{key:string;prompt:string;options?:string[]}[]=plan.copyClientMissing?[{key:'client',prompt:'Картку клієнта для копії не вибрано (її видалено або не існує). Оберіть чинного клієнта — вкажіть точне ім’я або ID — або підтвердьте створення нової картки окремою дією.'}]:[];
  if(plan.action==='delete')return list;
+ // Пакет 05/огляд: явно заплановане нагадування без пари дата/час → уточнення.
+ if(plan.domain==='tasks'){
+  const f=plan.fields;
+  if(f.reminderDate&& !f.reminderTime)list.push({key:'reminderTime',prompt:'Вкажіть час нагадування (HH:MM, Kyiv) — без часу нагадування не планується'});
+  if(!f.reminderDate&& f.reminderTime)list.push({key:'reminderDate',prompt:'Вкажіть дату нагадування (YYYY-MM-DD, Kyiv) — без дати нагадування не планується'});
+ }
  const required:Partial<Record<AssistantDomain,string[]>>={projects:['name','type','clientName','budget'],clients:['name'],finance:['type','amount','bank'],payments:['amount'],specialists:['name','specialization'],partners:['name'],debts:['type','person','amount'],savings:['bank','goal'],hosting:['name'],hostingPayments:['serviceId','amount','periodStart','periodEnd'],tasks:['title']};
  const previous=plan.action==='update'&&plan.domain!=='payments'?records(plan.domain,s).find(x=>x.id===plan.recordId):undefined;
  const input={...previous,...plan.fields};

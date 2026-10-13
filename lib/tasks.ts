@@ -41,13 +41,29 @@ export interface TaskSchedule {
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^\d{2}:\d{2}$/;
+/** ISO-інстант з явною таймзоною (Z або ±HH:MM) — не «насолений» момент. */
+const ISO_INSTANT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:?\d{2})$/;
 
+/**
+ * Реальна календарна дата: round-trip через Date.UTC — «30 лютого»
+ * відкидається (Date.parse нормалізує його на березень).
+ */
 export function isValidTaskDate(value: string): boolean {
-  return DATE_RE.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
+  if (!DATE_RE.test(value)) return false;
+  const [y, m, d] = value.split('-').map(Number);
+  const parsed = new Date(Date.UTC(y, m - 1, d));
+  return parsed.getUTCFullYear() === y && parsed.getUTCMonth() === m - 1 && parsed.getUTCDate() === d;
 }
 
+/** Час: години 00–23, хвилини 00–59 (не лише regex-формат). */
 export function isValidTaskTime(value: string): boolean {
-  return TIME_RE.test(value);
+  if (!TIME_RE.test(value)) return false;
+  const [h, min] = value.split(':').map(Number);
+  return h >= 0 && h <= 23 && min >= 0 && min <= 59;
+}
+
+export function isIsoInstant(value: string): boolean {
+  return ISO_INSTANT_RE.test(value) && Number.isFinite(Date.parse(value));
 }
 
 export function taskSchedule(task: Task, now: Date = new Date()): TaskSchedule {
@@ -152,8 +168,11 @@ export function filterTasks(
 // Валідація та нормалізація (форма + AI).
 // ------------------------------------------------------------
 
+/** Вхід збереження: поля завдання + календарні значення нагадування (форма/AI). */
+export type TaskDraftInput = Partial<Task> & { reminderDate?: string; reminderTime?: string; reminderClear?: boolean };
+
 export function validateTaskInput(
-  input: Partial<Task>,
+  input: TaskDraftInput,
   options: { requireTitle?: boolean } = {},
 ): { field: string; message: string }[] {
   const errors: { field: string; message: string }[] = [];
@@ -168,8 +187,19 @@ export function validateTaskInput(
   if (input.status !== undefined && String(input.status) !== '' && !(TASK_STATUSES as readonly string[]).includes(String(input.status))) {
     errors.push({ field: 'status', message: 'Статус: planned, done або cancelled' });
   }
-  if (input.dueDate && !isValidTaskDate(input.dueDate)) errors.push({ field: 'dueDate', message: 'Дата дедлайну: YYYY-MM-DD (Kyiv)' });
-  if (input.dueTime && !isValidTaskTime(input.dueTime)) errors.push({ field: 'dueTime', message: 'Час дедлайну: HH:MM (Kyiv)' });
+  if (input.dueDate && !isValidTaskDate(input.dueDate)) errors.push({ field: 'dueDate', message: 'Дата дедлайну: реальна календарна дата YYYY-MM-DD (Kyiv)' });
+  if (input.dueTime && !isValidTaskTime(input.dueTime)) errors.push({ field: 'dueTime', message: 'Час дедлайну: HH:MM від 00:00 до 23:59 (Kyiv)' });
+  if (input.reminderDate && !isValidTaskDate(input.reminderDate)) errors.push({ field: 'reminderDate', message: 'Дата нагадування: реальна календарна дата YYYY-MM-DD (Kyiv)' });
+  if (input.reminderTime && !isValidTaskTime(input.reminderTime)) errors.push({ field: 'reminderTime', message: 'Час нагадування: HH:MM від 00:00 до 23:59 (Kyiv)' });
+  // Неповне нагадування — явна помилка, а НЕ мовчкивий clear чинного.
+  if ((input.reminderDate && !input.reminderTime) || (!input.reminderDate && input.reminderTime)) {
+    errors.push({ field: 'reminderTime', message: 'Для нагадування потрібні І дата, І час (Kyiv) — або залиште обидва поля порожніми' });
+  }
+  // Прямий момент — лише однозначний ISO-інстант з таймзоною.
+  if (input.reminderAt !== undefined && input.reminderAt !== null && String(input.reminderAt) !== ''
+    && !isIsoInstant(String(input.reminderAt))) {
+    errors.push({ field: 'reminderAt', message: 'Момент нагадування: ISO-інстант з таймзоною (напр. 2026-10-14T07:00:00.000Z)' });
+  }
   return errors;
 }
 

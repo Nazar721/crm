@@ -3,7 +3,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   browserNotificationsSupported, dueReminders, filterTasks, inAppRemindersEnabled,
-  isReminderDue, reminderIdsToMark, setInAppRemindersEnabled, snoozeReminderIso,
+  isReminderDue, isIsoInstant, isValidTaskDate, isValidTaskTime,
+  reminderIdsToMark, setInAppRemindersEnabled, snoozeReminderIso,
   taskCounts, taskDateTimeFields, taskSchedule, validateTaskInput,
 } from '@/lib/tasks';
 import { kyivDateTimeToIso } from '@/lib/dates';
@@ -102,6 +103,30 @@ test('нормалізація дат: нагадування лише за яв
   assert.ok(snoozeReminderIso('2026-10-14', '10:00', new Date('2026-10-13T12:00:00Z')));
   assert.deepEqual(validateTaskInput({ title: '' }).map(e => e.field), ['title']);
   assert.equal(validateTaskInput({ title: 'OK', priority: 'urgent' as never }).some(e => e.field === 'priority'), true);
+  // Строгість: «30 лютого» та 25:99 відкидаються (огляд 04–06)
+  assert.equal(isValidTaskDate('2026-02-30'), false, '30 лютого не існує');
+  assert.equal(isValidTaskDate('2024-02-29'), true, 'високосний 29 лютого — ок');
+  assert.equal(isValidTaskTime('25:99'), false);
+  assert.equal(isValidTaskTime('23:59'), true);
+  // Однозначний ISO-інстант: з таймзоною — так; без — ні (огляд 04–06)
+  assert.equal(isIsoInstant('2026-10-14T07:00:00Z'), true);
+  assert.equal(isIsoInstant('2026-10-14T07:00:00+03:00'), true);
+  assert.equal(isIsoInstant('2026-10-14T07:00:00'), false, 'без таймзонои — неоднозначний');
+  assert.equal(
+    validateTaskInput({ title: 'OK', reminderAt: '2026-10-14T07:00:00' }).some(e => e.field === 'reminderAt'),
+    true,
+    'прямий reminderAt без таймзонои відхиляється',
+  );
+  // AI: неповне нагадування → уточнення в missingQuestions
+  const planPartial = normalizePlan(
+    { domain: 'tasks', action: 'create', fields: { title: 'X', reminderDate: '2026-10-19' } },
+    emptySnapshot(),
+  );
+  assert.deepEqual(
+    missingQuestions(planPartial, emptySnapshot()).map(q => q.key),
+    ['reminderTime'],
+    'без часу — уточнення, не мовчкивий запуск',
+  );
 });
 
 // ------------------------------------------------------------
@@ -141,9 +166,14 @@ test('дії: нагадування — лише явна дата+час; пе
   const t = store.getSnapshot().tasks[0];
   assert.equal(t.reminderAt, kyivDateTimeToIso('2026-01-19', '10:00'));
   assert.equal(t.dueDate, '2026-10-20');
-  // Без часу нагадування не створюється
-  await saveTask({ title: 'Без часу', reminderDate: '2026-10-19' });
-  assert.equal(store.getSnapshot().tasks[1].reminderAt, undefined);
+  // Неповне нагадування (дата без часу) → явна помилка, не мовчкивий запуск
+  const incomplete = await saveTask({ title: 'Без часу', reminderDate: '2026-10-19' });
+  assert.equal(incomplete.ok, false, 'неповна пара дата/час — відмова');
+  assert.equal(store.getSnapshot().tasks.length, 1, 'жодного часткового запису');
+  // Часткове редагування (лише дата) НЕ прибирає чинне нагадування мовчки
+  const partial = await saveTask({ reminderDate: '2026-01-20' }, t.id);
+  assert.equal(partial.ok, false, 'часткова зміна нагадування — відмова, чинне збережено');
+  assert.equal(store.getSnapshot().tasks[0].reminderAt, t.reminderAt, 'чинне нагадування недоторкане');
   // Перенесення: дедлайн не змінюється; показ скидається
   await markRemindersShown([t.id]);
   assert.ok(store.getSnapshot().tasks[0].reminderShownAt, 'позначку показу збережено');
