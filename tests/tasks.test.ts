@@ -2,7 +2,7 @@ import './setup';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  browserNotificationsSupported, dueReminders, filterTasks, inAppRemindersEnabled,
+  browserNotificationsSupported, buildTaskSavePayload, dueReminders, filterTasks, inAppRemindersEnabled,
   isReminderDue, isIsoInstant, isValidTaskDate, isValidTaskTime,
   reminderIdsToMark, setInAppRemindersEnabled, snoozeReminderIso,
   taskCounts, taskDateTimeFields, taskSchedule, validateTaskInput,
@@ -112,6 +112,9 @@ test('нормалізація дат: нагадування лише за яв
   assert.equal(isIsoInstant('2026-10-14T07:00:00Z'), true);
   assert.equal(isIsoInstant('2026-10-14T07:00:00+03:00'), true);
   assert.equal(isIsoInstant('2026-10-14T07:00:00'), false, 'без таймзонои — неоднозначний');
+  assert.equal(isIsoInstant('2026-02-30T07:00:00Z'), false, '30 лютого — неможлива календарна дата');
+  assert.equal(isIsoInstant('2024-02-29T10:00:00Z'), true, 'високосний 29 лютого — ок');
+  assert.equal(isIsoInstant('2026-10-14T07:00:00+99:00'), false, 'неможливий зсув');
   assert.equal(
     validateTaskInput({ title: 'OK', reminderAt: '2026-10-14T07:00:00' }).some(e => e.field === 'reminderAt'),
     true,
@@ -127,6 +130,60 @@ test('нормалізація дат: нагадування лише за яв
     ['reminderTime'],
     'без часу — уточнення, не мовчкивий запуск',
   );
+});
+
+test('форма: неповне нагадування не ховається від валідатора (payload/handleSave)', () => {
+  const base = {
+    title: 'З форми', description: '', priority: 'normal', status: 'planned',
+    dueDate: '', dueTime: '', reminderDate: '2026-10-14', reminderTime: '', reminderClear: false,
+  };
+  // Неповна пара → НЕ ok: діалог лишається відкритим, onSave не викликається.
+  const incomplete = buildTaskSavePayload(base);
+  assert.equal(incomplete.ok, false);
+  assert.ok(!incomplete.ok && incomplete.error.includes('нагадування'), 'видима помилка про пара нагадування');
+  // Обидва порожні → ok; чинне нагадування зберігається (payload без нагадування).
+  const emptyPair = buildTaskSavePayload({ ...base, reminderDate: '', reminderTime: '' });
+  assert.ok(emptyPair.ok);
+  assert.equal(emptyPair.ok && emptyPair.payload.reminderDate, '');
+  // Повна пара → payload відкрито містить обидві поля (не ховає від actions).
+  const full = buildTaskSavePayload({ ...base, reminderTime: '10:00' });
+  assert.ok(full.ok);
+  assert.equal(full.ok && full.payload.reminderDate, '2026-10-14');
+  assert.equal(full.ok && full.payload.reminderTime, '10:00');
+  // Явний reminderClear працює.
+  const cleared = buildTaskSavePayload({ ...base, reminderDate: '', reminderTime: '', reminderClear: true });
+  assert.ok(cleared.ok);
+  assert.equal(cleared.ok && cleared.payload.reminderClear, true);
+  // Неможливий стінний час (весняна прогалина Kyiv) — теж видима відмова форми.
+  const dst = buildTaskSavePayload({ ...base, reminderDate: '2027-03-28', reminderTime: '03:30' });
+  assert.equal(dst.ok, false);
+  assert.ok(!dst.ok && dst.error.includes('Kyiv'));
+});
+
+test('дії: неможливий стінний час Kyiv відхиляється без запису (створення й оновлення)', async () => {
+  clearAll();
+  await bootStore();
+  // 28.03.2027 — остання неділя березня; 03:00–03:59 Kyiv не існують (перехід).
+  assert.equal(kyivDateTimeToIso('2027-03-28', '03:30'), null, 'такого стінного часу в Kyiv немає');
+  assert.equal(kyivDateTimeToIso('2027-03-28', '04:30') !== null, true, 'час після переходу — ок');
+  assert.equal(validateTaskInput({ title: 'DST', reminderDate: '2027-03-28', reminderTime: '03:30' }).length > 0, true);
+  assert.equal(validateTaskInput({ title: 'DST', dueDate: '2027-03-28', dueTime: '03:30' }).length > 0, true);
+  // Створення: явна відмова, жодного запису.
+  const created = await saveTask({ title: 'DST', reminderDate: '2027-03-28', reminderTime: '03:30' });
+  assert.equal(created.ok, false);
+  assert.equal(store.getSnapshot().tasks.length, 0, 'жодного часткового запису');
+  // Оновлення: ефективна пара (наявний дедлайн + новий час) — відмова, стан без змін.
+  await saveTask({ title: 'Звичайне', dueDate: '2027-03-28', dueTime: '10:00' });
+  const before = structuredClone(store.getSnapshot().tasks[0]);
+  const updated = await saveTask({ dueTime: '03:30' }, before.id);
+  assert.equal(updated.ok, false);
+  assert.deepEqual(store.getSnapshot().tasks[0], before, 'стан без змін після відмови');
+  // Позитиви: високосний день і звичайний момент приймаються.
+  assert.equal(kyivDateTimeToIso('2024-02-29', '10:00') !== null, true);
+  const ok = await saveTask({ title: 'Високосний', reminderDate: '2024-02-29', reminderTime: '10:00' });
+  assert.equal(ok.ok, true);
+  const leap = store.getSnapshot().tasks.find(t => t.title === 'Високосний')!;
+  assert.ok(leap.reminderAt, 'високосний момент прийнято');
 });
 
 // ------------------------------------------------------------

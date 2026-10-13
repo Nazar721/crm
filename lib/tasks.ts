@@ -62,8 +62,29 @@ export function isValidTaskTime(value: string): boolean {
   return h >= 0 && h <= 23 && min >= 0 && min <= 59;
 }
 
+/**
+ * Однозначний ISO-інстант: реальна календарна дата («30 лютого» → false),
+ * години 00–23, хвилини 00–59, зсув не більший за ±14:00; лише потім
+ * Date.parse (який нормалізує неможливі дати — тому не покладаємось на нього).
+ */
 export function isIsoInstant(value: string): boolean {
-  return ISO_INSTANT_RE.test(value) && Number.isFinite(Date.parse(value));
+  const m = ISO_INSTANT_RE.exec(value);
+  if (!m) return false;
+  const y = Number(value.slice(0, 4));
+  const mo = Number(value.slice(5, 7));
+  const d = Number(value.slice(8, 10));
+  const cal = new Date(Date.UTC(y, mo - 1, d));
+  if (cal.getUTCFullYear() !== y || cal.getUTCMonth() !== mo - 1 || cal.getUTCDate() !== d) return false;
+  const h = Number(value.slice(11, 13));
+  const mi = Number(value.slice(14, 16));
+  if (h > 23 || mi > 59) return false;
+  const offset = m[2];
+  if (offset && offset !== 'Z') {
+    const oh = Number(offset.slice(1, 3));
+    const om = Number(offset.slice(-2));
+    if (oh > 14 || om > 59) return false;
+  }
+  return Number.isFinite(Date.parse(value));
 }
 
 export function taskSchedule(task: Task, now: Date = new Date()): TaskSchedule {
@@ -194,6 +215,12 @@ export function validateTaskInput(
   // Неповне нагадування — явна помилка, а НЕ мовчкивий clear чинного.
   if ((input.reminderDate && !input.reminderTime) || (!input.reminderDate && input.reminderTime)) {
     errors.push({ field: 'reminderTime', message: 'Для нагадування потрібні І дата, І час (Kyiv) — або залиште обидва поля порожніми' });
+  } else if (input.reminderDate && input.reminderTime && kyivDateTimeToIso(input.reminderDate, input.reminderTime) === null) {
+    // Неможливий стінний час (весняна прогалина Kyiv) — не ігнорувати мовчки.
+    errors.push({ field: 'reminderTime', message: 'Такого часу в Kyiv не існує (перехід) — оберіть інший час або приберіть нагадування' });
+  }
+  if (input.dueDate && input.dueTime && kyivDateTimeToIso(input.dueDate, input.dueTime) === null) {
+    errors.push({ field: 'dueTime', message: 'Такого часу дедлайну в Kyiv не існує (перехід) — приберіть час або змініть дату' });
   }
   // Прямий момент — лише однозначний ISO-інстант з таймзоною.
   if (input.reminderAt !== undefined && input.reminderAt !== null && String(input.reminderAt) !== ''
@@ -221,6 +248,55 @@ export function taskDateTimeFields(input: {
     if (iso) out.reminderAt = iso;
   }
   return out;
+}
+
+export interface TaskFormValues {
+  title: string;
+  description: string;
+  priority: string;
+  status: string;
+  dueDate: string;
+  dueTime: string;
+  reminderDate: string;
+  reminderTime: string;
+  reminderClear: boolean;
+}
+
+/**
+ * Payload форми «Додати/Редагувати завдання» (огляд 04–06): спільна
+ * перевірка ДО onSave. ВВЕДЕНІ нагадування передаються відкрито (навіть
+ * неповна пара потрапляє до валідатора і дає видиму помилку, а не
+ * мовчкивий пропуск); обидва порожні поля — чинне нагадування зберігається;
+ * явний reminderClear прибирає.
+ */
+export function buildTaskSavePayload(values: TaskFormValues):
+  | { ok: true; payload: Record<string, unknown> }
+  | { ok: false; error: string } {
+  const validation = validateTaskInput({
+    title: values.title,
+    dueDate: values.dueDate || undefined,
+    dueTime: values.dueTime || undefined,
+    reminderDate: values.reminderDate || undefined,
+    reminderTime: values.reminderTime || undefined,
+  }, { requireTitle: true });
+  if (validation.length) {
+    return { ok: false, error: validation.map(e => e.message).join('; ') };
+  }
+  return {
+    ok: true,
+    payload: {
+      title: values.title.trim(),
+      description: values.description.trim(),
+      priority: values.priority,
+      status: values.status,
+      dueDate: values.dueDate,
+      dueTime: values.dueDate && values.dueTime ? values.dueTime : '',
+      // Навіть неповна пара (перевірена вище) має бути видима для actions.
+      reminderDate: values.reminderDate,
+      reminderTime: values.reminderTime,
+      ...(values.reminderClear ? { reminderClear: true } : {}),
+    },
+  };
 }
 
 /** «Нагадати пізніше»: новий момент; дедлайн завдання не змінюється. */

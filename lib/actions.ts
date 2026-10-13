@@ -11,6 +11,7 @@ import {
 } from '@/lib/validate';
 import { validateHostingPaymentInput, validateHostingServiceInput } from '@/lib/hosting';
 import { snoozeReminderIso, taskDateTimeFields, validateTaskInput, type TaskDraftInput } from '@/lib/tasks';
+import { kyivDateTimeToIso } from '@/lib/dates';
 import { autoMyPercent, DEFAULT_MY_SHARE } from '@/lib/my-share';
 import { generateId, today, daysBetween } from '@/lib/utils';
 import * as Storage from '@/lib/storage';
@@ -793,6 +794,10 @@ async function _saveTask(input: TaskDraftInput, editId?: string): Promise<Action
       next.status = input.status;
       if (input.status === 'done') next.completedAt = existing.completedAt || nowIso;
       else { delete next.completedAt; }
+    }
+    // Часткове оновлення: ефективна пара дедлайн+час має існувати в Kyiv.
+    if (next.dueDate && next.dueTime && kyivDateTimeToIso(next.dueDate, next.dueTime) === null) {
+      return fail([{ field: 'dueTime', message: 'Такого часу дедлайну в Kyiv не існує (перехід) — приберіть час або змініть дату' }]);
     }
     next.updatedAt = nowIso;
     list[index] = next;

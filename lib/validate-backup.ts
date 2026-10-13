@@ -6,7 +6,8 @@ import { normalizeSettings } from '@/lib/settings';
 import { kyivDateString } from '@/lib/dates';
 import { toFiniteNumber } from '@/lib/validate';
 import { HOSTING_CURRENCIES } from '@/lib/hosting';
-import { isValidTaskDate, isValidTaskTime } from '@/lib/tasks';
+import { isIsoInstant, isValidTaskDate, isValidTaskTime } from '@/lib/tasks';
+import { kyivDateTimeToIso } from '@/lib/dates';
 
 // ============================================================
 // Runtime-валідація backup. Невідомий JSON відхиляється ДО будь-якого
@@ -472,6 +473,10 @@ function validateTaskRecord(rec: unknown, ctx: Ctx, acc: Acc): Task | null {
   }
   if (dueTime && !isValidTaskTime(dueTime)) {
     acc.warnings.push({ collection: ctx.collection, index: ctx.index, id: ctx.id, message: 'некоректний час дедлайну (00:00–23:59) — поле очищено' });
+  } else if (dueDate && dueTime && isValidTaskDate(dueDate) && kyivDateTimeToIso(dueDate, dueTime) === null) {
+    // Неможливий стінний час (Kyiv-перехід): для наявних даних політика —
+    // день без часу (час не вигадується, з попередженням).
+    acc.warnings.push({ collection: ctx.collection, index: ctx.index, id: ctx.id, message: 'час дедлайну не існує в Kyiv (перехід) — поле очищено, дедлайн лишається днем' });
   }
   const task: Task = {
     id: ctx.id,
@@ -480,9 +485,9 @@ function validateTaskRecord(rec: unknown, ctx: Ctx, acc: Acc): Task | null {
     priority,
     status,
     dueDate: isValidTaskDate(dueDate) ? dueDate : undefined,
-    dueTime: isValidTaskTime(dueTime) ? dueTime : undefined,
-    reminderAt: typeof rec.reminderAt === 'string' && Number.isFinite(Date.parse(rec.reminderAt)) ? rec.reminderAt : undefined,
-    reminderShownAt: typeof rec.reminderShownAt === 'string' && Number.isFinite(Date.parse(rec.reminderShownAt)) ? rec.reminderShownAt : undefined,
+    dueTime: isValidTaskTime(dueTime) && !(dueDate && kyivDateTimeToIso(dueDate, dueTime) === null) ? dueTime : undefined,
+    reminderAt: typeof rec.reminderAt === 'string' && isIsoInstant(rec.reminderAt) ? rec.reminderAt : undefined,
+    reminderShownAt: typeof rec.reminderShownAt === 'string' && isIsoInstant(rec.reminderShownAt) ? rec.reminderShownAt : undefined,
     createdAt: typeof rec.createdAt === 'string' ? rec.createdAt : undefined,
     updatedAt: typeof rec.updatedAt === 'string' ? rec.updatedAt : undefined,
     completedAt: typeof rec.completedAt === 'string' ? rec.completedAt : undefined,

@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import Modal from '@/components/ui/Modal';
 import { formatDateTime } from '@/lib/utils';
 import ModalFooter from '@/components/ui/ModalFooter';
-import { TASK_PRIORITIES, TASK_STATUSES, TASK_PRIORITY_LABELS, TASK_STATUS_LABELS } from '@/lib/tasks';
+import { TASK_PRIORITIES, TASK_STATUSES, TASK_PRIORITY_LABELS, TASK_STATUS_LABELS, buildTaskSavePayload } from '@/lib/tasks';
 import type { Task } from '@/types';
 
 // ============================================================
@@ -50,24 +50,21 @@ export default function TaskForm({ isOpen, task, onSave, onCancel }: TaskFormPro
   }, [isOpen, task]);
 
   const handleSave = async () => {
-    if (!title.trim()) {
-      setError('Вкажіть назву завдання');
+    // Спільна перевірка до onSave (спільний validateTaskInput): неповна пара
+    // нагадування чи неможливий стінний час — видима помилка, діалог лишається
+    // відкритим, запису немає (огляд 04–06).
+    const built = buildTaskSavePayload({
+      title, description, priority, status, dueDate, dueTime,
+      reminderDate, reminderTime, reminderClear,
+    });
+    if (!built.ok) {
+      setError(built.error);
       return;
     }
     setSaving(true);
     setError('');
     try {
-      await onSave({
-        title: title.trim(),
-        description: description.trim(),
-        priority,
-        status,
-        dueDate,
-        dueTime: dueDate && dueTime ? dueTime : '',
-        // Нагадування змінюється лише явно: обидві поля або явне прибирання.
-        ...(reminderDate && reminderTime ? { reminderDate, reminderTime } : {}),
-        ...(reminderClear ? { reminderClear: true } : {}),
-      });
+      await onSave(built.payload);
     } finally {
       setSaving(false);
     }
