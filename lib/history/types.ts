@@ -14,7 +14,7 @@ export type HistorySource = (typeof HISTORY_SOURCES)[number];
 
 export const HISTORY_SECTIONS = [
   'projects', 'clients', 'finance', 'specialists',
-  'partners', 'debts', 'savings', 'hosting', 'settings', 'import',
+  'partners', 'debts', 'savings', 'hosting', 'tasks', 'settings', 'import',
 ] as const;
 export type HistorySection = (typeof HISTORY_SECTIONS)[number];
 
@@ -164,6 +164,7 @@ export const SECTION_LABELS: Record<HistorySection, string> = {
   debts: 'Борги',
   savings: 'Відкладення',
   hosting: 'Хостинг',
+  tasks: 'Завдання',
   settings: 'Налаштування',
   import: 'Системні',
 };
@@ -180,6 +181,7 @@ export const COLLECTION_LABELS: Record<string, string> = {
   savings: 'Відкладення',
   hostingServices: 'Послуги хостингу',
   hostingPayments: 'Оплати хостингу',
+  tasks: 'Завдання',
   settings: 'Налаштування фінансів',
 };
 
@@ -207,6 +209,7 @@ export function collectionToSection(collection: CollectionKey | 'settings'): His
     case 'partners': return 'partners';
     case 'hostingServices':
     case 'hostingPayments': return 'hosting';
+    case 'tasks': return 'tasks';
     case 'settings': return 'settings';
     default: return 'import';
   }

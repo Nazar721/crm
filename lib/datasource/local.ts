@@ -23,6 +23,7 @@ export const COLLECTION_STORAGE_KEYS: Record<CollectionKey, string> = {
   savings: 'savings',
   hostingServices: 'hosting_services',
   hostingPayments: 'hosting_payments',
+  tasks: 'tasks',
 };
 
 export const META_STORAGE_KEYS = {

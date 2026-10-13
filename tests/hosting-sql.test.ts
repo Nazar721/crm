@@ -37,6 +37,7 @@ function snap(overrides: Partial<Record<string, unknown>> = {}): AnyRecord {
     savings: [],
     hostingServices: [],
     hostingPayments: [],
+    tasks: [],
     financeSettings: { usdRate: 41, eurRate: 44, usdtRate: 41, displayCurrency: 'UAH' },
     meta: { lastSavedAt: '' },
     ...overrides,
@@ -67,6 +68,7 @@ async function bootDb(): Promise<any> {
   await db.exec(fs.readFileSync(path.join(ROOT, 'supabase', '001-crm.sql'), 'utf8'));
   await db.exec(fs.readFileSync(path.join(ROOT, 'supabase', '003-history.sql'), 'utf8'));
   await db.exec(fs.readFileSync(path.join(ROOT, 'supabase', '004-hosting.sql'), 'utf8'));
+  await db.exec(fs.readFileSync(path.join(ROOT, 'supabase', '005-tasks.sql'), 'utf8'));
   await db.exec(`
     insert into auth.users values ('${OWNER}');
     insert into public.crm_owners values ('${OWNER}');
@@ -86,7 +88,7 @@ async function expectSqlError(db: any, sql: string, params: unknown[], needle: s
   assert.ok(String(error?.message || '').includes(needle), `повідомлення «${error?.message}» має містити «${needle}»`);
 }
 
-test('SQL-інтеграція 04: хостинг-колекції, старий клієнт, undo (PGlite)', {
+test('SQL-інтеграція 04+05: хостинг/завдання, старий клієнт, undo (PGlite)', {
   timeout: 180000,
 }, async () => {
   assert.ok(PGliteCtor, '@electric-sql/pglite обов’язковий (devDependency 0.5.9): виконай npm ci.');
@@ -168,7 +170,7 @@ async function runHostingSql(): Promise<void> {
   // ---- Undo: створення оплати; залежність оплати від картки ----
   const restoreHosting = snap({ hostingServices: [hostingService()], hostingPayments: [hostingPayment('hp1', 'hs1')] });
   await commit(restoreHosting);
-  const serviceOnly = snap({ hostingServices: [hostingService()], hostingPayments: [] });
+  const serviceOnly = snap({ hostingServices: [hostingService()], hostingPayments: [], tasks: [] });
   const removePayments = await commit(serviceOnly);
   const removeEvent = await eventByRequest(removePayments.request);
   const undoPayment = await undo(String(removeEvent.id));
@@ -186,8 +188,8 @@ async function runHostingSql(): Promise<void> {
 
   // Залежність (створення): картка створена окремою подією, оплата — пізніше;
   // скасування СТВОРЕННЯ картки за наявної оплати → CRM_UNDO_DEPENDENCY.
-  await commit(snap({ hostingServices: [], hostingPayments: [] }));
-  const depCreate = await commit(snap({ hostingServices: [hostingService('hs_dep', 'Залежний')], hostingPayments: [] }));
+  await commit(snap({ hostingServices: [], hostingPayments: [], tasks: [] }));
+  const depCreate = await commit(snap({ hostingServices: [hostingService('hs_dep', 'Залежний')], hostingPayments: [], tasks: [] }));
   const depCreateEvent = await eventByRequest(depCreate.request);
   assert.equal((depCreateEvent.changes as AnyRecord[]).some(c => c.id === 'hs_dep' && c.change === 'create'), true);
   await commit(snap({ hostingServices: [hostingService('hs_dep', 'Залежний')], hostingPayments: [hostingPayment('hp_dep', 'hs_dep')] }));
@@ -204,7 +206,7 @@ async function runHostingSql(): Promise<void> {
   // Залежність (повернення оплати): оплату видалено, потім її картку —
   // повернення оплати з невідомою карткою відхиляється без запису.
   await commit(snap({ hostingServices: [], hostingPayments: [hostingPayment('hp_dep', 'hs_dep')] }));
-  const delPay = await commit(snap({ hostingServices: [], hostingPayments: [] }));
+  const delPay = await commit(snap({ hostingServices: [], hostingPayments: [], tasks: [] }));
   const delPayEvent = await eventByRequest(delPay.request);
   const revBeforeRestore = (await db.query('select revision from public.crm_state where owner_id=$1', [OWNER])).rows[0].revision;
   await expectSqlError(
@@ -215,6 +217,27 @@ async function runHostingSql(): Promise<void> {
   );
   assert.equal((await db.query('select revision from public.crm_state where owner_id=$1', [OWNER])).rows[0].revision, revBeforeRestore);
   assert.equal((await rowsOf('hostingPayments')).length, 0, 'оплату не повернуто без картки');
+
+  // ---- Пакет 05: tasks (секція журналу, старий клієнт без tasks) ----
+  const withTask = snap({ tasks: [{ id: 't1', title: 'Написати клієнту', priority: 'high', status: 'planned', dueDate: '2026-10-20' }] });
+  const taskCommit = await commit(withTask);
+  const taskEvent = await eventByRequest(taskCommit.request);
+  assert.equal(taskEvent.section, 'tasks', 'секція журналу — tasks');
+  assert.equal((await rowsOf('tasks')).length, 1);
+  // Старий клієнт без tasks-ключа не видаляє завдання.
+  await commit(snap({ tasks: [{ id: 't1', title: 'Написати клієнту', priority: 'high', status: 'planned', dueDate: '2026-10-20' }], clients: [{ id: 'c2', name: 'Інший' }] }));
+  const legacyTask = await commit(
+    snap({ tasks: [{ id: 't1', title: 'Написати клієнту', priority: 'high', status: 'planned', dueDate: '2026-10-20' }], clients: [{ id: 'c2', name: 'Інший оновлений' }] }),
+    { legacyNoHosting: true },
+  );
+  void legacyTask;
+  assert.equal((await rowsOf('tasks')).length, 1, 'старий клієнт не видалив завдання');
+  // Скасування створення завдання (без залежностей) працює.
+  const removeTask = await commit(snap({ tasks: [], clients: [{ id: 'c2', name: 'Інший оновлений' }] }));
+  const removeTaskEvent = await eventByRequest(removeTask.request);
+  const undoTask = await undo(String(removeTaskEvent.id));
+  assert.equal((undoTask.rows[0].r as AnyRecord).duplicate, false, 'скасування створення завдання дозволене');
+  assert.equal((await rowsOf('tasks')).length, 1);
 
   await db.close();
 }

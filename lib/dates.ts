@@ -103,3 +103,34 @@ export function formatKyivDateTime(input?: string | null, locale: string = 'uk-U
     hour: '2-digit', minute: '2-digit',
   }).format(d);
 }
+
+/**
+ * Календарний момент Europe/Kyiv (дата YYYY-MM-DD + час HH:MM) →
+ * однозначний ISO-інстант. Ітеративна звірка стінного часу: працює при
+ * зміні зсуву поясу/переходах (DST), не вгадує зсув за номером місяця.
+ */
+export function kyivDateTimeToIso(date: string, time: string): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) return null;
+  const wall = Date.parse(`${date}T${time}:00Z`);
+  if (Number.isNaN(wall)) return null;
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: ACCOUNTING_TIME_ZONE,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  });
+  const parse = (formatted: string): number | null => {
+    const m = formatted.match(/(\d{4})-(\d{2})-(\d{2})[ ,T]+(\d{1,2}):(\d{2})/);
+    if (!m) return null;
+    return Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]) % 24, Number(m[5]));
+  };
+  let instant = wall;
+  for (let i = 0; i < 3; i += 1) {
+    const roundTrip = parse(formatter.format(new Date(instant)));
+    if (roundTrip === null) return null;
+    if (roundTrip === wall) break;
+    instant = wall - (roundTrip - instant);
+  }
+  const check = parse(formatter.format(new Date(instant)));
+  if (check !== wall) return null; // не зійшлося — чесна відмова, не вгадування
+  return new Date(instant).toISOString();
+}

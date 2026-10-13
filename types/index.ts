@@ -151,6 +151,32 @@ export interface BackupInfo {
   importIncident?: ImportIncident | null;
 }
 
+// Пакет 05: завдання та нагадування.
+// Нагадування — поля самого завдання (не окрема колекція): конкретний
+// момент доставки окремо від дедлайну; момент зберігається однозначно
+// (ISO-мітка інстанту), щоб уникнути різних трактувань timezone.
+export type TaskPriority = 'low' | 'normal' | 'high';
+export type TaskStatus = 'planned' | 'done' | 'cancelled';
+
+export interface Task {
+  id: string;
+  title: string;
+  description?: string;
+  priority: TaskPriority;
+  status: TaskStatus;
+  /** Дедлайн (Kyiv, YYYY-MM-DD); відсутній — завдання без строку. */
+  dueDate?: string;
+  /** Час дедлайну (Kyiv, HH:MM); без нього день прострочується наступного дня. */
+  dueTime?: string;
+  /** Момент нагадування як ISO-інстант (однозначний); окремо від дедлайну. */
+  reminderAt?: string;
+  /** Коли нагадування вже було показано (захист від повтору, узгоджується між пристроями). */
+  reminderShownAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  completedAt?: string;
+}
+
 // Пакет 04: хостинг — ручний облік послуг провайдера.
 // Назва проєкту — звичайний текст (без projectId/clientId); зв'язок
 // оплат існує лише всередині «Хостингу». Паролі/API-ключі не зберігаються.
@@ -203,6 +229,8 @@ export interface ExportData {
   /** Пакет 04. У старих файлах (v1/v2) ключі відсутні — див. validate-backup. */
   hostingServices: HostingService[];
   hostingPayments: HostingPayment[];
+  /** Пакет 05. У старих файлах (v1/v2/v3 без завдань) ключ відсутній. */
+  tasks: Task[];
 }
 
 export interface ExportPayload {

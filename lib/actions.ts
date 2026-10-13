@@ -1,6 +1,6 @@
 import {fingerprint,records,type Plan} from '@/lib/assistant/plan';
 import type {
-  Client, FinanceSettings, HostingPayment, HostingService,
+  Client, FinanceSettings, HostingPayment, HostingService, Task,
   Partner, PersonalDebt, Project, Saving, Specialist, Transaction,
 } from '@/types';
 import type { FieldError } from '@/lib/validate';
@@ -10,6 +10,7 @@ import {
   validateRequiredText, validateTelegram, toFiniteNumber,
 } from '@/lib/validate';
 import { validateHostingPaymentInput, validateHostingServiceInput } from '@/lib/hosting';
+import { snoozeReminderIso, taskDateTimeFields, validateTaskInput } from '@/lib/tasks';
 import { autoMyPercent, DEFAULT_MY_SHARE } from '@/lib/my-share';
 import { generateId, today, daysBetween } from '@/lib/utils';
 import * as Storage from '@/lib/storage';
@@ -739,6 +740,157 @@ export const saveHostingPayment = (...args: Parameters<typeof _saveHostingPaymen
   store.atomicAction(() => _saveHostingPayment(...args), { source: 'Форма', hint: 'payment' });
 export const deleteHostingPayment = (...args: Parameters<typeof _deleteHostingPayment>) =>
   store.atomicAction(() => _deleteHostingPayment(...args));
+
+// ------------------------------------------------------------
+// Завдання та нагадування (пакет 05).
+// ОДНА колекція tasks; нагадування — поля завдання (момент + показ).
+// Виконання завдання «оплатити» НЕ створює транзакцій «Фінансів».
+// ------------------------------------------------------------
+
+/** Вхід збереження: поля завдання + календарні значення нагадування від AI/форми. */
+export type TaskDraftInput = Partial<Task> & { reminderDate?: string; reminderTime?: string; reminderClear?: boolean };
+
+async function _saveTask(input: TaskDraftInput, editId?: string): Promise<ActionResult<Task>> {
+  // Створення: назва обов'язкова. Редагування: назва обов'язкова лише якщо
+  // її передано (часткове оновлення статусу/нагадування — без назви).
+  const errors = validateTaskInput(input, { requireTitle: !editId || input.title !== undefined });
+  if (errors.length) return fail(errors);
+  const list = Storage.getTasks();
+  const nowIso = new Date().toISOString();
+  const title = String(input.title ?? '').trim();
+
+  if (editId) {
+    const index = list.findIndex(t => t.id === editId);
+    if (index < 0) return fail([{ field: 'id', message: 'Завдання не знайдено' }]);
+    const existing = list[index];
+    const next: Task = { ...existing };
+    if (input.title !== undefined) next.title = title;
+    if (input.description !== undefined) next.description = String(input.description).trim() || undefined;
+    if (input.priority !== undefined) next.priority = input.priority;
+    if (input.dueDate !== undefined) {
+      const dates = taskDateTimeFields({ dueDate: input.dueDate, dueTime: input.dueTime ?? existing.dueTime });
+      if (input.dueDate === '') { delete next.dueDate; delete next.dueTime; }
+      else { next.dueDate = dates.dueDate; if (dates.dueTime) next.dueTime = dates.dueTime; else delete next.dueTime; }
+    } else if (input.dueTime !== undefined && next.dueDate) {
+      const dates = taskDateTimeFields({ dueDate: next.dueDate, dueTime: input.dueTime });
+      if (dates.dueTime) next.dueTime = dates.dueTime; else delete next.dueTime;
+    }
+    if (input.reminderClear === true) {
+      // Явне прибирання нагадування (дедлайн не змінюється).
+      delete next.reminderAt;
+      delete next.reminderShownAt;
+    } else if (input.reminderDate !== undefined || input.reminderTime !== undefined) {
+      // Явне оновлення нагадування календарними значеннями: неповні дані
+      // (без часу) СКАСОВУЮТЬ нагадування — година не вигадується.
+      const dates = taskDateTimeFields({ reminderDate: input.reminderDate, reminderTime: input.reminderTime });
+      if (dates.reminderAt) next.reminderAt = dates.reminderAt; else delete next.reminderAt;
+      delete next.reminderShownAt;
+    } else if (input.reminderAt !== undefined) {
+      if (input.reminderAt && Number.isFinite(Date.parse(input.reminderAt))) next.reminderAt = input.reminderAt;
+      else delete next.reminderAt;
+      delete next.reminderShownAt;
+    }
+    if (input.status !== undefined) {
+      next.status = input.status;
+      if (input.status === 'done') next.completedAt = existing.completedAt || nowIso;
+      else { delete next.completedAt; }
+    }
+    next.updatedAt = nowIso;
+    list[index] = next;
+    const result = await persist(Storage.saveTasks(list));
+    return result.ok ? ok(next) : result;
+  }
+
+  const dates = taskDateTimeFields(input);
+  const record: Task = {
+    id: generateId(),
+    title,
+    description: (input.description ?? '').toString().trim() || undefined,
+    priority: input.priority || 'normal',
+    status: input.status || 'planned',
+    dueDate: dates.dueDate,
+    dueTime: dates.dueTime,
+    reminderAt: dates.reminderAt,
+    createdAt: nowIso,
+    updatedAt: nowIso,
+  };
+  if (record.status === 'done') record.completedAt = nowIso;
+  const result = await persist(Storage.saveTasks([...list, record]));
+  return result.ok ? ok(record) : result;
+}
+
+async function _completeTask(id: string): Promise<ActionResult<Task>> {
+  const list = Storage.getTasks();
+  const index = list.findIndex(t => t.id === id);
+  if (index < 0) return fail([{ field: 'id', message: 'Завдання не знайдено' }]);
+  const existing = list[index];
+  if (existing.status === 'done') return ok(existing); // повторне виконання без дубліката
+  const nowIso = new Date().toISOString();
+  const next: Task = { ...existing, status: 'done', completedAt: existing.completedAt || nowIso, updatedAt: nowIso };
+  list[index] = next;
+  const result = await persist(Storage.saveTasks(list));
+  return result.ok ? ok(next) : result;
+}
+
+async function _cancelTask(id: string): Promise<ActionResult<Task>> {
+  const list = Storage.getTasks();
+  const index = list.findIndex(t => t.id === id);
+  if (index < 0) return fail([{ field: 'id', message: 'Завдання не знайдено' }]);
+  const existing = list[index];
+  const nowIso = new Date().toISOString();
+  const next: Task = { ...existing, status: 'cancelled', updatedAt: nowIso };
+  delete next.completedAt;
+  list[index] = next;
+  const result = await persist(Storage.saveTasks(list));
+  return result.ok ? ok(next) : result;
+}
+
+/** «Нагадати пізніше»: новий момент нагадування; дедлайн НЕ змінюється. */
+async function _snoozeTaskReminder(id: string, newDate: string, newTime: string): Promise<ActionResult<Task>> {
+  const iso = snoozeReminderIso(newDate, newTime);
+  if (!iso) return fail([{ field: 'reminderAt', message: 'Вкажіть майбутній момент нагадування (дата + час Kyiv)' }]);
+  const list = Storage.getTasks();
+  const index = list.findIndex(t => t.id === id);
+  if (index < 0) return fail([{ field: 'id', message: 'Завдання не знайдено' }]);
+  const existing = list[index];
+  const nowIso = new Date().toISOString();
+  const next: Task = { ...existing, reminderAt: iso, updatedAt: nowIso };
+  delete next.reminderShownAt;
+  list[index] = next;
+  const result = await persist(Storage.saveTasks(list));
+  return result.ok ? ok(next) : result;
+}
+
+/**
+ * Позначити показані нагадування (одна група журналу). Захист від
+ * повторного показу узгоджується між пристроями через саму колекцію.
+ */
+async function _markRemindersShown(ids: string[]): Promise<ActionResult> {
+  if (!ids.length) return ok();
+  const list = Storage.getTasks();
+  const nowIso = new Date().toISOString();
+  let changed = false;
+  const next = list.map(task => {
+    if (ids.includes(task.id) && task.status === 'planned' && task.reminderAt && !task.reminderShownAt) {
+      changed = true;
+      return { ...task, reminderShownAt: nowIso } as Task;
+    }
+    return task;
+  });
+  if (!changed) return ok();
+  return persist(Storage.saveTasks(next));
+}
+
+export const saveTask = (...args: Parameters<typeof _saveTask>) =>
+  store.atomicAction(() => _saveTask(...args));
+export const completeTask = (...args: Parameters<typeof _completeTask>) =>
+  store.atomicAction(() => _completeTask(...args));
+export const cancelTask = (...args: Parameters<typeof _cancelTask>) =>
+  store.atomicAction(() => _cancelTask(...args));
+export const snoozeTaskReminder = (...args: Parameters<typeof _snoozeTaskReminder>) =>
+  store.atomicAction(() => _snoozeTaskReminder(...args));
+export const markRemindersShown = (...args: Parameters<typeof _markRemindersShown>) =>
+  store.atomicAction(() => _markRemindersShown(...args), { source: 'Система' });
 export const saveRates = (...args: Parameters<typeof _saveRates>) => store.atomicAction(() => _saveRates(...args));
 export const setDisplayCurrency = (...args: Parameters<typeof _setDisplayCurrency>) => store.atomicAction(() => _setDisplayCurrency(...args));
 
@@ -794,6 +946,7 @@ export const applyAssistantPlan=(plan:Plan):Promise<ActionResult<unknown>>=>plan
     case 'specialists':return remove?_deleteSpecialist(id!):_saveSpecialist(input,edit);
     case 'hosting':return remove?fail([{field:'action',message:'Картку хостингу не видаляють — використай архів (archived: true)'}]):_saveHostingService(fields,edit);
     case 'hostingPayments':return remove?_deleteHostingPayment(id!):_saveHostingPayment(fields,edit);
+    case 'tasks':return remove?fail([{field:'action',message:'Завдання не видаляють — використай статус cancelled (Скасовано)'}]):_saveTask(fields,edit);
     case 'partners':return remove?_deletePartner(id!):_savePartner(input,edit);
     case 'debts':return remove?_deleteDebt(id!):_saveDebt(input,edit);
     case 'savings':return remove?_deleteSaving(id!):_saveSaving(input,edit);

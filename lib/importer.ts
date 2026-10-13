@@ -87,6 +87,7 @@ function countSnapshot(snapshot: DataSnapshot): CollectionCounts {
     savings: snapshot.savings.length,
     hostingServices: snapshot.hostingServices.length,
     hostingPayments: snapshot.hostingPayments.length,
+    tasks: snapshot.tasks.length,
   };
 }
 
@@ -98,7 +99,7 @@ function emptyValidation(message: string): BackupValidation {
   const counts = countSnapshot({
     projectsActive: [], projectsCompleted: [], clients: [], specialists: [], partners: [],
     transactions: [], personalDebts: [], savings: [],
-    hostingServices: [], hostingPayments: [],
+    hostingServices: [], hostingPayments: [], tasks: [],
     financeSettings: { usdRate: 41, eurRate: 44, usdtRate: 41, displayCurrency: 'UAH' },
     meta: { lastSavedAt: '', lastManualBackupAt: '', backupSnoozedUntil: '' },
   });

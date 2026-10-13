@@ -702,7 +702,7 @@ export function normalizeHistoryEvent(raw: unknown): HistoryEvent | null {
   const r = raw as Record<string, unknown>;
   if (typeof r.id !== 'string' || !r.id.trim() || r.id.length > 100) return null;
   if (typeof r.at !== 'string' || Number.isNaN(Date.parse(r.at))) return null;
-  const section = (['projects', 'clients', 'finance', 'specialists', 'partners', 'debts', 'savings', 'hosting', 'settings', 'import'] as const)
+  const section = (['projects', 'clients', 'finance', 'specialists', 'partners', 'debts', 'savings', 'hosting', 'tasks', 'settings', 'import'] as const)
     .find(s => s === r.section);
   if (!section) return null;
   const action = (['create', 'update', 'delete', 'complete', 'payment', 'settings', 'import', 'restore', 'undo'] as const)

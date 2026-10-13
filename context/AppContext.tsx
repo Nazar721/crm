@@ -7,12 +7,16 @@ import type { StorageIssue } from '@/lib/datasource/types';
 import * as store from '@/lib/store';
 import { runMigrations, type MigrationReport } from '@/lib/migrations';
 import { emitToast } from '@/lib/toast-bus';
+import { dueReminders, inAppRemindersEnabled } from '@/lib/tasks';
+import { markRemindersShown } from '@/lib/actions';
 
 interface BadgeCounts {
   projects: number;
   clients: number;
   specialists: number;
   partners: number;
+  /** Нагадування, які вже настали й не показані (пакет 05). */
+  tasks: number;
 }
 
 export type AppStatus = 'loading' | 'ready' | 'error';
@@ -50,6 +54,7 @@ const EMPTY_SNAPSHOT: DataSnapshot = {
   savings: [],
   hostingServices: [],
   hostingPayments: [],
+  tasks: [],
   financeSettings: { usdRate: 41, eurRate: 44, usdtRate: 41, displayCurrency: 'UAH' },
   meta: { lastSavedAt: '', lastManualBackupAt: '', backupSnoozedUntil: '' },
 };
@@ -60,6 +65,7 @@ function countBadges(snapshot: DataSnapshot): BadgeCounts {
     clients: snapshot.clients.length,
     specialists: snapshot.specialists.length,
     partners: snapshot.partners.length,
+    tasks: dueReminders(snapshot.tasks).length,
   };
 }
 
@@ -88,6 +94,40 @@ export function AppProvider({ children }: { children: ReactNode }) {
     sync();
     return store.subscribe(sync);
   }, []);
+
+  // Пакет 05: сповіщення про нагадування ПОКАЗУЮТЬСЯ, поки застосунок
+  // відкритий (періодична перевірка + повернення на вкладку/фокус).
+  // Не є push при закритому застосунку. Захист від повторного показу —
+  // стійка позначка reminderShownAt у колекції (узгоджується між
+  // пристроями); показ виконується ОДНІЄЮ групою після успіху.
+  useEffect(() => {
+    if (status !== 'ready') return;
+    const check = () => {
+      try {
+        if (!inAppRemindersEnabled()) return;
+        const due = dueReminders(store.getSnapshot().tasks);
+        if (!due.length) return;
+        due.slice(0, 3).forEach(task => {
+          emitToast(`Нагадування: «${task.title}»${task.dueDate ? ` (дедлайн ${task.dueDate})` : ''}`, 'info');
+        });
+        void markRemindersShown(due.map(t => t.id)).then(result => {
+          if (result.ok) setBadges(countBadges(store.getSnapshot()));
+        });
+      } catch {
+        // Перевірка нагадувань не повинна ламати роботу застосунку.
+      }
+    };
+    const interval = window.setInterval(check, 60_000);
+    const onVisible = () => { if (document.visibilityState === 'visible') check(); };
+    window.addEventListener('focus', check);
+    document.addEventListener('visibilitychange', onVisible);
+    check();
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', check);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [status]);
 
   // Явні помилки сховища (пошкоджений JSON, перевищена квота) — показуємо один раз.
   useEffect(() => {

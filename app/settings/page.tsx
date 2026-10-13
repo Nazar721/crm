@@ -17,6 +17,7 @@ import AssistantSettingsSection from '@/components/settings/AssistantSettingsSec
 import BackupSettingsSection from '@/components/settings/BackupSettingsSection';
 import SystemSettingsSection from '@/components/settings/SystemSettingsSection';
 import HistorySection from '@/components/settings/HistorySection';
+import RemindersSettingsSection from '@/components/settings/RemindersSettingsSection';
 import * as store from '@/lib/store';
 import { emitToast } from '@/lib/toast-bus';
 import { formatDateTime } from '@/lib/utils';
@@ -216,7 +217,7 @@ function SettingsTabsBody() {
       const emptyCounts = {
         projectsActive: 0, projectsCompleted: 0, clients: 0, specialists: 0,
         partners: 0, transactions: 0, personalDebts: 0, savings: 0,
-        hostingServices: 0, hostingPayments: 0,
+        hostingServices: 0, hostingPayments: 0, tasks: 0,
       };
       let parsed: unknown;
       try {
@@ -297,6 +298,7 @@ function SettingsTabsBody() {
     assistant: 'Провайдер і модель AI-помічника',
     backup: 'Резервні копії, експорт та відновлення CRM',
     history: 'Журнал змін і скасування',
+    reminders: 'Сповіщення про нагадування',
     system: 'Збереження, стан даних і журнал',
   };
 
@@ -349,6 +351,9 @@ function SettingsTabsBody() {
       )}
       {tab === 'history' && (
         <HistorySection />
+      )}
+      {tab === 'reminders' && (
+        <RemindersSettingsSection />
       )}
       {tab === 'system' && (
         <SystemSettingsSection

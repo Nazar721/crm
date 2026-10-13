@@ -23,6 +23,7 @@ function payload(overrides: Partial<Record<string, unknown>> = {}): ExportPayloa
       savings: [],
       hostingServices: [],
       hostingPayments: [],
+      tasks: [],
     },
     financeSettings: { usdRate: 40, eurRate: 45, usdtRate: 40, displayCurrency: 'UAH' },
     ...overrides,
@@ -70,6 +71,7 @@ test('старий (legacy-flat) формат підтримується явн�
     savings: [],
     hostingServices: [],
     hostingPayments: [],
+    tasks: [],
   };
   const result = validateBackup(legacy);
   assert.equal(result.ok, true);

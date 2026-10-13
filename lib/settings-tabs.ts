@@ -11,6 +11,7 @@ export const SETTINGS_TABS = [
   { id: 'assistant', label: 'AI-помічник', hint: 'Провайдер, модель, demo-режим' },
   { id: 'backup', label: 'Копії та імпорт', hint: 'Експорт, імпорт, відновлення' },
   { id: 'history', label: 'Історія змін', hint: 'Журнал змін і скасування' },
+  { id: 'reminders', label: 'Нагадування', hint: 'Сповіщення в CRM і їх стан' },
   { id: 'system', label: 'Система', hint: 'Збереження, стан, журнал' },
 ] as const;
 

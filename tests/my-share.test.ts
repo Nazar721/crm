@@ -31,6 +31,7 @@ function specialistPayload(specialists: unknown[]): ExportPayload {
       savings: [],
       hostingServices: [],
       hostingPayments: [],
+      tasks: [],
     },
     financeSettings: settings,
   } as ExportPayload;

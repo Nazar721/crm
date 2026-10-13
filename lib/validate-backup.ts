@@ -1,4 +1,4 @@
-import type { Client, DataSnapshot, FinanceSettings, HostingPayment, HostingService, Project } from '@/types';
+import type { Client, DataSnapshot, FinanceSettings, HostingPayment, HostingService, Project, Task, TaskPriority, TaskStatus } from '@/types';
 import { EXPORT_FORMAT_ID, EXPORT_SCHEMA_VERSION } from '@/types';
 import type { CollectionKey } from '@/lib/datasource/types';
 import { COLLECTION_KEYS } from '@/lib/datasource/types';
@@ -65,7 +65,7 @@ export interface BackupValidation {
 // Пакет 04: колекції хостингу відсутні у старих файлах (v1/v2/legacy) —
 // це НЕ помилка валідації; їхня відсутність фіксується в `missing`, а при
 // імпорті поточний хостинг за замовчуванням зберігається.
-const OPTIONAL_ARRAY_KEYS = new Set<CollectionKey>(['hostingServices', 'hostingPayments']);
+const OPTIONAL_ARRAY_KEYS = new Set<CollectionKey>(['hostingServices', 'hostingPayments', 'tasks']);
 const REQUIRED_ARRAY_KEYS = COLLECTION_KEYS.filter(k => !OPTIONAL_ARRAY_KEYS.has(k));
 
 function emptyCounts(): CollectionCounts {
@@ -80,6 +80,7 @@ function emptyCounts(): CollectionCounts {
     savings: 0,
     hostingServices: 0,
     hostingPayments: 0,
+    tasks: 0,
   };
 }
 
@@ -450,6 +451,44 @@ function validateHostingPaymentRecord(rec: unknown, ctx: Ctx, acc: Acc): Hosting
   return payment;
 }
 
+function validateTaskRecord(rec: unknown, ctx: Ctx, acc: Acc): Task | null {
+  if (!isPlainObject(rec)) {
+    acc.errors.push({ collection: ctx.collection, index: ctx.index, message: 'запис має бути об’єктом' });
+    return null;
+  }
+  const title = str(rec.title).trim();
+  if (!title) {
+    acc.errors.push({ collection: ctx.collection, index: ctx.index, id: ctx.id, message: 'відсутня назва завдання' });
+    return null;
+  }
+  const priority = (['low', 'normal', 'high'] as const).includes(str(rec.priority) as TaskPriority) ? str(rec.priority) as TaskPriority : 'normal';
+  const status = (['planned', 'done', 'cancelled'] as const).includes(str(rec.status) as TaskStatus) ? str(rec.status) as TaskStatus : 'planned';
+  const dueDate = str(rec.dueDate).trim();
+  const dueTime = str(rec.dueTime).trim();
+  if (dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
+    acc.warnings.push({ collection: ctx.collection, index: ctx.index, id: ctx.id, message: 'некоректний дедлайн — поле очищено' });
+  }
+  if (dueTime && !/^\d{2}:\d{2}$/.test(dueTime)) {
+    acc.warnings.push({ collection: ctx.collection, index: ctx.index, id: ctx.id, message: 'некоректний час дедлайну — поле очищено' });
+  }
+  const task: Task = {
+    id: ctx.id,
+    title: title.slice(0, 300),
+    description: str(rec.description).slice(0, 2000) || undefined,
+    priority,
+    status,
+    dueDate: /^\d{4}-\d{2}-\d{2}$/.test(dueDate) ? dueDate : undefined,
+    dueTime: /^\d{2}:\d{2}$/.test(dueTime) ? dueTime : undefined,
+    reminderAt: typeof rec.reminderAt === 'string' && Number.isFinite(Date.parse(rec.reminderAt)) ? rec.reminderAt : undefined,
+    reminderShownAt: typeof rec.reminderShownAt === 'string' && Number.isFinite(Date.parse(rec.reminderShownAt)) ? rec.reminderShownAt : undefined,
+    createdAt: typeof rec.createdAt === 'string' ? rec.createdAt : undefined,
+    updatedAt: typeof rec.updatedAt === 'string' ? rec.updatedAt : undefined,
+    completedAt: typeof rec.completedAt === 'string' ? rec.completedAt : undefined,
+  };
+  ctx.id = task.id;
+  return task;
+}
+
 const VALIDATORS: Record<CollectionKey, RecordValidator> = {
   projectsActive: (rec, ctx, acc) => validateProject(rec, ctx, acc),
   projectsCompleted: (rec, ctx, acc) => validateProject(rec, ctx, acc),
@@ -461,6 +500,7 @@ const VALIDATORS: Record<CollectionKey, RecordValidator> = {
   savings: (rec, ctx, acc) => validateSaving(rec, ctx, acc),
   hostingServices: (rec, ctx, acc) => validateHostingServiceRecord(rec, ctx, acc),
   hostingPayments: (rec, ctx, acc) => validateHostingPaymentRecord(rec, ctx, acc),
+  tasks: (rec, ctx, acc) => validateTaskRecord(rec, ctx, acc),
 };
 
 function detectFormat(raw: Record<string, unknown>): { format: BackupFormat; version: number | null; data: Record<string, unknown> | null } {

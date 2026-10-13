@@ -52,6 +52,7 @@ function emptySnapshot(): DataSnapshot {
     savings: [],
     hostingServices: [],
     hostingPayments: [],
+    tasks: [],
     financeSettings: normalizeSettings(null),
     meta: { lastSavedAt: '', lastManualBackupAt: '', backupSnoozedUntil: '' },
   };
