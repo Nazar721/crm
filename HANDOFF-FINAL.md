@@ -92,3 +92,10 @@
 Reviewed 5d05ce2; form partial-reminder and Kyiv DST-gap scenarios now reject correctly. The final independent check found that isIsoInstant read regex group 2 (fractional seconds) instead of group 3 (timezone), so +15:00 passed despite the stated limit. Corrected timezone group and rejected offsets beyond ±14:00, including ±14:01. Added regression assertions with/without seconds, fractional seconds, compact offsets, and allowed ±14:00 boundaries.
 
 Independent validation after correction: npm test 287/287 PASS, 0 skipped; test:sql 2/2 PASS (history and hosting/tasks); typecheck exit 0; lint exit 0 with existing warnings; build exit 0; git diff --check clean. No production SQL, push or deployment. Code review for 04–06 accepted; real Supabase/PostgREST, authenticated browser flows and installed CRM remain release verification steps. On an existing database, inspect state first and apply only needed 003→004→005; do not reapply SETUP blindly.
+
+
+## Local browser verification — 2026-10-13
+
+Chromium, isolated local storage and synthetic records: task reminder validation/create/show/completion, history preview and undo, hosting card/payments with adjacent coverage, no automatic Finance transaction, completed-project copy/cancel/save, mobile More navigation and assistant layout. Real Supabase/PostgREST, physical iPhone, installed production CRM and live provider responses remain unverified.
+
+Fixed two browser-reproduced layout issues: install prompt banner now below modal overlay (z-index 250 versus 300); mobile assistant chat height leaves space for fixed bottom navigation and safe areas. Rechecked send button at 390×844 and 375×667, and saving hosting with install banner still visible. Typecheck, lint and production build exit 0; diff check clean. Browser evidence/report: CRM-PACKAGES/QA-LOCAL in the IT review workspace. No production writes, push or deploy. Local test server left running from an isolated copy without production env at http://127.0.0.1:3100.

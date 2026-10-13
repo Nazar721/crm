@@ -97,7 +97,7 @@ export default function InstallBanner() {
           bottom: 80px;
           left: 50%;
           transform: translateX(-50%);
-          z-index: 1000;
+          z-index: 250;
           width: calc(100% - 32px);
           max-width: 420px;
           animation: bannerSlideUp 0.4s cubic-bezier(0.22, 1, 0.36, 1);
