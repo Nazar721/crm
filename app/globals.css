@@ -2838,3 +2838,15 @@ tr.week-b .week-dot {
 .ai-composer > .btn, .ai-composer > .btn-icon { height: 48px; min-height: 48px; margin: 0; justify-content: center; align-self: center; box-sizing: border-box; }
 .ai-composer > .btn-icon { width: 48px; }
 .ai-composer-input { box-sizing: border-box; }
+
+/* ============================================================
+   Пакет 06: Заплановані проєкти — мобільна картка з «Детальніше».
+   Опис прихований на мобільному за замовчуванням і розкривається
+   кнопкою; на десктопі опис завжди видно як другорядний рядок.
+   ============================================================ */
+.planned-more { display: none; }
+@media (max-width: 768px) {
+  .planned-more { display: inline-flex; align-items: center; }
+  .planned-desc { display: none; }
+  tr.planned-expanded .planned-desc { display: block; }
+}

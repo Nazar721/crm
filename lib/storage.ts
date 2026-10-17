@@ -1,6 +1,6 @@
 import type {
   BackupInfo, Client, DataSnapshot, ExportPayload, FinanceSettings,
-  HostingPayment, HostingService, Task,
+  HostingPayment, HostingService, PlannedProject, Task,
   Partner, PersonalDebt, Project, Saving, Specialist, Transaction,
 } from '@/types';
 import * as store from '@/lib/store';
@@ -27,10 +27,12 @@ export const getSavings = (): Saving[] => read(s => s.savings);
 export const getHostingServices = (): HostingService[] => read(s => s.hostingServices);
 export const getHostingPayments = (): HostingPayment[] => read(s => s.hostingPayments);
 export const getTasks = (): Task[] => read(s => s.tasks);
+export const getPlannedProjects = (): PlannedProject[] => read(s => s.plannedProjects);
 
 export const saveHostingServices = (d: HostingService[]) => store.saveCollection('hostingServices', d);
 export const saveHostingPayments = (d: HostingPayment[]) => store.saveCollection('hostingPayments', d);
 export const saveTasks = (d: Task[]) => store.saveCollection('tasks', d);
+export const savePlannedProjects = (d: PlannedProject[]) => store.saveCollection('plannedProjects', d);
 
 export function getAllProjects(): Project[] {
   const s = store.getSnapshot();

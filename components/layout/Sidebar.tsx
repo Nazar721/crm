@@ -18,10 +18,10 @@ const navSections = [
       { href: '/clients', label: 'Клієнти', icon: 'users', badge: 'clients' },
       { href: '/specialists', label: 'Фахівці', icon: 'code', badge: 'specialists' },
       { href: '/partners', label: 'Партнери', icon: 'users2', badge: 'partners' },
-      // Пакети 04–05: хостинг і завдання — операційний облік агенції,
-      // одразу за «Партнери», а не в «Фінансах».
+      // Пакети 04–06: хостинг і заплановані проєкти — операційний
+      // облік агенції, одразу за «Партнери», а не в «Фінансах».
       { href: '/hosting', label: 'Хостинг', icon: 'target', badge: null },
-      { href: '/tasks', label: 'Завдання', icon: 'list', badge: 'tasks' },
+      { href: '/planned-projects', label: 'Заплановані проєкти', icon: 'list', badge: null },
     ],
   },
   {

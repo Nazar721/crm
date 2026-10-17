@@ -8,7 +8,7 @@ import type {
   HistoryPatch, HistorySection, HistorySource, UndoPlan, UndoPreviewRow,
 } from './types';
 import {
-  COLLECTION_LABELS, HISTORY_LIMIT_DAYS, HISTORY_LIMIT_EVENTS,
+  COLLECTION_LABELS, HISTORY_LIMIT_DAYS, HISTORY_LIMIT_EVENTS, HISTORY_SECTIONS,
   collectionToSection,
 } from './types';
 
@@ -389,7 +389,7 @@ interface RefTarget {
 
 /** Посилання між сутностями (для перевірки залежностей). */
 const REFERENCES: Record<string, RefTarget> = {
-  clients: { from: ['projectsActive', 'projectsCompleted'], keys: ['clientId'] },
+  clients: { from: ['projectsActive', 'projectsCompleted', 'plannedProjects'], keys: ['clientId'] },
   specialists: { from: ['projectsActive', 'projectsCompleted'], keys: ['developerId'] },
   partners: { from: ['projectsActive', 'projectsCompleted'], keys: ['partnerId'] },
   projects: { from: ['transactions'], keys: ['projectId'] },
@@ -702,7 +702,7 @@ export function normalizeHistoryEvent(raw: unknown): HistoryEvent | null {
   const r = raw as Record<string, unknown>;
   if (typeof r.id !== 'string' || !r.id.trim() || r.id.length > 100) return null;
   if (typeof r.at !== 'string' || Number.isNaN(Date.parse(r.at))) return null;
-  const section = (['projects', 'clients', 'finance', 'specialists', 'partners', 'debts', 'savings', 'hosting', 'tasks', 'settings', 'import'] as const)
+  const section = (HISTORY_SECTIONS as readonly HistorySection[])
     .find(s => s === r.section);
   if (!section) return null;
   const action = (['create', 'update', 'delete', 'complete', 'payment', 'settings', 'import', 'restore', 'undo'] as const)

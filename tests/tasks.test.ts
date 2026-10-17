@@ -18,7 +18,7 @@ import { applyImport } from '@/lib/importer';
 import { validateBackup } from '@/lib/validate-backup';
 import * as store from '@/lib/store';
 import { clearAll, bootStore, emptySnapshot } from './helpers';
-import type { Task } from '@/types';
+import type { PlannedProject, Task } from '@/types';
 
 // ============================================================
 // Пакет 05 (+ спільні перевірки 06): завдання, нагадування,
@@ -127,16 +127,6 @@ test('нормалізація дат: нагадування лише за яв
     validateTaskInput({ title: 'OK', reminderAt: '2026-10-14T07:00:00' }).some(e => e.field === 'reminderAt'),
     true,
     'прямий reminderAt без таймзонои відхиляється',
-  );
-  // AI: неповне нагадування → уточнення в missingQuestions
-  const planPartial = normalizePlan(
-    { domain: 'tasks', action: 'create', fields: { title: 'X', reminderDate: '2026-10-19' } },
-    emptySnapshot(),
-  );
-  assert.deepEqual(
-    missingQuestions(planPartial, emptySnapshot()).map(q => q.key),
-    ['reminderTime'],
-    'без часу — уточнення, не мовчкивий запуск',
   );
 });
 
@@ -312,42 +302,48 @@ test('імпорт: v3-файл без tasks не стирає наявні за
 });
 
 // ------------------------------------------------------------
-// AI: домен tasks
+// AI: домен plannedProjects (пакет 06; tasks-домен прибрано)
 // ------------------------------------------------------------
 
-test('AI: обов’язкова назва, дефолти, відмова видалення, контекст', async () => {
-  const s = { ...emptySnapshot(), tasks: [task()] };
-  const planNoTitle = normalizePlan({ domain: 'tasks', action: 'create', fields: { priority: 'high' } }, s);
-  assert.deepEqual(missingQuestions(planNoTitle, s).map(q => q.key), ['title']);
+test('AI: обов’язкова назва/клієнт, дефолти, контекст plannedProjects', async () => {
+  const planned = (overrides: Partial<PlannedProject> = {}): PlannedProject => ({
+    id: 'pp1', name: 'Сайт для крамниці', category: 'IT', clientName: 'Марія', ...overrides,
+  });
+  const s = { ...emptySnapshot(), plannedProjects: [planned()] };
+  const planNoName = normalizePlan({ domain: 'plannedProjects', action: 'create', fields: { category: 'Design' } }, s);
+  assert.deepEqual(
+    missingQuestions(planNoName, s).map(q => q.key),
+    ['name', 'clientName'],
+    'без назви й клієнта — уточнення',
+  );
   const plan = normalizePlan(
-    { domain: 'tasks', action: 'create', fields: { title: 'Нове', reminderDate: '2026-10-19', reminderTime: '10:00' } },
+    { domain: 'plannedProjects', action: 'create', fields: { name: 'Лендінг', category: 'Design', clientName: 'Олег' } },
     s,
   );
-  assert.equal(plan.fields.priority, 'normal');
-  assert.equal(plan.fields.status, 'planned');
-  assert.throws(() => normalizePlan({ domain: 'tasks', action: 'delete', recordId: 'tsk1', fields: {} }, s), /cancelled/);
-  const context = modelContext(s) as unknown as { tasks: { id: string; bucket: string }[] };
-  assert.equal(context.tasks.length, 1);
-  assert.ok(context.tasks[0].bucket, 'готовий стан у контексті');
+  assert.equal(plan.fields.category, 'Design');
+  const context = modelContext(s) as unknown as { plannedProjects: { list: { id: string }[]; total: number; truncated: boolean } };
+  assert.equal(context.plannedProjects.list.length, 1);
+  assert.equal(context.plannedProjects.total, 1);
+  assert.equal(context.plannedProjects.truncated, false);
   await clearAll();
   await bootStore();
   // Ланцюжок: уточнення → чернетка → підтвердження → одна зміна → журнал
-  const first = normalizePlan({ domain: 'tasks', action: 'create', fields: {} }, store.getSnapshot());
+  const first = normalizePlan({ domain: 'plannedProjects', action: 'create', fields: {} }, store.getSnapshot());
   assert.ok(missingQuestions(first, store.getSnapshot()).length > 0, 'без назви — уточнення');
   const draft = normalizePlan(
-    { domain: 'tasks', action: 'create', fields: { title: 'З чату', priority: 'high', dueDate: '2026-10-25' } },
+    { domain: 'plannedProjects', action: 'create', fields: { name: 'З чату', category: 'IT', clientName: 'Олег' } },
     store.getSnapshot(),
   );
   const applied = await applyAssistantPlan({ ...draft, base: await fingerprint(store.getSnapshot()) } as never);
   assert.equal(applied.ok, true);
-  assert.equal(store.getSnapshot().tasks.length, 1);
-  assert.equal(store.getSnapshot().tasks[0].title, 'З чату');
+  assert.equal(store.getSnapshot().plannedProjects.length, 1);
+  assert.equal(store.getSnapshot().plannedProjects[0].name, 'З чату');
   const events = await store.listHistory({ limit: 20 });
-  assert.equal(events.events.filter(e => e.changes.some(c => c.collection === 'tasks')).length, 1, 'одна фактична зміна → одна група');
+  assert.equal(events.events.filter(e => e.changes.some(c => c.collection === 'plannedProjects')).length, 1, 'одна фактична зміна → одна група');
   // Повторне підтвердження тієї ж чернетки → без дубліката
   const repeat = await applyAssistantPlan({ ...draft, base: 'stale' } as never);
   assert.equal(repeat.ok, false);
-  assert.equal(store.getSnapshot().tasks.length, 1);
+  assert.equal(store.getSnapshot().plannedProjects.length, 1);
 });
 
 // ------------------------------------------------------------
@@ -385,16 +381,19 @@ test('06: перфо-димір фільтрів і контексту на си
   // eslint-disable-next-line no-console
   console.log(`[perf] filter 1k=${ms1.toFixed(1)}ms, 20k+фільтр=${ms2.toFixed(1)}ms`);
   assert.ok(ms2 < 2000, `фільтрація 20k завдань ${ms2.toFixed(1)}ms — в межах бюджету інтерактиву`);
+  // Контекст AI-помічника: plannedProjects обрізається до ліміту явно.
   const big = emptySnapshot();
-  big.tasks = make(10_000);
+  big.plannedProjects = Array.from({ length: 10_000 }, (_, i) => ({
+    id: `pp${i}`, name: `Проєкт ${i}`, category: i % 2 ? 'IT' : 'Design', clientName: `Клієнт ${i}`,
+  }));
   const t3 = performance.now();
-  const context = modelContext(big) as unknown as { tasks: unknown[]; tasksTotal: number; tasksTruncated: boolean };
+  const context = modelContext(big) as unknown as { plannedProjects: { list: unknown[]; total: number; truncated: boolean } };
   const ms3 = performance.now() - t3;
   // eslint-disable-next-line no-console
-  console.log(`[perf] modelContext з 10k завдань = ${ms3.toFixed(1)}ms, у контексті=${context.tasks.length}, розмір=${JSON.stringify(context).length}Б`);
-  assert.equal(context.tasks.length, 200, 'список обрізаний до ліміту контексту');
-  assert.equal(context.tasksTotal, 10_000);
-  assert.equal(context.tasksTruncated, true, 'обрізання явне, не мовчки');
+  console.log(`[perf] modelContext з 10k запланованих = ${ms3.toFixed(1)}ms, у контексті=${context.plannedProjects.list.length}, розмір=${JSON.stringify(context).length}Б`);
+  assert.equal(context.plannedProjects.list.length, 200, 'список обрізаний до ліміту контексту');
+  assert.equal(context.plannedProjects.total, 10_000);
+  assert.equal(context.plannedProjects.truncated, true, 'обрізання явне, не мовчки');
   assert.ok(ms3 < 3000, `побудова контексту ${ms3.toFixed(1)}ms`);
   assert.ok(JSON.stringify(context).length < 240_000, 'контекст в межах ліміту route');
 });

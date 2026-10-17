@@ -1,4 +1,4 @@
-import type { Client, DataSnapshot, FinanceSettings, HostingPayment, HostingService, Project, Task, TaskPriority, TaskStatus } from '@/types';
+import type { Client, DataSnapshot, FinanceSettings, HostingPayment, HostingService, PlannedProject, Project, Task, TaskPriority, TaskStatus } from '@/types';
 import { EXPORT_FORMAT_ID, EXPORT_SCHEMA_VERSION } from '@/types';
 import type { CollectionKey } from '@/lib/datasource/types';
 import { COLLECTION_KEYS } from '@/lib/datasource/types';
@@ -67,7 +67,8 @@ export interface BackupValidation {
 // Пакет 04: колекції хостингу відсутні у старих файлах (v1/v2/legacy) —
 // це НЕ помилка валідації; їхня відсутність фіксується в `missing`, а при
 // імпорті поточний хостинг за замовчуванням зберігається.
-const OPTIONAL_ARRAY_KEYS = new Set<CollectionKey>(['hostingServices', 'hostingPayments', 'tasks']);
+// Пакет 06: plannedProjects — та сама опційна політика.
+const OPTIONAL_ARRAY_KEYS = new Set<CollectionKey>(['hostingServices', 'hostingPayments', 'tasks', 'plannedProjects']);
 const REQUIRED_ARRAY_KEYS = COLLECTION_KEYS.filter(k => !OPTIONAL_ARRAY_KEYS.has(k));
 
 function emptyCounts(): CollectionCounts {
@@ -83,6 +84,7 @@ function emptyCounts(): CollectionCounts {
     hostingServices: 0,
     hostingPayments: 0,
     tasks: 0,
+    plannedProjects: 0,
   };
 }
 
@@ -496,6 +498,38 @@ function validateTaskRecord(rec: unknown, ctx: Ctx, acc: Acc): Task | null {
   return task;
 }
 
+function validatePlannedProjectRecord(rec: unknown, ctx: Ctx, acc: Acc): PlannedProject | null {
+  if (!isPlainObject(rec)) {
+    acc.errors.push({ collection: ctx.collection, index: ctx.index, message: 'запис має бути об’єктом' });
+    return null;
+  }
+  const name = str(rec.name).trim();
+  if (!name) {
+    acc.errors.push({ collection: ctx.collection, index: ctx.index, id: ctx.id, message: 'відсутня назва запланованого проєкту' });
+    return null;
+  }
+  const category = str(rec.category).trim() || 'IT';
+  if (!['IT', 'Design', 'Video'].includes(category)) {
+    acc.warnings.push({ collection: ctx.collection, index: ctx.index, id: ctx.id, message: `невідома категорія «${category}» — збережено як є` });
+  }
+  const clientName = str(rec.clientName).trim();
+  if (!clientName) {
+    acc.warnings.push({ collection: ctx.collection, index: ctx.index, id: ctx.id, message: 'відсутнє ім’я клієнта — поле залишено порожнім' });
+  }
+  const planned: PlannedProject = {
+    id: ctx.id,
+    name: name.slice(0, 300),
+    category,
+    clientName: clientName.slice(0, 200),
+    clientId: validId(rec.clientId) ? str(rec.clientId).trim() : undefined,
+    description: str(rec.description).slice(0, 2000) || undefined,
+    createdAt: typeof rec.createdAt === 'string' ? rec.createdAt : undefined,
+    updatedAt: typeof rec.updatedAt === 'string' ? rec.updatedAt : undefined,
+  };
+  ctx.id = planned.id;
+  return planned;
+}
+
 const VALIDATORS: Record<CollectionKey, RecordValidator> = {
   projectsActive: (rec, ctx, acc) => validateProject(rec, ctx, acc),
   projectsCompleted: (rec, ctx, acc) => validateProject(rec, ctx, acc),
@@ -508,6 +542,7 @@ const VALIDATORS: Record<CollectionKey, RecordValidator> = {
   hostingServices: (rec, ctx, acc) => validateHostingServiceRecord(rec, ctx, acc),
   hostingPayments: (rec, ctx, acc) => validateHostingPaymentRecord(rec, ctx, acc),
   tasks: (rec, ctx, acc) => validateTaskRecord(rec, ctx, acc),
+  plannedProjects: (rec, ctx, acc) => validatePlannedProjectRecord(rec, ctx, acc),
 };
 
 function detectFormat(raw: Record<string, unknown>): { format: BackupFormat; version: number | null; data: Record<string, unknown> | null } {

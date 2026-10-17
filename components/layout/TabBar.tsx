@@ -23,7 +23,7 @@ const moreItems: TabItem[] = [
   { href: '/specialists', label: 'Фахівці', icon: 'code', badge: 'specialists' },
   { href: '/partners', label: 'Партнери', icon: 'users2', badge: 'partners' },
   { href: '/hosting', label: 'Хостинг', icon: 'target' },
-  { href: '/tasks', label: 'Завдання', icon: 'list', badge: 'tasks' },
+  { href: '/planned-projects', label: 'Заплановані', icon: 'list' },
   { href: '/debts', label: 'Борги', icon: 'dollar' },
   { href: '/savings', label: 'Відкладення', icon: 'wallet' },
   { href: '/clients', label: 'Клієнти', icon: 'users', badge: 'clients' },

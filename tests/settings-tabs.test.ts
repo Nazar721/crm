@@ -19,7 +19,7 @@ import { loadProviderSettings, saveProviderSettings } from '@/lib/assistant/pref
 
 test('реєстр вкладок налаштувань: шість вкладок без дублів', () => {
   const ids = SETTINGS_TABS.map(t => t.id);
-  assert.deepEqual(ids, ['finance', 'assistant', 'backup', 'history', 'reminders', 'system']);
+  assert.deepEqual(ids, ['finance', 'assistant', 'backup', 'history', 'system']);
   assert.equal(new Set(ids).size, ids.length, 'ID вкладок унікальні');
   for (const tab of SETTINGS_TABS) {
     assert.ok(tab.label.length > 0, `вкладка ${tab.id} має підпис`);

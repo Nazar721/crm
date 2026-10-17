@@ -1,6 +1,6 @@
 import {fingerprint,records,type Plan} from '@/lib/assistant/plan';
 import type {
-  Client, FinanceSettings, HostingPayment, HostingService, Task,
+  Client, FinanceSettings, HostingPayment, HostingService, PlannedProject, Task,
   Partner, PersonalDebt, Project, Saving, Specialist, Transaction,
 } from '@/types';
 import type { FieldError } from '@/lib/validate';
@@ -895,6 +895,79 @@ export const snoozeTaskReminder = (...args: Parameters<typeof _snoozeTaskReminde
   store.atomicAction(() => _snoozeTaskReminder(...args));
 export const markRemindersShown = (...args: Parameters<typeof _markRemindersShown>) =>
   store.atomicAction(() => _markRemindersShown(...args), { source: 'Система' });
+
+// ------------------------------------------------------------
+// Заплановані проєкти (пакет 06).
+// Нова колекція plannedProjects; старі tasks лишаються legacy.
+// Жодних фінансових полів, статусів чи автоперенесення в проєкти.
+// Клієнт: явний вибір картки зберігає clientId; ручне ім'я — лише текст
+// (не створює картку і не лінкується за іменем).
+// ------------------------------------------------------------
+
+export function validatePlannedProjectInput(input: Partial<PlannedProject>): FieldError[] {
+  return [
+    ...validateRequiredText(input.name, 'name', 'Назва проєкту', 300),
+    ...validateEnum(input.category, ['IT', 'Design', 'Video'], 'category', 'Категорія'),
+    ...validateRequiredText(input.clientName, 'clientName', 'Клієнт', 200),
+  ];
+}
+
+async function _savePlannedProject(input: Partial<PlannedProject>, editId?: string): Promise<ActionResult<PlannedProject>> {
+  const errors = validatePlannedProjectInput(input);
+  if (errors.length) return fail(errors);
+  const list = Storage.getPlannedProjects();
+  const nowIso = new Date().toISOString();
+  const name = String(input.name).trim();
+  const category = input.category as PlannedProject['category'];
+  const clientName = String(input.clientName).trim();
+  // Лише явно обрана картка зі списку чинних клієнтів зберігається як clientId.
+  // Ручне введення імені не створює картку і не лінкується за іменем.
+  const clientId = input.clientId && Storage.getClients().some(c => c.id === input.clientId)
+    ? input.clientId
+    : undefined;
+  const description = String(input.description ?? '').trim() || undefined;
+
+  if (editId) {
+    const index = list.findIndex(p => p.id === editId);
+    if (index < 0) return fail([{ field: 'id', message: 'Запланований проєкт не знайдено' }]);
+    const next: PlannedProject = {
+      ...list[index],
+      name,
+      category,
+      clientName,
+      clientId,
+      description,
+      updatedAt: nowIso,
+    };
+    list[index] = next;
+    const result = await persist(Storage.savePlannedProjects(list));
+    return result.ok ? ok(next) : result;
+  }
+
+  const record: PlannedProject = {
+    id: generateId(),
+    name,
+    category,
+    clientName,
+    clientId,
+    description,
+    createdAt: nowIso,
+    updatedAt: nowIso,
+  };
+  const result = await persist(Storage.savePlannedProjects([...list, record]));
+  return result.ok ? ok(record) : result;
+}
+
+async function _deletePlannedProject(id: string): Promise<ActionResult> {
+  const list = Storage.getPlannedProjects();
+  if (!list.some(p => p.id === id)) return fail([{ field: 'id', message: 'Запланований проєкт не знайдено' }]);
+  return persist(Storage.savePlannedProjects(list.filter(p => p.id !== id)));
+}
+
+export const savePlannedProject = (...args: Parameters<typeof _savePlannedProject>) =>
+  store.atomicAction(() => _savePlannedProject(...args));
+export const deletePlannedProject = (...args: Parameters<typeof _deletePlannedProject>) =>
+  store.atomicAction(() => _deletePlannedProject(...args));
 export const saveRates = (...args: Parameters<typeof _saveRates>) => store.atomicAction(() => _saveRates(...args));
 export const setDisplayCurrency = (...args: Parameters<typeof _setDisplayCurrency>) => store.atomicAction(() => _setDisplayCurrency(...args));
 
@@ -950,7 +1023,7 @@ export const applyAssistantPlan=(plan:Plan):Promise<ActionResult<unknown>>=>plan
     case 'specialists':return remove?_deleteSpecialist(id!):_saveSpecialist(input,edit);
     case 'hosting':return remove?fail([{field:'action',message:'Картку хостингу не видаляють — використай архів (archived: true)'}]):_saveHostingService(fields,edit);
     case 'hostingPayments':return remove?_deleteHostingPayment(id!):_saveHostingPayment(fields,edit);
-    case 'tasks':return remove?fail([{field:'action',message:'Завдання не видаляють — використай статус cancelled (Скасовано)'}]):_saveTask(fields,edit);
+    case 'plannedProjects':return remove?_deletePlannedProject(id!):_savePlannedProject(fields,edit);
     case 'partners':return remove?_deletePartner(id!):_savePartner(input,edit);
     case 'debts':return remove?_deleteDebt(id!):_saveDebt(input,edit);
     case 'savings':return remove?_deleteSaving(id!):_saveSaving(input,edit);

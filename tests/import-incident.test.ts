@@ -21,7 +21,7 @@ function payload(overrides: Partial<ExportPayload>): ExportPayload {
     exportedAt: '2026-10-01T08:00:00.000Z',
     data: {
       projectsActive: [], projectsCompleted: [], clients: [], specialists: [],
-      partners: [], transactions: [], personalDebts: [], savings: [], hostingServices: [], hostingPayments: [], tasks: [],
+      partners: [], transactions: [], personalDebts: [], savings: [], hostingServices: [], hostingPayments: [], tasks: [], plannedProjects: [],
     },
     financeSettings: { usdRate: 41, eurRate: 44, usdtRate: 41, displayCurrency: 'UAH' },
     ...overrides,
@@ -48,7 +48,7 @@ test('невдале відновлення: блок переживає reiniti
 
   const report = await applyImport(payload({ data: {
     projectsActive: [], projectsCompleted: [], clients: [makeClient({ name: 'IMPORTED' })],
-    specialists: [], partners: [], transactions: [], personalDebts: [], savings: [], hostingServices: [], hostingPayments: [], tasks: [],
+    specialists: [], partners: [], transactions: [], personalDebts: [], savings: [], hostingServices: [], hostingPayments: [], tasks: [], plannedProjects: [],
   } }));
   assert.equal(report.ok, false);
   assert.equal(report.stage, 'write');
@@ -92,7 +92,7 @@ test('інцидент ставиться ДО першої зміни осно�
 
   const report = await applyImport(payload({ data: {
     projectsActive: [], projectsCompleted: [], clients: [makeClient({ name: 'NEW' })],
-    specialists: [], partners: [], transactions: [], personalDebts: [], savings: [], hostingServices: [], hostingPayments: [], tasks: [],
+    specialists: [], partners: [], transactions: [], personalDebts: [], savings: [], hostingServices: [], hostingPayments: [], tasks: [], plannedProjects: [],
   } }));
 
   assert.equal(report.ok, true, report.issue || '');
@@ -147,7 +147,7 @@ test('частковий імпорт: сирий оригінал і здоро
   const report = await applyImport(payload({ data: {
     projectsActive: [makeProject({ name: 'NEW PROJECT' })], projectsCompleted: [],
     clients: [makeClient({ name: 'NEW' })], specialists: [], partners: [],
-    transactions: [], personalDebts: [], savings: [], hostingServices: [], hostingPayments: [], tasks: [],
+    transactions: [], personalDebts: [], savings: [], hostingServices: [], hostingPayments: [], tasks: [], plannedProjects: [],
   } }));
 
   assert.equal(report.ok, false);
@@ -180,7 +180,7 @@ test('сирий оригінал відновити неможливо: recover
 
   const report = await applyImport(payload({ data: {
     projectsActive: [makeProject({ name: 'NEW PROJECT' })], projectsCompleted: [],
-    clients: [], specialists: [], partners: [], transactions: [], personalDebts: [], savings: [], hostingServices: [], hostingPayments: [], tasks: [],
+    clients: [], specialists: [], partners: [], transactions: [], personalDebts: [], savings: [], hostingServices: [], hostingPayments: [], tasks: [], plannedProjects: [],
   } }));
 
   assert.equal(report.ok, false);
@@ -216,7 +216,7 @@ test('відновлення не залежить від невдалого з�
 
     const report = await applyImport(payload({ data: {
       projectsActive: [makeProject({ name: 'NEW PROJECT' })], projectsCompleted: [],
-      clients: [], specialists: [], partners: [], transactions: [], personalDebts: [], savings: [], hostingServices: [], hostingPayments: [], tasks: [],
+      clients: [], specialists: [], partners: [], transactions: [], personalDebts: [], savings: [], hostingServices: [], hostingPayments: [], tasks: [], plannedProjects: [],
     } }));
 
     assert.equal(report.recovered, true,
@@ -285,7 +285,7 @@ test('явне відновлення з копії знімає саме від
 
   const failed = await applyImport(payload({ data: {
     projectsActive: [], projectsCompleted: [], clients: [makeClient({ name: 'IMPORTED' })],
-    specialists: [], partners: [], transactions: [], personalDebts: [], savings: [], hostingServices: [], hostingPayments: [], tasks: [],
+    specialists: [], partners: [], transactions: [], personalDebts: [], savings: [], hostingServices: [], hostingPayments: [], tasks: [], plannedProjects: [],
   } }));
   assert.equal(failed.ok, false);
   assert.equal(failed.recovered, false);
@@ -322,7 +322,7 @@ test('успішний повторний імпорт також знімає �
     kind === 'collection' && key === 'specialists' && flaky.collectionCalls > base + 8;
   const failed = await applyImport(payload({ data: {
     projectsActive: [], projectsCompleted: [], clients: [makeClient({ name: 'IMPORTED' })],
-    specialists: [], partners: [], transactions: [], personalDebts: [], savings: [], hostingServices: [], hostingPayments: [], tasks: [],
+    specialists: [], partners: [], transactions: [], personalDebts: [], savings: [], hostingServices: [], hostingPayments: [], tasks: [], plannedProjects: [],
   } }));
   assert.equal(failed.recovered, false);
   assert.ok(store.getWriteBlock());
@@ -330,7 +330,7 @@ test('успішний повторний імпорт також знімає �
   flaky.shouldFail = () => false;
   const ok = await applyImport(payload({ data: {
     projectsActive: [], projectsCompleted: [], clients: [makeClient({ name: 'НОВИЙ СТАН' })],
-    specialists: [], partners: [], transactions: [], personalDebts: [], savings: [], hostingServices: [], hostingPayments: [], tasks: [],
+    specialists: [], partners: [], transactions: [], personalDebts: [], savings: [], hostingServices: [], hostingPayments: [], tasks: [], plannedProjects: [],
   } }));
   assert.equal(ok.ok, true, ok.issue || '');
   assert.equal(store.getWriteBlock(), null, 'повністю успішний імпорт знімає інцидент');
@@ -359,7 +359,7 @@ test('невдала явна спроба відновлення не пере�
   // 1) Невдалий імпорт + невдале автоматичне відновлення.
   const failed = await applyImport(payload({ data: {
     projectsActive: [], projectsCompleted: [], clients: [makeClient({ name: 'IMPORTED' })],
-    specialists: [], partners: [], transactions: [], personalDebts: [], savings: [], hostingServices: [], hostingPayments: [], tasks: [],
+    specialists: [], partners: [], transactions: [], personalDebts: [], savings: [], hostingServices: [], hostingPayments: [], tasks: [], plannedProjects: [],
   } }));
   assert.equal(failed.ok, false);
   assert.equal(failed.recovered, false);
@@ -416,7 +416,7 @@ test('повторний невдалий звичайний імпорт під
 
   await applyImport(payload({ data: {
     projectsActive: [], projectsCompleted: [], clients: [makeClient({ name: 'IMPORTED' })],
-    specialists: [], partners: [], transactions: [], personalDebts: [], savings: [], hostingServices: [], hostingPayments: [], tasks: [],
+    specialists: [], partners: [], transactions: [], personalDebts: [], savings: [], hostingServices: [], hostingPayments: [], tasks: [], plannedProjects: [],
   } }));
   const initialCopy = localStorage.getItem('crm_import_previous');
   assert.ok(initialCopy);
@@ -429,7 +429,7 @@ test('повторний невдалий звичайний імпорт під
   flaky.failNextOn(['projectsActive'], flaky.collectionCalls + 1);
   const second = await applyImport(payload({ data: {
     projectsActive: [], projectsCompleted: [], clients: [makeClient({ name: 'ІМПОРТ-2' })],
-    specialists: [], partners: [], transactions: [], personalDebts: [], savings: [], hostingServices: [], hostingPayments: [], tasks: [],
+    specialists: [], partners: [], transactions: [], personalDebts: [], savings: [], hostingServices: [], hostingPayments: [], tasks: [], plannedProjects: [],
   } }));
 
   assert.equal(second.ok, false, 'імпорт мав впасти');

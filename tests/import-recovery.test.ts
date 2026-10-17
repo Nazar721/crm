@@ -27,7 +27,7 @@ function payloadWith(clients: ReturnType<typeof makeClient>[], extra: Partial<Ex
       savings: [],
       hostingServices: [],
       hostingPayments: [],
-      tasks: [],
+      tasks: [], plannedProjects: [],
     },
     financeSettings: { usdRate: 41, eurRate: 44, usdtRate: 41, displayCurrency: 'UAH' },
     ...extra,
@@ -95,7 +95,7 @@ test('якщо відновлення не вдалося — явний ста�
       savings: [],
       hostingServices: [],
       hostingPayments: [],
-      tasks: [],
+      tasks: [], plannedProjects: [],
     },
   } as Partial<ExportPayload>));
 

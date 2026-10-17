@@ -7,17 +7,12 @@ import type { StorageIssue } from '@/lib/datasource/types';
 import * as store from '@/lib/store';
 import { runMigrations, type MigrationReport } from '@/lib/migrations';
 import { emitToast } from '@/lib/toast-bus';
-import { dueReminders, inAppRemindersEnabled } from '@/lib/tasks';
-import { createReminderDeliveryGate, deliverDueReminders } from '@/lib/reminder-delivery';
-import { markRemindersShown } from '@/lib/actions';
 
 interface BadgeCounts {
   projects: number;
   clients: number;
   specialists: number;
   partners: number;
-  /** Нагадування, які вже настали й не показані (пакет 05). */
-  tasks: number;
 }
 
 export type AppStatus = 'loading' | 'ready' | 'error';
@@ -56,6 +51,7 @@ const EMPTY_SNAPSHOT: DataSnapshot = {
   hostingServices: [],
   hostingPayments: [],
   tasks: [],
+  plannedProjects: [],
   financeSettings: { usdRate: 41, eurRate: 44, usdtRate: 41, displayCurrency: 'UAH' },
   meta: { lastSavedAt: '', lastManualBackupAt: '', backupSnoozedUntil: '' },
 };
@@ -66,7 +62,6 @@ function countBadges(snapshot: DataSnapshot): BadgeCounts {
     clients: snapshot.clients.length,
     specialists: snapshot.specialists.length,
     partners: snapshot.partners.length,
-    tasks: dueReminders(snapshot.tasks).length,
   };
 }
 
@@ -95,53 +90,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     sync();
     return store.subscribe(sync);
   }, []);
-
-  // Пакет 05 (огляд 04–06): показ нагадувань поки застосунок відкритий.
-  // Оркестрація винесена в чистий модуль lib/reminder-delivery.ts:
-  // показується ВСЯ пачка due (без прихованого slice), позначається лише
-  // реально показане; прихована вкладка не споживає нагадування; in-flight
-  // guard — проти одночасних interval/focus/visibility; збій позначки →
-  // синхронізація стану (reloadStore) без сліпого повтору. Push при
-  // закритому застосунку не реалізований і не обіцяється.
-  const deliveryGate = useRef(createReminderDeliveryGate());
-  useEffect(() => {
-    if (status !== 'ready') return;
-    const check = () => {
-      void deliveryGate.current.run(async () => {
-        const result = await deliverDueReminders({
-          tasks: store.getSnapshot().tasks,
-          enabled: inAppRemindersEnabled(),
-          visible: document.visibilityState === 'visible',
-          deliver: task => {
-            emitToast(`Нагадування: «${task.title}»${task.dueDate ? ` (дедлайн ${task.dueDate})` : ''}`, 'info');
-          },
-          claim: async ids => {
-            const outcome = await markRemindersShown(ids);
-            if (outcome.ok) setBadges(countBadges(store.getSnapshot()));
-            return outcome;
-          },
-          onClaimFailed: () => {
-            // Конкурентна доставка або застарілий snapshot: перечитати
-            // актуальний стан; наступна перевірка вже без сліпого повтору.
-            void store.reloadStore()
-              .then(() => setBadges(countBadges(store.getSnapshot())))
-              .catch(() => undefined);
-          },
-        });
-        void result;
-      });
-    };
-    const interval = window.setInterval(check, 60_000);
-    const onVisible = () => { if (document.visibilityState === 'visible') check(); };
-    window.addEventListener('focus', check);
-    document.addEventListener('visibilitychange', onVisible);
-    check();
-    return () => {
-      window.clearInterval(interval);
-      window.removeEventListener('focus', check);
-      document.removeEventListener('visibilitychange', onVisible);
-    };
-  }, [status]);
 
   // Явні помилки сховища (пошкоджений JSON, перевищена квота) — показуємо один раз.
   useEffect(() => {

@@ -38,9 +38,11 @@ export class SupabaseDataSource implements CrmDataSource {
     // Пакет 04: новий клієнт потребує колекцій хостингу в базі. Без міграції
     // 004 старий crm_commit проігнорував би хостинг-ключі (тиха втрата даних) —
     // тому запис блокується до застосування supabase/004-hosting.sql.
+    // Пакет 06: те саме для plannedProjects — без 006 нова колекція
+    // проігнорувалася б старим crm_commit (тиха втрата).
     const snapshotRecord = row.snapshot as unknown as Record<string, unknown>;
-    if (!Array.isArray(snapshotRecord.hostingServices) || !Array.isArray(snapshotRecord.hostingPayments) || !Array.isArray(snapshotRecord.tasks)) {
-      this.blocked = 'У базі ще немає нових колекцій: застосуй supabase/004-hosting.sql і supabase/005-tasks.sql і онови сторінку.';
+    if (!Array.isArray(snapshotRecord.hostingServices) || !Array.isArray(snapshotRecord.hostingPayments) || !Array.isArray(snapshotRecord.tasks) || !Array.isArray(snapshotRecord.plannedProjects)) {
+      this.blocked = 'У базі ще немає нових колекцій: застосуй supabase/004-hosting.sql, supabase/005-tasks.sql і supabase/006-planned-projects.sql і онови сторінку.';
     }
     return {data:structuredClone(this.current),issues:[],corruptRaw:{}};
   }

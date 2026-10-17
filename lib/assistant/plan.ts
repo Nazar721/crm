@@ -7,7 +7,6 @@ import {dashboardStats,project,toDisplay} from '@/lib/calc';
 import {today} from '@/lib/utils';
 import {initialProjectForCopy,pickCopyOverrides} from '@/lib/copy-project';
 import {hostingCoverage,hostingTotalsByCurrency} from '@/lib/hosting';
-import {taskSchedule} from '@/lib/tasks';
 export type Plan={domain:AssistantDomain;action:AssistantActionType;recordId?:string;fields:Record<string,string|number|boolean|null>;base:string,copyClientMissing?: boolean};
 type Spec={label:string;kind:AssistantField['kind'];options?:string[]};
 const text=(label:string):Spec=>({label,kind:'text'});
@@ -27,12 +26,12 @@ export const schemas:Partial<Record<AssistantDomain,Record<string,Spec>>>={
  debts:{type:select('Тип боргу',['owed_to_me','my_debt']),person:text('Людина'),amount:number('Сума'),currency,note:text('Примітка'),date:date('Дата')},
  savings:{name:text('Назва'),bank,amount:number('Сума'),goal:number('Ціль'),currency,date:date('Дата')},
  hosting:{name:text('Назва послуги'),site:text('Сайт/домен'),provider:text('Провайдер'),plan:text('Тариф'),currency,expectedPrice:number('Очікувана ціна продовження'),note:text('Примітка'),archived:{label:'Архів',kind:'boolean'}},
- hostingPayments:{serviceId:text('ID картки хостингу'),date:date('Дата оплати'),amount:number('Сума'),currency,periodStart:date('Початок періоду'),periodEnd:date('Кінець періоду'),note:text('Примітка')},
- tasks:{title:text('Назва завдання'),description:text('Опис'),priority:select('Пріоритет',['low','normal','high']),status:select('Статус',['planned','done','cancelled']),dueDate:date('Дата дедлайну'),dueTime:text('Час дедлайну (HH:MM)'),reminderDate:date('Дата нагадування'),reminderTime:text('Час нагадування (HH:MM)')},
+  hostingPayments:{serviceId:text('ID картки хостингу'),date:date('Дата оплати'),amount:number('Сума'),currency,periodStart:date('Початок періоду'),periodEnd:date('Кінець періоду'),note:text('Примітка')},
+  plannedProjects:{name:text('Назва проєкту'),category:select('Категорія',['IT','Design','Video']),clientName:text('Клієнт'),description:text('Опис'),clientId:text('ID клієнта')},
  history:{},
 };
 export function records(domain:AssistantDomain,s:DataSnapshot):Record<string,unknown>[] {
- const maps:Partial<Record<AssistantDomain,unknown[]>>={projects:[...s.projectsActive,...s.projectsCompleted],payments:[...s.projectsActive,...s.projectsCompleted],clients:s.clients,finance:s.transactions,specialists:s.specialists,partners:s.partners,debts:s.personalDebts,savings:s.savings,hosting:s.hostingServices,hostingPayments:s.hostingPayments,tasks:s.tasks};
+ const maps:Partial<Record<AssistantDomain,unknown[]>>={projects:[...s.projectsActive,...s.projectsCompleted],payments:[...s.projectsActive,...s.projectsCompleted],clients:s.clients,finance:s.transactions,specialists:s.specialists,partners:s.partners,debts:s.personalDebts,savings:s.savings,hosting:s.hostingServices,hostingPayments:s.hostingPayments,plannedProjects:s.plannedProjects};
  return (maps[domain]||[]) as Record<string,unknown>[];
 }
 /** Порівняння імен клієнтів так само, як це робить підбір у збереженні. */
@@ -78,10 +77,8 @@ export function normalizePlan(raw:unknown,s:DataSnapshot):Omit<Plan,'base'>{
   if(!recordId)throw new Error('Вкажи ID події журналу');
  }
  // Пакет 04: картку хостингу не видаляють — лише архів (archived: true).
- if(domain==='hosting'&&action==='delete')throw new Error('Картку хостингу не видаляють — використай архів (archived: true)');
- // Пакет 05: завдання не видаляють — лише статус cancelled.
- if(domain==='tasks'&&action==='delete')throw new Error('Завдання не видаляють — використай статус cancelled (Скасовано)');
- if(domain!=='settings'&&domain!=='history'&&action!=='create'&&!records(domain,s).some(x=>x.id===recordId))throw new Error('Запис не знайдено. Уточни назву або ID');
+  if(domain==='hosting'&&action==='delete')throw new Error('Картку хостингу не видаляють — використай архів (archived: true)');
+  if(domain!=='settings'&&domain!=='history'&&action!=='create'&&!records(domain,s).some(x=>x.id===recordId))throw new Error('Запис не знайдено. Уточни назву або ID');
  // Пакет 02: службова команда копії. copyFromId НЕ є збереженим полем проекту
  // (не просочується в запит і не потрапляє в backup), тому вилучаємо його зі
  // схеми ще до валідації. Для обраних сутностей це параметр дії.
@@ -134,7 +131,7 @@ export function normalizePlan(raw:unknown,s:DataSnapshot):Omit<Plan,'base'>{
    }
    if(chosen){fields.clientId=chosen;clientMissing=false;}else{delete (fields as Record<string,unknown>).clientId;}
   }else{
-   const defaults:Partial<Record<AssistantDomain,Plan['fields']>>={projects:{status:'Очікування оплати',currency:'UAH',prepayment:0,paidToSpecialist:0,fop:0,partnerCommission:0,profitTaken:0,startDate:today()},finance:{date:today(),hidden:false},clients:{isRegular:false,source:'Інше'},debts:{currency:'UAH',date:today()},savings:{currency:'UAH',amount:0,date:today()},partners:{currency:'UAH'},hosting:{currency:'UAH',archived:false},hostingPayments:{currency:'UAH',date:today()},tasks:{priority:'normal',status:'planned'}};
+   const defaults:Partial<Record<AssistantDomain,Plan['fields']>>={projects:{status:'Очікування оплати',currency:'UAH',prepayment:0,paidToSpecialist:0,fop:0,partnerCommission:0,profitTaken:0,startDate:today()},finance:{date:today(),hidden:false},clients:{isRegular:false,source:'Інше'},debts:{currency:'UAH',date:today()},savings:{currency:'UAH',amount:0,date:today()},partners:{currency:'UAH'},hosting:{currency:'UAH',archived:false},hostingPayments:{currency:'UAH',date:today()},plannedProjects:{category:'IT'}};
    Object.assign(fields,{...defaults[domain],...fields});
   }
   // Створення проєкту з явним clientId: перевірка за чинними clients і
@@ -195,13 +192,7 @@ export function missingQuestions(plan:Omit<Plan,'base'>,s:DataSnapshot){
  // повторній/confirm — тобто запис без вибору неможливий.
  const list:{key:string;prompt:string;options?:string[]}[]=plan.copyClientMissing?[{key:'client',prompt:'Картку клієнта для копії не вибрано (її видалено або не існує). Оберіть чинного клієнта — вкажіть точне ім’я або ID — або підтвердьте створення нової картки окремою дією.'}]:[];
  if(plan.action==='delete')return list;
- // Пакет 05/огляд: явно заплановане нагадування без пари дата/час → уточнення.
- if(plan.domain==='tasks'){
-  const f=plan.fields;
-  if(f.reminderDate&& !f.reminderTime)list.push({key:'reminderTime',prompt:'Вкажіть час нагадування (HH:MM, Kyiv) — без часу нагадування не планується'});
-  if(!f.reminderDate&& f.reminderTime)list.push({key:'reminderDate',prompt:'Вкажіть дату нагадування (YYYY-MM-DD, Kyiv) — без дати нагадування не планується'});
- }
- const required:Partial<Record<AssistantDomain,string[]>>={projects:['name','type','clientName','budget'],clients:['name'],finance:['type','amount','bank'],payments:['amount'],specialists:['name','specialization'],partners:['name'],debts:['type','person','amount'],savings:['bank','goal'],hosting:['name'],hostingPayments:['serviceId','amount','periodStart','periodEnd'],tasks:['title']};
+ const required:Partial<Record<AssistantDomain,string[]>>={projects:['name','type','clientName','budget'],clients:['name'],finance:['type','amount','bank'],payments:['amount'],specialists:['name','specialization'],partners:['name'],debts:['type','person','amount'],savings:['bank','goal'],hosting:['name'],hostingPayments:['serviceId','amount','periodStart','periodEnd'],plannedProjects:['name','category','clientName']};
  const previous=plan.action==='update'&&plan.domain!=='payments'?records(plan.domain,s).find(x=>x.id===plan.recordId):undefined;
  const input={...previous,...plan.fields};
  return [...list,...(required[plan.domain]||[]).filter(k=>input[k]===undefined||input[k]===null||input[k]==='').map(k=>({key:k,prompt:`Уточни: ${schemas[plan.domain]![k].label}`,options:schemas[plan.domain]![k].options}))];
@@ -212,7 +203,7 @@ export function draftReply(plan:Plan,s:DataSnapshot,id:string):AssistantReply{
  const changes=fields.map(f=>({key:f.key,label:f.label,before:String(prev?.[f.key]??'—'),after:String(f.value??'—')}));
  if(plan.domain==='payments'&&prev)changes.push({key:'totalPayment',label:'Загальна оплата проєкту',before:String(prev.prepayment||0),after:String(Number(prev.prepayment||0)+Number(plan.fields.amount||0))});
  if(plan.action==='delete')changes.push({key:'record',label:'Видалити запис',before:String(prev?.name||prev?.person||prev?.description||plan.recordId),after:'Буде видалено'});
- const routes:Partial<Record<AssistantDomain,string>>={settings:'/settings',payments:'/projects',projects:'/projects',finance:'/finance',clients:'/clients',specialists:'/specialists',partners:'/partners',debts:'/debts',savings:'/savings',history:'/settings?tab=history',hosting:'/hosting',hostingPayments:'/hosting',tasks:'/tasks'};
+ const routes:Partial<Record<AssistantDomain,string>>={settings:'/settings',payments:'/projects',projects:'/projects',finance:'/finance',clients:'/clients',specialists:'/specialists',partners:'/partners',debts:'/debts',savings:'/savings',history:'/settings?tab=history',hosting:'/hosting',hostingPayments:'/hosting',plannedProjects:'/planned-projects'};
  const target=plan.domain==='settings'?'Фінансові налаштування':String(prev?.name||prev?.person||prev?.description||plan.fields.name||plan.recordId||'');
  const title=plan.domain==='history'?'Скасувати зміну':`${plan.action==='delete'?'Видалити':plan.action==='create'?'Створити':'Змінити'}: ${target}`;
  return {kind:'draft',draft:{id,domain:plan.domain,action:plan.action,title,fields,changes,questions:missingQuestions(plan,s),recordId:plan.recordId,route:routes[plan.domain]}};
@@ -232,18 +223,18 @@ export function modelContext(s:DataSnapshot){
  // Пакет 06: обмежена вибірка для контексту — великий CRM не має
  // вимикати помічника переповненням. Суми/підсумки рахуються за ВСІМА
  // записами; списки обрізані з чесними прапорцями (не мовчки).
- const TASKS_CONTEXT_LIMIT=200;
+ const PLANNED_PROJECTS_LIMIT=200;
  const HOSTING_SERVICES_LIMIT=200;
  const HOSTING_PAYMENTS_LIMIT=300;
- const tasksSorted=[...s.tasks].sort((a,b)=>{const da=a.dueDate||'9999-99-99';const db2=b.dueDate||'9999-99-99';return da===db2?String(a.id).localeCompare(String(b.id)):da.localeCompare(db2);}).slice(0,TASKS_CONTEXT_LIMIT);
+ const plannedLimited=[...s.plannedProjects].sort((a,b)=>String(a.name).localeCompare(String(b.name))).slice(0,PLANNED_PROJECTS_LIMIT);
  const hostingServicesLimited=[...s.hostingServices].sort((a,b)=>String(a.name).localeCompare(String(b.name))).slice(0,HOSTING_SERVICES_LIMIT);
  const hostingPaymentsLimited=[...s.hostingPayments].sort((a,b)=>String(a.date).localeCompare(String(b.date))).slice(-HOSTING_PAYMENTS_LIMIT);
  return {date:today(),settings:s.financeSettings,stats:dashboardStats(s),monthlyIncome:incomeHistory(s),projectSummary:projectSummary(s),bankBalances:accountBalances(s),
  clients:s.clients,specialists:s.specialists,partners:s.partners,debts:s.personalDebts,savings:s.savings,
  projects:[...s.projectsActive.map(p=>({...p,collection:'active'})),...s.projectsCompleted.map(p=>({...p,collection:'completed'}))].map(p=>({id:p.id,collection:p.collection,name:p.name,clientName:p.clientName,status:p.status,currency:p.currency||'UAH',displayBudget:{amount:toDisplay(Number(p.budget)||0,p.currency||'UAH',s.financeSettings),currency:s.financeSettings.displayCurrency||'UAH'},developerId:p.developerId,partnerId:p.partnerId,startDate:p.startDate,endDate:p.endDate,...project(p)})),
  transactions:s.transactions.map(t=>({id:t.id,type:t.type,amount:t.amount,bank:t.bank,date:t.date,category:t.category,description:t.description,projectId:t.projectId,hidden:t.hidden,incomeStatus:t.incomeStatus,source:t.source,plannedDate:t.plannedDate,toBank:t.toBank,targetAmount:t.targetAmount,rate:t.rate,status:t.status})),banks:BANKS.map(({id,label,currency})=>({id,label,currency})),
- // Пакет 05: завдання — готові стани на «сьогодні» (спільний модуль lib/tasks).
- tasks:tasksSorted.map(t=>{const sc=taskSchedule(t,new Date());return{id:t.id,title:t.title,priority:t.priority,status:t.status,dueDate:t.dueDate||'',dueTime:t.dueTime||'',bucket:sc.bucket,overdue:sc.overdue,reminderAt:t.reminderAt||'',reminderPending:sc.reminderDue};}),tasksTotal:s.tasks.length,tasksTruncated:s.tasks.length>tasksSorted.length,
+ // Пакет 06: заплановані проєкти — обмежена вибірка з чесними прапорцями.
+ plannedProjects:{list:plannedLimited.map(p=>({id:p.id,name:p.name,category:p.category,clientName:p.clientName,clientId:p.clientId||'',description:p.description||''})),total:s.plannedProjects.length,truncated:s.plannedProjects.length>plannedLimited.length},
  // Пакет 04: хостинг — готові підсумки стану на «сьогодні» (спільний модуль),
  // щоб модель не перераховувала дати сама і не вигадувала покриття.
  hosting:{today:today(),

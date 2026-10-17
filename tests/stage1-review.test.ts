@@ -31,7 +31,7 @@ function payloadWith(clients: ReturnType<typeof makeClient>[], overrides: Partia
       savings: [],
       hostingServices: [],
       hostingPayments: [],
-      tasks: [],
+      tasks: [], plannedProjects: [],
     },
     financeSettings: { usdRate: 41, eurRate: 44, usdtRate: 41, displayCurrency: 'UAH' },
     ...overrides,
@@ -208,7 +208,7 @@ test('міграції не перезаписують пошкоджену ко
       savings: [],
       hostingServices: [],
       hostingPayments: [],
-      tasks: [],
+      tasks: [], plannedProjects: [],
     },
   } as Partial<ExportPayload>));
   assert.equal(recovery.ok, true, `імпорт мав вдатися: ${recovery.issue}`);
@@ -341,7 +341,7 @@ test('дублікати ID між активними і завершеними 
       savings: [],
       hostingServices: [],
       hostingPayments: [],
-      tasks: [],
+      tasks: [], plannedProjects: [],
     },
   } as Partial<ExportPayload>);
 
@@ -367,7 +367,7 @@ test('стара комісія (сума) приймається і норма�
     savings: [],
     hostingServices: [],
     hostingPayments: [],
-    tasks: [],
+    tasks: [], plannedProjects: [],
   };
   const result = validateBackup(legacy);
   assert.equal(result.ok, true, JSON.stringify(result.errors));
@@ -389,7 +389,7 @@ test('невизначена одиниця комісії: запис позн�
     savings: [],
     hostingServices: [],
     hostingPayments: [],
-    tasks: [],
+    tasks: [], plannedProjects: [],
   };
 
   const soft = validateBackup(file);

@@ -177,6 +177,22 @@ export interface Task {
   completedAt?: string;
 }
 
+// Пакет 06: заплановані проєкти — заміна розділу «Завдання».
+// Жодних фінансових полів, статусів чи дат оплати. Категорії — ті самі,
+// що в проєктів (IT / Design / Video), без власного конструктора.
+export interface PlannedProject {
+  id: string;
+  name: string;
+  category: 'IT' | 'Design' | 'Video' | string;
+  /** Текстове ім'я клієнта (може не збігатися з карткою клієнта). */
+  clientName: string;
+  /** Явно обрана картка клієнта; ручне введення імені не створює картку. */
+  clientId?: string;
+  description?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 // Пакет 04: хостинг — ручний облік послуг провайдера.
 // Назва проєкту — звичайний текст (без projectId/clientId); зв'язок
 // оплат існує лише всередині «Хостингу». Паролі/API-ключі не зберігаються.
@@ -231,6 +247,8 @@ export interface ExportData {
   hostingPayments: HostingPayment[];
   /** Пакет 05. У старих файлах (v1/v2/v3 без завдань) ключ відсутній. */
   tasks: Task[];
+  /** Пакет 06. У старих файлах ключ відсутній — див. validate-backup. */
+  plannedProjects: PlannedProject[];
 }
 
 export interface ExportPayload {
