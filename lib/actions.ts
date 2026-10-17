@@ -905,41 +905,75 @@ export const markRemindersShown = (...args: Parameters<typeof _markRemindersShow
 // ------------------------------------------------------------
 
 export function validatePlannedProjectInput(input: Partial<PlannedProject>): FieldError[] {
-  return [
+  const errors = [
     ...validateRequiredText(input.name, 'name', 'Назва проєкту', 300),
     ...validateEnum(input.category, ['IT', 'Design', 'Video'], 'category', 'Категорія'),
-    ...validateRequiredText(input.clientName, 'clientName', 'Клієнт', 200),
   ];
+  // Клієнт: явний непорожній clientId (рядок) АБО ручне ім'я — обов'язково одне
+  // з двох. Невідомість ID перевіряється нижче за чинними clients (_savePlannedProject).
+  const hasClientId = input.clientId !== undefined && input.clientId !== null && String(input.clientId).trim() !== '';
+  if (hasClientId) {
+    if (typeof input.clientId !== 'string') errors.push({ field: 'clientId', message: 'Клієнт: некоректний ID' });
+  } else {
+    errors.push(...validateRequiredText(input.clientName, 'clientName', 'Клієнт', 200));
+  }
+  return errors;
 }
 
+// Рев'ю 18.10: канонічні правила клієнта для всіх шляхів запису (форма, AI):
+// 1) clientId (наявна картка) — джерело канонічного clientName; невідомий ID —
+//    зрозуміла відмова до запису, без тихого переходу в ручне ім'я;
+// 2) лише clientName — ручний режим: без автопідбору за збігом імені й без
+//    створення картки;
+// 3) без обох полів (partial edit) — чинний зв'язок запису зберігається, якщо
+//    картка ще існує (застарілий ID скидається без відмови редагування).
 async function _savePlannedProject(input: Partial<PlannedProject>, editId?: string): Promise<ActionResult<PlannedProject>> {
-  const errors = validatePlannedProjectInput(input);
-  if (errors.length) return fail(errors);
   const list = Storage.getPlannedProjects();
-  const nowIso = new Date().toISOString();
+  const old = editId ? list.find(p => p.id === editId) : undefined;
+  if (editId && !old) return fail([{ field: 'id', message: 'Запланований проєкт не знайдено' }]);
+  if (input.clientId !== undefined && input.clientId !== null && typeof input.clientId !== 'string') {
+    return fail([{ field: 'clientId', message: 'Клієнт: некоректний ID' }]);
+  }
+  const clients = Storage.getClients();
+  const rawId = typeof input.clientId === 'string' ? input.clientId.trim() : '';
+  let clientId: string | undefined;
+  let clientName: string | undefined;
+  if (rawId) {
+    const card = clients.find(c => c.id === rawId);
+    if (!card) {
+      return fail([{
+        field: 'clientId',
+        message: `Клієнта «${rawId}» не знайдено — обери наявну картку або вкажи ім'я вручну (без clientId)`,
+      }]);
+    }
+    clientId = card.id;
+    clientName = card.name;
+  } else if (input.clientName !== undefined && input.clientName !== null) {
+    clientId = undefined;
+    clientName = String(input.clientName).trim();
+  } else if (old) {
+    clientId = old.clientId && clients.some(c => c.id === old.clientId) ? old.clientId : undefined;
+    clientName = old.clientName;
+  }
+  const errors = validatePlannedProjectInput({ ...input, clientId, clientName });
+  if (errors.length) return fail(errors);
   const name = String(input.name).trim();
   const category = input.category as PlannedProject['category'];
-  const clientName = String(input.clientName).trim();
-  // Лише явно обрана картка зі списку чинних клієнтів зберігається як clientId.
-  // Ручне введення імені не створює картку і не лінкується за іменем.
-  const clientId = input.clientId && Storage.getClients().some(c => c.id === input.clientId)
-    ? input.clientId
-    : undefined;
+  const resolvedClientName = String(clientName).trim();
   const description = String(input.description ?? '').trim() || undefined;
+  const nowIso = new Date().toISOString();
 
   if (editId) {
-    const index = list.findIndex(p => p.id === editId);
-    if (index < 0) return fail([{ field: 'id', message: 'Запланований проєкт не знайдено' }]);
     const next: PlannedProject = {
-      ...list[index],
+      ...old!,
       name,
       category,
-      clientName,
+      clientName: resolvedClientName,
       clientId,
       description,
       updatedAt: nowIso,
     };
-    list[index] = next;
+    list[list.indexOf(old!)] = next;
     const result = await persist(Storage.savePlannedProjects(list));
     return result.ok ? ok(next) : result;
   }
@@ -948,7 +982,7 @@ async function _savePlannedProject(input: Partial<PlannedProject>, editId?: stri
     id: generateId(),
     name,
     category,
-    clientName,
+    clientName: resolvedClientName,
     clientId,
     description,
     createdAt: nowIso,
@@ -1023,7 +1057,29 @@ export const applyAssistantPlan=(plan:Plan):Promise<ActionResult<unknown>>=>plan
     case 'specialists':return remove?_deleteSpecialist(id!):_saveSpecialist(input,edit);
     case 'hosting':return remove?fail([{field:'action',message:'Картку хостингу не видаляють — використай архів (archived: true)'}]):_saveHostingService(fields,edit);
     case 'hostingPayments':return remove?_deleteHostingPayment(id!):_saveHostingPayment(fields,edit);
-    case 'plannedProjects':return remove?_deletePlannedProject(id!):_savePlannedProject(fields,edit);
+    case 'plannedProjects': {
+      if (remove) return _deletePlannedProject(id!);
+      // Рев'ю 18.10: partial update — зберігаємо не передані поля; клієнт за
+      // явними полями чернетки (див. канонічні правила вище), а не за merged:
+      // без полів клієнта — чинний зв'язок; лише clientName — явне відв'язування
+      // в ручний режим; clientId: null — явне відв'язування зі збереженням імені;
+      // непорожній clientId — перевірка існування та канонічне ім'я — у
+      // _savePlannedProject (draft показує канонічні поля, запис не розходиться).
+      const explicit = fields as Record<string, unknown>;
+      const hasClientField = 'clientId' in explicit || 'clientName' in explicit;
+      if (!hasClientField) {
+        const oldClientId = typeof old?.clientId === 'string' ? old.clientId : '';
+        input.clientId = oldClientId && store.getSnapshot().clients.some(c => c.id === oldClientId)
+          ? oldClientId
+          : undefined;
+      } else if (!('clientId' in explicit)) {
+        input.clientId = undefined;
+      } else if (explicit.clientId === null || explicit.clientId === '') {
+        input.clientId = undefined;
+        if (explicit.clientName === undefined || explicit.clientName === null) input.clientName = old?.clientName;
+      }
+      return _savePlannedProject(input as Partial<PlannedProject>, edit);
+    }
     case 'partners':return remove?_deletePartner(id!):_savePartner(input,edit);
     case 'debts':return remove?_deleteDebt(id!):_saveDebt(input,edit);
     case 'savings':return remove?_deleteSaving(id!):_saveSaving(input,edit);

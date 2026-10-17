@@ -176,8 +176,30 @@ export function normalizePlan(raw:unknown,s:DataSnapshot):Omit<Plan,'base'>{
    const linked=recClientId?s.clients.find(c=>c.id===recClientId):undefined;
    if(linked)applyClientCard(fields,linked);
   }
- }
- if(domain==='payments'&&!fields.date)fields.date=today();
+  }
+  // Пакет 06-рев'ю: plannedProjects — клієнт у чернетці за тими самими правилами,
+  // що й при записі (див. _savePlannedProject): явний clientId → наявна картка є
+  // джерелом імені (невідомий ID → відмова до запису, без тихого переходу в
+  // ручне ім'я); лише clientName → ручний режим (за збігом імені іншу картку НЕ
+  // підбираємо і не створюємо; збіг з чинною карткою запису → зв'язок лишається);
+  // clientId: null → явне відв'язування; без полів клієнта — чинний зв'язок.
+  if(domain==='plannedProjects'){
+   const rec=action==='update'?records(domain,s).find(x=>x.id===recordId):undefined;
+   if(typeof fields.clientId==='string'&&fields.clientId){
+    const card=s.clients.find(c=>c.id===fields.clientId);
+    if(!card)throw new Error(`Клієнта з ID ${fields.clientId} не знайдено`);
+    fields.clientName=card.name;
+   }else if('clientId' in fields&&fields.clientId===null){
+    if(!('clientName' in fields)&&typeof rec?.clientName==='string')fields.clientName=rec.clientName;
+   }else if('clientName' in fields){
+    const recClientId=typeof rec?.clientId==='string'?rec.clientId:'';
+    const linked=recClientId?s.clients.find(c=>c.id===recClientId):undefined;
+    if(linked&&sameClientName(linked.name,fields.clientName)){fields.clientId=linked.id;fields.clientName=linked.name;}
+    else if(rec)fields.clientId=null;
+    else delete fields.clientId;
+   }
+  }
+  if(domain==='payments'&&!fields.date)fields.date=today();
  if(action==='delete'&&Object.keys(fields).length)throw new Error('Видалення не повинно змінювати поля');
  if(action==='update'&&!Object.keys(fields).length&&domain!=='history')throw new Error('Немає змін');
  if(domain==='projects'&&fields.status==='Завершено')throw new Error('Для завершення використай форму проєкту; це також переміщує запис до архіву');

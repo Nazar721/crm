@@ -9,7 +9,7 @@ import {
 } from '@/lib/tasks';
 import { kyivDateTimeToIso } from '@/lib/dates';
 import {
-  applyAssistantPlan, cancelTask, completeTask, markRemindersShown, saveTask, saveRates, snoozeTaskReminder,
+  applyAssistantPlan, cancelTask, completeTask, markRemindersShown, savePlannedProject, saveTask, saveRates, snoozeTaskReminder,
 } from '@/lib/actions';
 import { fingerprint, missingQuestions, modelContext, normalizePlan } from '@/lib/assistant/plan';
 import { dashboardStats } from '@/lib/calc';
@@ -17,7 +17,7 @@ import { buildExportPayload } from '@/lib/export';
 import { applyImport } from '@/lib/importer';
 import { validateBackup } from '@/lib/validate-backup';
 import * as store from '@/lib/store';
-import { clearAll, bootStore, emptySnapshot } from './helpers';
+import { clearAll, bootStore, emptySnapshot, makeClient } from './helpers';
 import type { PlannedProject, Task } from '@/types';
 
 // ============================================================
@@ -344,6 +344,183 @@ test('AI: обов’язкова назва/клієнт, дефолти, ко�
   const repeat = await applyAssistantPlan({ ...draft, base: 'stale' } as never);
   assert.equal(repeat.ok, false);
   assert.equal(store.getSnapshot().plannedProjects.length, 1);
+});
+
+// ------------------------------------------------------------
+// 06-рев'ю 18.10: plannedProjects — backup round-trip без втрат,
+// partial update, канонічний клієнт (форма ↔ AI ↔ запис)
+// ------------------------------------------------------------
+
+test('06-рев’ю: backup round-trip — довгий опис і поля без мовчазного обрізання', async () => {
+  clearAll();
+  await bootStore();
+  const description = 'Опис '.repeat(500);
+  const saved = await savePlannedProject({
+    name: 'Лендінг з довгим описом',
+    category: 'Design',
+    clientName: 'Марія',
+    description,
+  });
+  assert.equal(saved.ok, true);
+  const stored = store.getSnapshot().plannedProjects[0];
+  assert.ok(stored.description!.length > 2000, 'запис понад 2000 символів дозволений');
+  const payload = buildExportPayload(store.getSnapshot());
+  const v = validateBackup(payload);
+  assert.equal(v.ok, true);
+  assert.equal(v.counts.plannedProjects, 1);
+  assert.deepEqual(v.warnings.filter(w => w.collection === 'plannedProjects'), [], 'власний експорт — без попереджень');
+  assert.deepEqual(v.recordIssues.filter(i => i.collection === 'plannedProjects'), [], 'власний експорт — без issues');
+  clearAll();
+  await bootStore();
+  const report = await applyImport(payload);
+  assert.equal(report.ok, true);
+  const restored = store.getSnapshot().plannedProjects[0];
+  assert.equal(restored.description, stored.description, 'опис відновлюється повністю');
+  assert.equal(restored.name, stored.name);
+  assert.equal(restored.clientName, stored.clientName);
+  assert.equal(restored.category, stored.category);
+});
+
+test('06-рев’ю: AI partial update — окремо опис/назва/категорія, без втрати полів', async () => {
+  clearAll();
+  await bootStore();
+  await store.saveCollection('clients', [makeClient({ id: 'client-a', name: 'Alice' })]);
+  const saved = await savePlannedProject({
+    name: 'Сайт', category: 'IT', clientName: 'Alice', clientId: 'client-a', description: 'Старий опис',
+  });
+  assert.equal(saved.ok, true);
+  const id = store.getSnapshot().plannedProjects[0].id;
+
+  const updDesc = normalizePlan(
+    { domain: 'plannedProjects', action: 'update', recordId: id, fields: { description: 'Новий опис' } },
+    store.getSnapshot(),
+  );
+  assert.deepEqual(missingQuestions(updDesc, store.getSnapshot()), [], 'оновлення опису не потребує уточнень');
+  const applied1 = await applyAssistantPlan({ ...updDesc, base: await fingerprint(store.getSnapshot()) } as never);
+  assert.equal(applied1.ok, true);
+  let rec = store.getSnapshot().plannedProjects[0];
+  assert.equal(rec.description, 'Новий опис');
+  assert.equal(rec.name, 'Сайт');
+  assert.equal(rec.category, 'IT');
+  assert.equal(rec.clientId, 'client-a', 'зв’язок із клієнтом збережено');
+  assert.equal(rec.clientName, 'Alice');
+
+  const updName = normalizePlan(
+    { domain: 'plannedProjects', action: 'update', recordId: id, fields: { name: 'Лендінг' } },
+    store.getSnapshot(),
+  );
+  const applied2 = await applyAssistantPlan({ ...updName, base: await fingerprint(store.getSnapshot()) } as never);
+  assert.equal(applied2.ok, true);
+  rec = store.getSnapshot().plannedProjects[0];
+  assert.equal(rec.name, 'Лендінг');
+  assert.equal(rec.description, 'Новий опис', 'опис не загублено при зміні назви');
+
+  const updCat = normalizePlan(
+    { domain: 'plannedProjects', action: 'update', recordId: id, fields: { category: 'Video' } },
+    store.getSnapshot(),
+  );
+  const applied3 = await applyAssistantPlan({ ...updCat, base: await fingerprint(store.getSnapshot()) } as never);
+  assert.equal(applied3.ok, true);
+  rec = store.getSnapshot().plannedProjects[0];
+  assert.equal(rec.category, 'Video');
+  assert.equal(rec.name, 'Лендінг');
+  assert.equal(rec.clientId, 'client-a');
+
+  // Явне очищення опису: порожній рядок → undefined
+  const clearDesc = normalizePlan(
+    { domain: 'plannedProjects', action: 'update', recordId: id, fields: { description: '' } },
+    store.getSnapshot(),
+  );
+  const appliedClear = await applyAssistantPlan({ ...clearDesc, base: await fingerprint(store.getSnapshot()) } as never);
+  assert.equal(appliedClear.ok, true);
+  assert.equal(store.getSnapshot().plannedProjects[0].description, undefined, 'порожній опис — явне очищення');
+
+  // Stale base → відмова без змін і без дубля
+  const beforeStale = store.getSnapshot().plannedProjects[0];
+  const plannedBefore = store.getSnapshot().plannedProjects.length;
+  const stale = await applyAssistantPlan({ ...updName, base: 'stale' } as never);
+  assert.equal(stale.ok, false);
+  assert.equal(store.getSnapshot().plannedProjects.length, plannedBefore);
+  assert.deepEqual(store.getSnapshot().plannedProjects[0], beforeStale);
+
+  const events = await store.listHistory({ limit: 50 });
+  const plannedEvents = events.events.filter(e => e.changes.some(c => c.collection === 'plannedProjects'));
+  assert.equal(plannedEvents.length, 5, 'створення + 4 успішні оновлення = одна група на підтвердження');
+});
+
+test('06-рев’ю: клієнт — канонічне ім’я картки, відмова на невідомий ID, ручний перехід', async () => {
+  clearAll();
+  await bootStore();
+  await store.saveCollection('clients', [
+    makeClient({ id: 'client-a', name: 'Alice' }),
+    makeClient({ id: 'client-b', name: 'Bob' }),
+  ]);
+  // Mismatch: ім’я Bob + ID Alice → канонічне ім’я обраної картки
+  const mismatch = await savePlannedProject({ name: 'Wrong card', category: 'IT', clientName: 'Bob', clientId: 'client-a' });
+  assert.equal(mismatch.ok, true);
+  const wrong = store.getSnapshot().plannedProjects[0];
+  assert.equal(wrong.clientName, 'Alice', 'картка — джерело канонічного імені');
+  assert.equal(wrong.clientId, 'client-a');
+
+  // Невідомий ID → зрозуміла відмова; snapshot та історія без змін
+  const historyBefore = (await store.listHistory({ limit: 50 })).events.length;
+  const snapshotBefore = store.getSnapshot();
+  const unknown = await savePlannedProject({ name: 'Stale', category: 'IT', clientName: 'Alice', clientId: 'nonexistent' });
+  assert.equal(unknown.ok, false);
+  assert.deepEqual(store.getSnapshot(), snapshotBefore, 'невдала валідація не змінює snapshot');
+  assert.equal((await store.listHistory({ limit: 50 })).events.length, historyBefore, 'історія без нових подій');
+
+  // Неправильний тип ID → відмова
+  const wrongType = await savePlannedProject({ name: 'Тип', category: 'IT', clientName: 'X', clientId: 123 as never });
+  assert.equal(wrongType.ok, false);
+
+  // Два клієнти з різними ID та однаковими іменами → вибір за ID, не за збігом імені
+  await store.saveCollection('clients', [
+    makeClient({ id: 'client-a', name: 'Alice' }),
+    makeClient({ id: 'client-b', name: 'Alice' }),
+  ]);
+  const byId = await savePlannedProject({ name: 'За ID', category: 'IT', clientName: 'Alice', clientId: 'client-b' });
+  assert.equal(byId.ok, true);
+  const recById = store.getSnapshot().plannedProjects.find(p => p.name === 'За ID')!;
+  assert.equal(recById.clientId, 'client-b');
+
+  // AI-чернетка: відомий ID → канонічне ім’я; невідомий → відмова нормалізації
+  const s = store.getSnapshot();
+  const draftKnown = normalizePlan(
+    { domain: 'plannedProjects', action: 'create', fields: { name: 'AI', category: 'IT', clientId: 'client-a', clientName: 'Bob' } },
+    s,
+  );
+  assert.equal(draftKnown.fields.clientName, 'Alice', 'чернетка показує канонічне ім’я картки');
+  assert.throws(
+    () => normalizePlan({ domain: 'plannedProjects', action: 'create', fields: { name: 'AI', category: 'IT', clientId: 'ghost' } }, s),
+    /не знайдено/,
+  );
+
+  // Partial edit опису через AI зберігає чинний зв’язок (фікс P2)
+  const linked = store.getSnapshot().plannedProjects.find(p => p.name === 'За ID')!;
+  const descUpd = normalizePlan(
+    { domain: 'plannedProjects', action: 'update', recordId: linked.id, fields: { description: 'Лише опис' } },
+    store.getSnapshot(),
+  );
+  const applied = await applyAssistantPlan({ ...descUpd, base: await fingerprint(store.getSnapshot()) } as never);
+  assert.equal(applied.ok, true);
+  const afterDesc = store.getSnapshot().plannedProjects.find(p => p.id === linked.id)!;
+  assert.equal(afterDesc.description, 'Лише опис');
+  assert.equal(afterDesc.clientId, 'client-b', 'зв’язок не втрачено при partial edit');
+  assert.equal(afterDesc.clientName, 'Alice');
+
+  // Явний перехід на ручне ім’я: update лише clientName → clientId: null у чернетці
+  const manualDraft = normalizePlan(
+    { domain: 'plannedProjects', action: 'update', recordId: linked.id, fields: { clientName: 'Ручний клієнт' } },
+    store.getSnapshot(),
+  );
+  assert.equal(manualDraft.fields.clientId, null, 'перехід на ручне ім’я видимий у чернетці');
+  const manualApplied = await applyAssistantPlan({ ...manualDraft, base: await fingerprint(store.getSnapshot()) } as never);
+  assert.equal(manualApplied.ok, true);
+  const manualRec = store.getSnapshot().plannedProjects.find(p => p.id === linked.id)!;
+  assert.equal(manualRec.clientId, undefined, 'картку відв’язано');
+  assert.equal(manualRec.clientName, 'Ручний клієнт');
+  assert.equal(store.getSnapshot().clients.length, 2, 'ручне ім’я не створило картку');
 });
 
 // ------------------------------------------------------------

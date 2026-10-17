@@ -516,13 +516,16 @@ function validatePlannedProjectRecord(rec: unknown, ctx: Ctx, acc: Acc): Planned
   if (!clientName) {
     acc.warnings.push({ collection: ctx.collection, index: ctx.index, id: ctx.id, message: 'відсутнє ім’я клієнта — поле залишено порожнім' });
   }
+  // Рев'ю 18.10: без мовчазного обрізання — власний експорт має проходити
+  // export → validate → import без втрати вмісту (name/clientName/actions
+  // вже відмовляють понад 300/200 на записі; сюди значення не усікаються).
   const planned: PlannedProject = {
     id: ctx.id,
-    name: name.slice(0, 300),
+    name,
     category,
-    clientName: clientName.slice(0, 200),
+    clientName,
     clientId: validId(rec.clientId) ? str(rec.clientId).trim() : undefined,
-    description: str(rec.description).slice(0, 2000) || undefined,
+    description: str(rec.description) || undefined,
     createdAt: typeof rec.createdAt === 'string' ? rec.createdAt : undefined,
     updatedAt: typeof rec.updatedAt === 'string' ? rec.updatedAt : undefined,
   };
