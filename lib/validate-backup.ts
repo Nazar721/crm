@@ -384,153 +384,141 @@ function validateSaving(rec: unknown, ctx: Ctx, acc: Acc): Record<string, unknow
 
 type RecordValidator = (rec: unknown, ctx: Ctx, acc: Acc) => unknown;
 
+// Рев'ю 18.10 (блокер): усі чотири «нові» колекції проходять спільну перевірку
+// об'єкта/ID через baseRecordChecks — початковий rec.id зберігається як є;
+// відсутній/порожній/null/числовий ID → recordIssue і пропуск запису (як у
+// clients/projects), без генерації нових ID і без мовчазного id:''.
 function validateHostingServiceRecord(rec: unknown, ctx: Ctx, acc: Acc): HostingService | null {
-  if (!isPlainObject(rec)) {
-    acc.errors.push({ collection: ctx.collection, index: ctx.index, message: 'запис має бути об’єктом' });
-    return null;
-  }
-  const name = str(rec.name).trim();
+  const r = baseRecordChecks(rec, ctx, acc);
+  if (!r) return null;
+  const name = str(r.name).trim();
   if (!name) {
-    acc.errors.push({ collection: ctx.collection, index: ctx.index, id: ctx.id, message: 'відсутня назва послуги' });
+    acc.errors.push({ ...ctx, message: 'відсутня назва послуги' });
     return null;
   }
-  if (rec.currency !== undefined && rec.currency !== '' && !(HOSTING_CURRENCIES as readonly string[]).includes(str(rec.currency))) {
-    acc.warnings.push({ collection: ctx.collection, index: ctx.index, id: ctx.id, message: 'невідома валюта — використано UAH' });
+  if (r.currency !== undefined && r.currency !== '' && !(HOSTING_CURRENCIES as readonly string[]).includes(str(r.currency))) {
+    acc.warnings.push({ ...ctx, message: 'невідома валюта — використано UAH' });
   }
-  if (rec.expectedPrice !== undefined && rec.expectedPrice !== null && toFiniteNumber(rec.expectedPrice) === null) {
-    acc.warnings.push({ collection: ctx.collection, index: ctx.index, id: ctx.id, message: 'некоректна очікувана ціна — поле очищено' });
+  if (r.expectedPrice !== undefined && r.expectedPrice !== null && toFiniteNumber(r.expectedPrice) === null) {
+    acc.warnings.push({ ...ctx, message: 'некоректна очікувана ціна — поле очищено' });
   }
-  const service: HostingService = {
+  return {
     id: ctx.id,
     name: name.slice(0, 200),
-    site: str(rec.site).slice(0, 300) || undefined,
-    provider: str(rec.provider).slice(0, 200) || undefined,
-    plan: str(rec.plan).slice(0, 200) || undefined,
-    currency: (HOSTING_CURRENCIES as readonly string[]).includes(str(rec.currency)) ? str(rec.currency) : 'UAH',
-    expectedPrice: toFiniteNumber(rec.expectedPrice) ?? undefined,
-    note: str(rec.note).slice(0, 2000) || undefined,
-    archived: rec.archived === true,
-    createdAt: typeof rec.createdAt === 'string' ? rec.createdAt : undefined,
+    site: str(r.site).slice(0, 300) || undefined,
+    provider: str(r.provider).slice(0, 200) || undefined,
+    plan: str(r.plan).slice(0, 200) || undefined,
+    currency: (HOSTING_CURRENCIES as readonly string[]).includes(str(r.currency)) ? str(r.currency) : 'UAH',
+    expectedPrice: toFiniteNumber(r.expectedPrice) ?? undefined,
+    note: str(r.note).slice(0, 2000) || undefined,
+    archived: r.archived === true,
+    createdAt: typeof r.createdAt === 'string' ? r.createdAt : undefined,
   };
-  ctx.id = service.id;
-  return service;
 }
 
 function validateHostingPaymentRecord(rec: unknown, ctx: Ctx, acc: Acc): HostingPayment | null {
-  if (!isPlainObject(rec)) {
-    acc.errors.push({ collection: ctx.collection, index: ctx.index, message: 'запис має бути об’єктом' });
-    return null;
-  }
-  const serviceId = str(rec.serviceId).trim();
-  const date = str(rec.date).trim();
-  const periodStart = str(rec.periodStart).trim();
-  const periodEnd = str(rec.periodEnd).trim();
-  const amount = toFiniteNumber(rec.amount);
+  const r = baseRecordChecks(rec, ctx, acc);
+  if (!r) return null;
+  const serviceId = str(r.serviceId).trim();
+  const date = str(r.date).trim();
+  const periodStart = str(r.periodStart).trim();
+  const periodEnd = str(r.periodEnd).trim();
+  const amount = toFiniteNumber(r.amount);
   const bad: string[] = [];
-  if (!validId(rec.serviceId)) bad.push('serviceId');
+  if (!validId(r.serviceId)) bad.push('serviceId');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) bad.push('date');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(periodStart)) bad.push('periodStart');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(periodEnd)) bad.push('periodEnd');
   if (amount === null || amount <= 0) bad.push('amount');
   if (bad.length) {
-    acc.errors.push({ collection: ctx.collection, index: ctx.index, id: ctx.id, message: `некоректні поля: ${bad.join(', ')}` });
+    acc.errors.push({ ...ctx, message: `некоректні поля: ${bad.join(', ')}` });
     return null;
   }
-  const payment: HostingPayment = {
+  if (periodStart > periodEnd) {
+    acc.errors.push({ ...ctx, message: 'кінець періоду раніший за початок' });
+    return null;
+  }
+  return {
     id: ctx.id,
     serviceId,
     date,
     amount: amount ?? 0,
-    currency: (HOSTING_CURRENCIES as readonly string[]).includes(str(rec.currency)) ? str(rec.currency) : 'UAH',
+    currency: (HOSTING_CURRENCIES as readonly string[]).includes(str(r.currency)) ? str(r.currency) : 'UAH',
     periodStart,
     periodEnd,
-    note: str(rec.note).slice(0, 2000) || undefined,
-    createdAt: typeof rec.createdAt === 'string' ? rec.createdAt : undefined,
+    note: str(r.note).slice(0, 2000) || undefined,
+    createdAt: typeof r.createdAt === 'string' ? r.createdAt : undefined,
   };
-  if (periodStart > periodEnd) {
-    acc.errors.push({ collection: ctx.collection, index: ctx.index, id: payment.id, message: 'кінець періоду раніший за початок' });
-    return null;
-  }
-  ctx.id = payment.id;
-  return payment;
 }
 
 function validateTaskRecord(rec: unknown, ctx: Ctx, acc: Acc): Task | null {
-  if (!isPlainObject(rec)) {
-    acc.errors.push({ collection: ctx.collection, index: ctx.index, message: 'запис має бути об’єктом' });
-    return null;
-  }
-  const title = str(rec.title).trim();
+  const r = baseRecordChecks(rec, ctx, acc);
+  if (!r) return null;
+  const title = str(r.title).trim();
   if (!title) {
-    acc.errors.push({ collection: ctx.collection, index: ctx.index, id: ctx.id, message: 'відсутня назва завдання' });
+    acc.errors.push({ ...ctx, message: 'відсутня назва завдання' });
     return null;
   }
-  const priority = (['low', 'normal', 'high'] as const).includes(str(rec.priority) as TaskPriority) ? str(rec.priority) as TaskPriority : 'normal';
-  const status = (['planned', 'done', 'cancelled'] as const).includes(str(rec.status) as TaskStatus) ? str(rec.status) as TaskStatus : 'planned';
-  const dueDate = str(rec.dueDate).trim();
-  const dueTime = str(rec.dueTime).trim();
+  const priority = (['low', 'normal', 'high'] as const).includes(str(r.priority) as TaskPriority) ? str(r.priority) as TaskPriority : 'normal';
+  const status = (['planned', 'done', 'cancelled'] as const).includes(str(r.status) as TaskStatus) ? str(r.status) as TaskStatus : 'planned';
+  const dueDate = str(r.dueDate).trim();
+  const dueTime = str(r.dueTime).trim();
   // Строга календарна перевірка («30 лютого» та 25:99 відкидаються).
   if (dueDate && !isValidTaskDate(dueDate)) {
-    acc.warnings.push({ collection: ctx.collection, index: ctx.index, id: ctx.id, message: 'некоректний дедлайн (реальна дата) — поле очищено' });
+    acc.warnings.push({ ...ctx, message: 'некоректний дедлайн (реальна дата) — поле очищено' });
   }
   if (dueTime && !isValidTaskTime(dueTime)) {
-    acc.warnings.push({ collection: ctx.collection, index: ctx.index, id: ctx.id, message: 'некоректний час дедлайну (00:00–23:59) — поле очищено' });
+    acc.warnings.push({ ...ctx, message: 'некоректний час дедлайну (00:00–23:59) — поле очищено' });
   } else if (dueDate && dueTime && isValidTaskDate(dueDate) && kyivDateTimeToIso(dueDate, dueTime) === null) {
     // Неможливий стінний час (Kyiv-перехід): для наявних даних політика —
     // день без часу (час не вигадується, з попередженням).
-    acc.warnings.push({ collection: ctx.collection, index: ctx.index, id: ctx.id, message: 'час дедлайну не існує в Kyiv (перехід) — поле очищено, дедлайн лишається днем' });
+    acc.warnings.push({ ...ctx, message: 'час дедлайну не існує в Kyiv (перехід) — поле очищено, дедлайн лишається днем' });
   }
-  const task: Task = {
+  return {
     id: ctx.id,
     title: title.slice(0, 300),
-    description: str(rec.description).slice(0, 2000) || undefined,
+    description: str(r.description).slice(0, 2000) || undefined,
     priority,
     status,
     dueDate: isValidTaskDate(dueDate) ? dueDate : undefined,
     dueTime: isValidTaskTime(dueTime) && !(dueDate && kyivDateTimeToIso(dueDate, dueTime) === null) ? dueTime : undefined,
-    reminderAt: typeof rec.reminderAt === 'string' && isIsoInstant(rec.reminderAt) ? rec.reminderAt : undefined,
-    reminderShownAt: typeof rec.reminderShownAt === 'string' && isIsoInstant(rec.reminderShownAt) ? rec.reminderShownAt : undefined,
-    createdAt: typeof rec.createdAt === 'string' ? rec.createdAt : undefined,
-    updatedAt: typeof rec.updatedAt === 'string' ? rec.updatedAt : undefined,
-    completedAt: typeof rec.completedAt === 'string' ? rec.completedAt : undefined,
+    reminderAt: typeof r.reminderAt === 'string' && isIsoInstant(r.reminderAt) ? r.reminderAt : undefined,
+    reminderShownAt: typeof r.reminderShownAt === 'string' && isIsoInstant(r.reminderShownAt) ? r.reminderShownAt : undefined,
+    createdAt: typeof r.createdAt === 'string' ? r.createdAt : undefined,
+    updatedAt: typeof r.updatedAt === 'string' ? r.updatedAt : undefined,
+    completedAt: typeof r.completedAt === 'string' ? r.completedAt : undefined,
   };
-  ctx.id = task.id;
-  return task;
 }
 
 function validatePlannedProjectRecord(rec: unknown, ctx: Ctx, acc: Acc): PlannedProject | null {
-  if (!isPlainObject(rec)) {
-    acc.errors.push({ collection: ctx.collection, index: ctx.index, message: 'запис має бути об’єктом' });
-    return null;
-  }
-  const name = str(rec.name).trim();
+  const r = baseRecordChecks(rec, ctx, acc);
+  if (!r) return null;
+  const name = str(r.name).trim();
   if (!name) {
-    acc.errors.push({ collection: ctx.collection, index: ctx.index, id: ctx.id, message: 'відсутня назва запланованого проєкту' });
+    acc.errors.push({ ...ctx, message: 'відсутня назва запланованого проєкту' });
     return null;
   }
-  const category = str(rec.category).trim() || 'IT';
+  const category = str(r.category).trim() || 'IT';
   if (!['IT', 'Design', 'Video'].includes(category)) {
-    acc.warnings.push({ collection: ctx.collection, index: ctx.index, id: ctx.id, message: `невідома категорія «${category}» — збережено як є` });
+    acc.warnings.push({ ...ctx, message: `невідома категорія «${category}» — збережено як є` });
   }
-  const clientName = str(rec.clientName).trim();
+  const clientName = str(r.clientName).trim();
   if (!clientName) {
-    acc.warnings.push({ collection: ctx.collection, index: ctx.index, id: ctx.id, message: 'відсутнє ім’я клієнта — поле залишено порожнім' });
+    acc.warnings.push({ ...ctx, message: 'відсутнє ім’я клієнта — поле залишено порожнім' });
   }
   // Рев'ю 18.10: без мовчазного обрізання — власний експорт має проходити
   // export → validate → import без втрати вмісту (name/clientName/actions
   // вже відмовляють понад 300/200 на записі; сюди значення не усікаються).
-  const planned: PlannedProject = {
+  return {
     id: ctx.id,
     name,
     category,
     clientName,
-    clientId: validId(rec.clientId) ? str(rec.clientId).trim() : undefined,
-    description: str(rec.description) || undefined,
-    createdAt: typeof rec.createdAt === 'string' ? rec.createdAt : undefined,
-    updatedAt: typeof rec.updatedAt === 'string' ? rec.updatedAt : undefined,
+    clientId: validId(r.clientId) ? str(r.clientId).trim() : undefined,
+    description: str(r.description) || undefined,
+    createdAt: typeof r.createdAt === 'string' ? r.createdAt : undefined,
+    updatedAt: typeof r.updatedAt === 'string' ? r.updatedAt : undefined,
   };
-  ctx.id = planned.id;
-  return planned;
 }
 
 const VALIDATORS: Record<CollectionKey, RecordValidator> = {

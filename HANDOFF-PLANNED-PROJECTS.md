@@ -54,13 +54,13 @@
 - `tests/tasks.test.ts`: legacy-тести tasks лишені; AI- і perf-тести переписані на plannedProjects (контекст 10k → list 200/total/truncated).
 - Фікстури оновлено (`plannedProjects: []`): `helpers.ts`, `backup-validation`, `import-incident` (12), `import-recovery` (2), `my-share`, `stage1-review` (5), `settings-tabs` (очікуваний набір табів).
 
-## Перевірки (усі зелені, станом на рев'ю-пакет 18.10)
+## Перевірки (усі зелені, станом на повторний огляд 18.10)
 
 | Команда | Результат |
 |---|---|
 | `npm run typecheck` | 0 помилок |
-| `npm run lint` | лише warning (у т.ч. `PlannedProjectForm` exhaustive-deps — аналогічний патерн `ProjectForm`) |
-| `npm test` | 300/300 pass, 0 skipped (297 базових + 3 regression «06-рев'ю») |
+| `npm run lint` | exit 0, лише 10 наявних warning (у т.ч. `PlannedProjectForm` exhaustive-deps — аналогічний патерн `ProjectForm`) |
+| `npm test` | 304/304 pass, 0 skipped (297 базових + 3 «06-рев'ю» + 4 «імпорт-ID») |
 | `npm run test:sql` | 3/3 pass (включно «SQL-інтеграція 06») |
 | `npm run build` | успішно: `/planned-projects` 5.31 kB, `/tasks` redirect 136 B |
 
@@ -90,6 +90,18 @@
 - **backup round-trip**: опис >2000 символів → export → validate (без warnings/issues) → import → повна рівність опису/назви/клієнта/категорії.
 - **AI partial update**: окремо опис/назва/категорія/очищення опису; зв'язок клієнта не втрачається; stale base → відмова без змін; 5 успішних підтверджень = 5 груп журналу.
 - **клієнт**: mismatch ім'я/ID → канонічне ім'я картки; невідомий ID → відмова, snapshot/історія без змін; неправильний тип ID → відмова; два клієнти з однаковими іменами → вибір за ID; AI-чернетка канонізує ім'я і відхиляє ghost ID; partial edit зберігає зв'язок; перехід на ручне ім'я відв'язує без створення картки.
+
+## Повторний огляд 18.10: блокер — імпорт стирав ID (виправлено, одним комітом)
+
+Незалежний повторний огляд відтворив: `validateHostingServiceRecord`, `validateHostingPaymentRecord`, `validateTaskRecord`, `validatePlannedProjectRecord` не викликали `baseRecordChecks` — `ctx.id` лишався `''`, тож import зберігав порожні ID (редагування за ID після імпорту не знаходило запис; два записи → «дублікат id «»»; числовий `42` приймався як `''`).
+
+**Виправлення** (`lib/validate-backup.ts`): усі чотири валідатори тепер починаються з `baseRecordChecks` — спільна перевірка об'єкта та `rec.id` (`validId`); початковий ID зберігається як є; відсутній/порожній/null/числовий ID → recordIssue «відсутній або некоректний id» і пропуск запису (чинний механізм помилок, як у clients/projects), без генерації нових ID і без маскування. Зв'язок `hostingPayments.serviceId` (невідома картка → блокуюча помилка), семантика missing/empty колекцій і legacy-формат — без змін.
+
+**Регресії** (`tests/import-ids.test.ts`, 4 тести):
+1. export → validate → applyImport для 2+ записів кожної з чотирьох колекцій: ID, кількість, `serviceId` без змін, довгий опис (>2000) без втрат; після імпорту planned редагується і UI-дією, і AI-ланцюжком за початковим ID.
+2. Биті ID (відсутній/порожній/null/числовий) у всіх чотирьох колекціях → по 4 recordIssue, 0 прийнятих, без підробленого `id: ''`.
+3. Дублікат ID → блокуюча помилка, імпорт відхилено.
+4. Хостинг: послуга з оплатою — serviceId незмінний.
 
 ## Не виконано (основному агенту після огляду)
 
