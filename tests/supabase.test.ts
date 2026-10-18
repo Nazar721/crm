@@ -75,13 +75,119 @@ test('remote write error preserves safe diagnostic code and blocks a second writ
  }
 });
 test('lost response may follow successful commit: never automatically resend; reload reveals saved data',async()=>{
- let saved=emptySnapshot(),revision=0,commits=0;
- const rpc=async(name:string,args?:Record<string,unknown>)=>{
- if(name==='crm_read')return {data:{revision,snapshot:structuredClone(saved)},error:null};
- commits++;saved=structuredClone(args!.p_snapshot as typeof saved);revision++;throw new Error('connection lost after commit');
- };
- const source=new SupabaseDataSource(rpc);await source.load();const client=makeClient();
- assert.equal((await source.saveCollection('clients',[client])).ok,false);assert.ok(source.writeBlockedReason());
- await source.saveCollection('clients',[client]);assert.equal(commits,1);
- const loaded=await source.load();assert.equal(loaded.data.clients[0].id,client.id);assert.equal(source.writeBlockedReason(),null);
+  let saved=emptySnapshot(),revision=0,commits=0;
+  const rpc=async(name:string,args?:Record<string,unknown>)=>{
+  if(name==='crm_read')return {data:{revision,snapshot:structuredClone(saved)},error:null};
+  commits++;saved=structuredClone(args!.p_snapshot as typeof saved);revision++;throw new Error('connection lost after commit');
+  };
+  const source=new SupabaseDataSource(rpc);await source.load();const client=makeClient();
+  assert.equal((await source.saveCollection('clients',[client])).ok,false);assert.ok(source.writeBlockedReason());
+  await source.saveCollection('clients',[client]);assert.equal(commits,1);
+  const loaded=await source.load();assert.equal(loaded.data.clients[0].id,client.id);assert.equal(source.writeBlockedReason(),null);
+});
+
+// ------------------------------------------------------------
+// Рев'ю P1: старий сервер без нових колекцій — безпечне UI-подання,
+// блок запису без commit, розблокування лише після reload.
+// ------------------------------------------------------------
+
+function oldDatabase(initial: unknown, revision = 7) {
+  let current = { revision, snapshot: structuredClone(initial) };
+  let commits = 0;
+  const rpc = async (name: string, args?: Record<string, unknown>) => {
+    if (name === 'crm_read') return { data: structuredClone(current), error: null };
+    commits++;
+    current = { revision: ++current.revision, snapshot: structuredClone(args!.p_snapshot as never) };
+    return { data: current.revision, error: null };
+  };
+  return {
+    rpc,
+    get commits() { return commits; },
+    get snapshot() { return current.snapshot as Record<string, unknown>; },
+    set serverSnapshot(next: unknown) { current = { revision: current.revision + 1, snapshot: structuredClone(next) }; },
+  };
+}
+
+test('P1: старий сервер без plannedProjects — UI-масив, блок без commit, розблокування після reload', async () => {
+  clearAll();
+  const old = emptySnapshot() as unknown as Record<string, unknown>;
+  delete old.plannedProjects;
+  const client = makeClient();
+  old.clients = [client];
+  const db = oldDatabase(old);
+  await store.initStore(new SupabaseDataSource(db.rpc));
+
+  assert.deepEqual(store.getSnapshot().plannedProjects, [], 'відсутня колекція → порожній масив для UI');
+  assert.equal(store.getSnapshot().clients.length, 1, 'наявні дані не змінені');
+  const block = store.getWriteBlock();
+  assert.ok(block);
+  assert.match(block!, /plannedProjects/);
+  assert.match(block!, /006-planned-projects\.sql/);
+  assert.ok(!block!.includes('004'), 'не стверджує відсутність 004, якщо хостинг є');
+  assert.ok(!block!.includes('005'), 'не стверджує відсутність 005, якщо tasks є');
+  assert.ok(!block!.includes('SETUP'), 'не радить запускати SETUP повторно');
+  assert.deepEqual(store.getUnsupportedCollections(), { missing: ['plannedProjects'], wrongType: [] });
+
+  const commitsBefore = db.commits;
+  const write = await store.saveCollection('clients', [makeClient({ name: 'blocked' })]);
+  assert.equal(write.ok, false, 'запис заблоковано');
+  assert.equal(db.commits, commitsBefore, 'commit не викликано під блоком');
+  assert.equal((db.snapshot.clients as unknown[]).length, 1, 'дані сервера не змінені');
+
+  // Міграцію застосовано: сервер відповідає повним snapshot → reload знімає блок
+  db.serverSnapshot = { ...emptySnapshot(), clients: [client], plannedProjects: [{ id: 'pp1', name: 'Після міграції', category: 'IT', clientName: 'X' }] };
+  await store.reloadStore();
+  assert.equal(store.getWriteBlock(), null, 'блок знімається після сумісної відповіді');
+  assert.equal(store.getUnsupportedCollections(), null);
+  assert.equal(store.getSnapshot().plannedProjects.length, 1);
+  assert.equal((await store.saveCollection('clients', [makeClient({ name: 'after' })])).ok, true, 'запис знову дозволений');
+});
+
+test('P1: старий сервер без усіх нових колекцій — точний перелік колекцій і міграцій', async () => {
+  clearAll();
+  const old = emptySnapshot() as unknown as Record<string, unknown>;
+  delete old.hostingServices;
+  delete old.hostingPayments;
+  delete old.tasks;
+  delete old.plannedProjects;
+  const db = oldDatabase(old);
+  await store.initStore(new SupabaseDataSource(db.rpc));
+  const block = store.getWriteBlock()!;
+  for (const key of ['hostingServices', 'hostingPayments', 'tasks', 'plannedProjects']) {
+    assert.ok(block.includes(key), `блок називає ${key}`);
+  }
+  for (const mig of ['004-hosting.sql', '005-tasks.sql', '006-planned-projects.sql']) {
+    assert.ok(block.includes(mig), `блок називає ${mig}`);
+  }
+  assert.ok(!block.includes('SETUP'), 'не радить запускати SETUP повторно');
+  assert.deepEqual(store.getSnapshot().hostingServices, []);
+  assert.deepEqual(store.getSnapshot().hostingPayments, []);
+  assert.deepEqual(store.getSnapshot().tasks, []);
+  assert.deepEqual(store.getSnapshot().plannedProjects, []);
+  assert.deepEqual(
+    [...store.getUnsupportedCollections()!.missing].sort(),
+    ['hostingPayments', 'hostingServices', 'plannedProjects', 'tasks'],
+  );
+});
+
+test('P1: неправильний тип колекції — окрема помилка даних, блок, сире значення без втрати', async () => {
+  clearAll();
+  const bad = emptySnapshot() as unknown as Record<string, unknown>;
+  bad.tasks = 'corrupt-string';
+  const db = oldDatabase(bad);
+  const source = new SupabaseDataSource(db.rpc);
+  const payload = await source.load();
+  assert.deepEqual(payload.unsupported!.wrongType, ['tasks']);
+  assert.equal(payload.corruptRaw.tasks, JSON.stringify('corrupt-string'), 'сире значення збережено для перевірки');
+  assert.deepEqual(payload.data.tasks, [], 'UI отримує порожній масив');
+  assert.match(source.writeBlockedReason()!, /tasks/);
+  assert.match(source.writeBlockedReason()!, /некоректні/);
+  assert.ok(source.listIssues().length > 0, 'неправильний тип зафіксовано issue');
+
+  await store.initStore(new SupabaseDataSource(db.rpc));
+  assert.deepEqual(store.getSnapshot().tasks, []);
+  const commitsBefore = db.commits;
+  assert.equal((await store.saveCollection('tasks', [])).ok, false, 'запис заблоковано');
+  assert.equal(db.commits, commitsBefore, 'commit не викликано');
+  assert.deepEqual(store.getUnsupportedCollections()!.wrongType, ['tasks']);
 });

@@ -1,4 +1,5 @@
 import type { BackupInfo, DataSnapshot, FinanceSettings } from '@/types';
+import { COLLECTION_KEYS } from './types';
 import type { CollectionKey, CrmDataSource, DataSnapshotPayload, StorageIssue, WriteOutcome } from './types';
 import { supabase } from '@/lib/supabase/client';
 import { normalizeSettings } from '@/lib/settings';
@@ -16,6 +17,15 @@ function isMissingFunctionError(error: { message: string; code?: string }): bool
   return error.code === 'PGRST202'
     || /could not find the function|function .* does not exist/i.test(error.message || '');
 }
+
+/** Міграція, що додає колекцію до серверного snapshot (для повідомлення блоку). */
+const COLLECTION_MIGRATIONS: Partial<Record<CollectionKey, string>> = {
+  hostingServices: 'supabase/004-hosting.sql',
+  hostingPayments: 'supabase/004-hosting.sql',
+  tasks: 'supabase/005-tasks.sql',
+  plannedProjects: 'supabase/006-planned-projects.sql',
+};
+
 export class SupabaseDataSource implements CrmDataSource {
   readonly kind = 'remote' as const;
   private revision = 0;
@@ -34,17 +44,51 @@ export class SupabaseDataSource implements CrmDataSource {
     if (result.error) throw new Error('Не вдалося завантажити базу. Перевір вхід, доступ власника та встановлення SQL.');
     const row = result.data as {revision:number;snapshot:DataSnapshot};
     if (!row || !Number.isSafeInteger(row.revision) || !row.snapshot) throw new Error('Некоректна відповідь бази');
-    this.current = row.snapshot; this.revision = row.revision; this.blocked = null; this.issues = [];
-    // Пакет 04: новий клієнт потребує колекцій хостингу в базі. Без міграції
-    // 004 старий crm_commit проігнорував би хостинг-ключі (тиха втрата даних) —
-    // тому запис блокується до застосування supabase/004-hosting.sql.
-    // Пакет 06: те саме для plannedProjects — без 006 нова колекція
-    // проігнорувалася б старим crm_commit (тиха втрата).
-    const snapshotRecord = row.snapshot as unknown as Record<string, unknown>;
-    if (!Array.isArray(snapshotRecord.hostingServices) || !Array.isArray(snapshotRecord.hostingPayments) || !Array.isArray(snapshotRecord.tasks) || !Array.isArray(snapshotRecord.plannedProjects)) {
-      this.blocked = 'У базі ще немає нових колекцій: застосуй supabase/004-hosting.sql, supabase/005-tasks.sql і supabase/006-planned-projects.sql і онови сторінку.';
+    this.revision = row.revision; this.blocked = null; this.issues = [];
+    // Рев'ю P1: перевірка можливостей серверного snapshot ОКРЕМО від
+    // безпечного подання для UI. Старий сервер без нових колекцій не має
+    // відавати undefined у snapshot (падіння сторінок/AI), але й не має
+    // отримати запис «ніби» колекція підтримується:
+    // - відсутня колекція → UI порожний масив, блок запису до міграції;
+    // - неправильний тип → окрема помилка даних (сире значення в
+    //   corruptRaw, без мовчазної заміни), блок запису.
+    // Блок знімається лише успішним перечитуванням після міграції
+    // (save/commit/AI-confirm відмовляються, доки blocked встановлено).
+    const raw = row.snapshot as unknown as Record<string, unknown>;
+    const missing: CollectionKey[] = [];
+    const wrongType: CollectionKey[] = [];
+    for (const key of COLLECTION_KEYS) {
+      const value = raw[key];
+      if (value === undefined || value === null) missing.push(key);
+      else if (!Array.isArray(value)) wrongType.push(key);
     }
-    return {data:structuredClone(this.current),issues:[],corruptRaw:{}};
+    const corruptRaw: Partial<Record<CollectionKey, string>> = {};
+    const safe = { ...raw };
+    for (const key of missing) safe[key] = [];
+    for (const key of wrongType) {
+      try { corruptRaw[key] = JSON.stringify(raw[key]); } catch { corruptRaw[key] = String(raw[key]); }
+      safe[key] = [];
+    }
+    this.current = safe as unknown as DataSnapshot;
+    if (wrongType.length) {
+      this.blocked = `База повернула некоректні дані колекцій: ${wrongType.join(', ')}. Запис заблоковано — звернись до перевірки бази, потім онови сторінку.`;
+      this.issues = [{
+        id: crypto.randomUUID(),
+        kind: 'write_failed',
+        key: wrongType.join(','),
+        message: `Некоректний тип даних колекцій: ${wrongType.join(', ')} — сирі значення збережено для перевірки, запис заблоковано.`,
+        at: new Date().toISOString(),
+      }];
+    } else if (missing.length) {
+      const migrations = [...new Set(missing.map(k => COLLECTION_MIGRATIONS[k]).filter((m): m is string => !!m))];
+      this.blocked = `У базі ще немає колекцій: ${missing.join(', ')}. Застосуй ${migrations.join(', ')} (у порядку номерів) і онови сторінку — блок зніметься автоматично після успішного перечитування.`;
+    }
+    return {
+      data: structuredClone(this.current),
+      issues: [],
+      corruptRaw,
+      unsupported: missing.length || wrongType.length ? { missing, wrongType } : undefined,
+    };
   }
   async saveSnapshot(next: DataSnapshot): Promise<WriteOutcome> {
     if (this.blocked) return this.failure(this.blocked);

@@ -39,6 +39,23 @@ let corruptRaw: Partial<Record<CollectionKey, string>> = {};
 let storageWriteBlock: string | null = null;
 /** Запис заблоковано незавершеними міграціями. */
 let migrationWriteBlock: string | null = null;
+/** Рев'ю P1: колекції, які сервер ще не підтримує (для стану «розділ недоступний»). */
+let unsupportedCollections: { missing: CollectionKey[]; wrongType: CollectionKey[] } | null = null;
+
+/**
+ * Захист контракту на межі прийому: відсутні колекції (старий сервер) →
+ * порожні масиви для UI. Не створює записів у БД і не знімає блоку —
+ * блок встановлює/знімає лише джерело даних (див. SupabaseDataSource.load).
+ * Неправильний тип НЕ перетворюється тут (це окрема помилка джерела).
+ */
+function ensureSnapshotCollections(input: DataSnapshot): DataSnapshot {
+  const out = { ...input } as unknown as Record<string, unknown>;
+  let changed = false;
+  for (const key of COLLECTION_KEYS) {
+    if (out[key] === undefined) { out[key] = []; changed = true; }
+  }
+  return changed ? (out as unknown as DataSnapshot) : input;
+}
 
 function emptySnapshot(): DataSnapshot {
   return {
@@ -138,6 +155,11 @@ export function getWriteBlocks(): {
   };
 }
 
+/** Рев'ю P1: колекції, які підключена БД ще не підтримує (null — все сумісно). */
+export function getUnsupportedCollections(): { missing: CollectionKey[]; wrongType: CollectionKey[] } | null {
+  return unsupportedCollections;
+}
+
 export function getImportIncident(): ImportIncident | null {
   return snapshot.meta.importIncident ?? null;
 }
@@ -197,18 +219,21 @@ export async function initStore(source: CrmDataSource = cloudEnabled() ? new Sup
   migrationWriteBlock = null;
   notify();
   let resultCorruptRaw: Partial<Record<CollectionKey, string>> = {};
+  let resultUnsupported: { missing: CollectionKey[]; wrongType: CollectionKey[] } | undefined;
   try {
     const result = await dataSource.load();
-    snapshot = result.data as DataSnapshot;
+    snapshot = ensureSnapshotCollections(result.data);
     primeSettings(snapshot.financeSettings);
     status = 'ready';
     loadError = null;
     resultCorruptRaw = result.corruptRaw;
+    resultUnsupported = result.unsupported;
   } catch (err) {
     status = 'error';
     loadError = err instanceof Error ? err.message : String(err);
   }
   storageWriteBlock = status === 'ready' ? dataSource.writeBlockedReason() : null;
+  unsupportedCollections = status === 'ready' ? resultUnsupported ?? null : null;
   corruptRaw = status === 'ready' ? { ...resultCorruptRaw } : {};
   refreshHealth();
   if (!initialized) {
@@ -230,11 +255,12 @@ export async function initStore(source: CrmDataSource = cloudEnabled() ? new Sup
 /** Перечитати сховище після міграцій/імпорту. */
 export async function reloadStore(): Promise<void> {
   const result = await dataSource.load();
-  snapshot = result.data as DataSnapshot;
+  snapshot = ensureSnapshotCollections(result.data);
   primeSettings(snapshot.financeSettings);
   status = 'ready';
   loadError = null;
   storageWriteBlock = dataSource.writeBlockedReason();
+  unsupportedCollections = result.unsupported ?? null;
   corruptRaw = { ...result.corruptRaw };
   refreshHealth();
   notify();
@@ -574,6 +600,7 @@ export function resetStoreForTests(): void {
   corruptRaw = {};
   storageWriteBlock = null;
   migrationWriteBlock = null;
+  unsupportedCollections = null;
   resetWriteContext();
   primeSettings(null);
 }

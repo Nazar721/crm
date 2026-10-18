@@ -3,7 +3,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect, use
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import type { DataSnapshot } from '@/types';
-import type { StorageIssue } from '@/lib/datasource/types';
+import type { CollectionKey, StorageIssue } from '@/lib/datasource/types';
 import * as store from '@/lib/store';
 import { runMigrations, type MigrationReport } from '@/lib/migrations';
 import { emitToast } from '@/lib/toast-bus';
@@ -25,6 +25,11 @@ interface AppContextType {
   storageIssues: StorageIssue[];
   /** Якщо запис заблоковано (ліміт сховища / незавершені міграції) — показується банер. */
   writeBlock: string | null;
+  /**
+   * Рев'ю P1: колекції, які підключена БД ще не підтримує (null — все
+   * сумісно). Сторінки нових розділів показують стан «недоступно».
+   */
+  unsupportedCollections: { missing: CollectionKey[]; wrongType: CollectionKey[] } | null;
   badges: BadgeCounts;
   refreshBadges: () => void;
   refreshKey: number;
@@ -71,6 +76,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [snapshot, setSnapshot] = useState<DataSnapshot>(EMPTY_SNAPSHOT);
   const [storageIssues, setStorageIssues] = useState<StorageIssue[]>([]);
   const [writeBlock, setWriteBlock] = useState<string | null>(null);
+  const [unsupportedCollections, setUnsupportedCollections] = useState(store.getUnsupportedCollections());
   const [badges, setBadges] = useState<BadgeCounts>(countBadges(EMPTY_SNAPSHOT));
   const [refreshKey, setRefreshKey] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -85,6 +91,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setBadges(countBadges(store.getSnapshot()));
       setStorageIssues(store.getIssues());
       setWriteBlock(store.getWriteBlock());
+      setUnsupportedCollections(store.getUnsupportedCollections());
       setRefreshKey(k => k + 1);
     };
     sync();
@@ -119,6 +126,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setBadges(countBadges(store.getSnapshot()));
       setStorageIssues(store.getIssues());
       setWriteBlock(store.getWriteBlock());
+      setUnsupportedCollections(store.getUnsupportedCollections());
       if (report.failed.length) {
         emitToast(`Міграції не застосовано: ${report.failed.join(', ')}. Редагування даних заблоковано.`, 'error');
       }
@@ -142,6 +150,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setBadges(countBadges(store.getSnapshot()));
       setStorageIssues(store.getIssues());
       setWriteBlock(store.getWriteBlock());
+      setUnsupportedCollections(store.getUnsupportedCollections());
       setRefreshKey(k => k + 1);
       return report;
     } catch (err) {
@@ -171,6 +180,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     snapshot,
     storageIssues,
     writeBlock,
+    unsupportedCollections,
     badges,
     refreshBadges,
     refreshKey,
@@ -180,7 +190,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     sidebarOpen,
     setSidebarOpen,
     closeSidebar,
-  }), [status, error, snapshot, storageIssues, writeBlock, badges, refreshBadges, refreshKey, triggerRefresh, reinitialize, retry, sidebarOpen, closeSidebar]);
+  }), [status, error, snapshot, storageIssues, writeBlock, unsupportedCollections, badges, refreshBadges, refreshKey, triggerRefresh, reinitialize, retry, sidebarOpen, closeSidebar]);
 
   return (
     <AppContext.Provider value={value}>

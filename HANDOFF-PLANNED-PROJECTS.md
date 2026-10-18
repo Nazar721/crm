@@ -60,7 +60,7 @@
 |---|---|
 | `npm run typecheck` | 0 помилок |
 | `npm run lint` | exit 0, лише 10 наявних warning (у т.ч. `PlannedProjectForm` exhaustive-deps — аналогічний патерн `ProjectForm`) |
-| `npm test` | 304/304 pass, 0 skipped (297 базових + 3 «06-рев'ю» + 4 «імпорт-ID») |
+| `npm test` | 307/307 pass, 0 skipped (297 базових + 3 «06-рев'ю» + 4 «імпорт-ID» + 3 «P1 старий сервер») |
 | `npm run test:sql` | 3/3 pass (включно «SQL-інтеграція 06») |
 | `npm run build` | успішно: `/planned-projects` 5.31 kB, `/tasks` redirect 136 B |
 
@@ -103,10 +103,29 @@
 3. Дублікат ID → блокуюча помилка, імпорт відхилено.
 4. Хостинг: послуга з оплатою — serviceId незмінний.
 
+## Повторний огляд 18.10: блокер P1 — сторінка падала до міграції 006 (виправлено, одним комітом)
+
+Незалежний огляд відтворив: `SupabaseDataSource.load()` повертав сирий incomplete snapshot старого сервера без нових колекцій (`plannedProjects === undefined`) → `page.tsx` падав на `planned.filter` до нанесення міграції; blocked-повідомлення одночасно вимагало 004+005+006 навіть коли наявні лише частини міграцій, і радило перезапускати SETUP.
+
+**Виправлення** (один коміт, без SQL/push/deploy):
+
+- `lib/datasource/types.ts`: до `DataSnapshotPayload` додано `unsupported?: { missing: CollectionKey[]; wrongType: CollectionKey[] }` (`undefined` — розбіжностей немає).
+- `lib/datasource/supabase.ts` `load()`: перевірка можливостей сервера окремо від безпечного подання для UI — `undefined/null` колекція → missing, непорожній не-array → wrongType (сире значення в `corruptRaw` + issue `write_failed`, без мовчазної заміни); UI-подання заповнюється порожніми масивами; blocked-повідомлення називає ЛИШЕ фактично відсутні колекції та їх міграції (мапа `COLLECTION_MIGRATIONS`), без SETUP і без хибних 004/005; `blocked` скидається на кожному load() і піднімається лише після сумісного reload — блок знімається автоматично після застосування міграції.
+- `lib/store.ts`: модульна змінна `unsupportedCollections` + `getUnsupportedCollections()`; `ensureSnapshotCollections()` (заповнює лише undefined-ключі) в `initStore`/`reloadStore`; скид у `resetStoreForTests`; блок/commit не знімаються тут — це прерогатива джерела даних.
+- `context/AppContext.tsx`: стан `unsupportedCollections` синхронізується в sync/boot/reinitialize (поруч writeBlock), у контексті + deps.
+- `app/planned-projects/page.tsx`: `planned` через `useMemo(() => snapshot.plannedProjects ?? [], ...)` (оборона проти crash); за наявності `unsupportedCollections` — панель «розділ недоступний, базу не оновлено» + вимкнена «Додати проєкт» замість таблиці.
+
+**Регресії** (`tests/supabase.test.ts`, 3 тести):
+1. Старий сервер без plannedProjects: порожній масив для UI, наявні дані/revision без змін, blocked-меседж містить `plannedProjects`+`006-planned-projects.sql` і НЕ містить 004/005/SETUP, `saveCollection` → ok=false без виклику commit; reload після сумісної відповіді зі записами знімає блок і дає запис.
+2. Відповідь без усіх чотирьох нових колекцій: точний перелік колекцій і 004/005/006 у меседжі, без SETUP.
+3. Wrong type (`tasks: 'corrupt-string'`): `unsupported.wrongType`, `corruptRaw` зі сирим значенням, окремий blocked-меседж «некоректні дані», issue зафіксовано, запис заблоковано без commit.
+
+**Випуск (для спільного огляду):** банер/панель сумісності очікувані поки сервер без 006; перед випуском звірити стан саме підключеної БД, застосувати лише необхідні міграції в порядку номерів; прибирати захист запису для обходу міграції не можна. Ручний браузерний прохід старої/нової відповіді НЕ виконано (немає доступу до БД/креденшіалів) — виконати при доступі.
+
 ## Не виконано (основному агенту після огляду)
 
 1. Застосувати `supabase/006-planned-projects.sql` на production Supabase і перевірити історію/undo (підготовлена, НЕ застосована).
 2. Публікація Vercel.
-3. Скриншоти desktop + 390px — пропущено за вибором Назара (потрібен вхід у Supabase).
+3. Скриншоти desktop + 390px — пропущено за вибором Назара (потрібен вхід у Supabase); також не виконано ручний браузерний прохід старої/нової відповіді сервера (запит огляду) — немає доступу до БД/креденшіалів.
 4. Ручна перевірка мобільного UI (44px цілі, 16px інпути, «Детальніше») на реальному пристрої — CSS реалізовано, пристрій не перевірявся.
 5. Видалення production-даних задач не запускати (legacy лишається).

@@ -20,7 +20,7 @@ const CATEGORIES = ['IT', 'Design', 'Video'] as const;
 const CATEGORY_BADGE: Record<string, string> = { IT: 'badge--blue', Design: 'badge--purple', Video: 'badge--orange' };
 
 export default function PlannedProjectsPage() {
-  const { snapshot, triggerRefresh } = useApp();
+  const { snapshot, writeBlock, unsupportedCollections, triggerRefresh } = useApp();
   const [query, setQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [formOpen, setFormOpen] = useState(false);
@@ -28,7 +28,12 @@ export default function PlannedProjectsPage() {
   const [expandedId, setExpandedId] = useState('');
   const { isOpen: confirmOpen, title: confirmTitle, text: confirmText, confirm, handleConfirm, cancel } = useConfirm();
 
-  const planned = snapshot.plannedProjects;
+  // Рев'ю P1: захист від undefined (старий сервер) — контракт datasource уже
+  // повертає порожній масив, тут лише додаткова оборона проти crash.
+  const planned = useMemo(() => snapshot.plannedProjects ?? [], [snapshot.plannedProjects]);
+  // Стара БД без міграцій 004–006: розділ показує стан недоступності,
+  // дії запису вимкнені (запис і так заблоковано на рівні джерела даних).
+  const sectionUnsupported = unsupportedCollections !== null;
 
   const rows = useMemo(() => {
     const q = query.toLowerCase().trim();
@@ -80,10 +85,20 @@ export default function PlannedProjectsPage() {
           <p className="page-subtitle">Заявки на майбутні проєкти без фінансових полів і нагадувань</p>
         </div>
         <div className="header-actions">
-          <button className="btn btn-primary" onClick={openAdd}>Додати проєкт</button>
+          <button className="btn btn-primary" onClick={openAdd} disabled={sectionUnsupported}>Додати проєкт</button>
         </div>
       </div>
 
+      {sectionUnsupported ? (
+        <div className="settings-text" role="status">
+          <p style={{ marginTop: 0 }}>
+            Розділ «Заплановані проєкти» тимчасово недоступний: підключена база ще не підтримує нові колекції.
+            Наявні дані не втрачено, запис заблоковано до застосування міграцій.
+          </p>
+          {writeBlock && <p>{writeBlock}</p>}
+        </div>
+      ) : (
+      <>
       <div className="table-toolbar" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
         <input
           type="search"
@@ -167,6 +182,8 @@ export default function PlannedProjectsPage() {
             </tbody>
           </table>
         </div>
+      )}
+      </>
       )}
 
       <PlannedProjectForm
