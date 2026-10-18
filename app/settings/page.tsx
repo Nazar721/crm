@@ -305,7 +305,7 @@ function SettingsTabsBody() {
       <div className="page-header">
         <div><h1 className="page-title">Налаштування</h1><p className="page-subtitle">{subtitle[tab]}</p></div>
       </div>
-      <div className="tabs" role="tablist" aria-label="Розділи налаштувань">
+      <div className="tabs settings-tabs" role="tablist" aria-label="Розділи налаштувань">
         {SETTINGS_TABS.map(t => (
           <a
             key={t.id}

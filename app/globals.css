@@ -989,6 +989,25 @@ body {
 
 .tab:hover { color: var(--text-primary); }
 
+.settings-tabs .tab { text-decoration: none; }
+
+@media (max-width: 768px) {
+  .tabs.settings-tabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+    min-width: 0;
+  }
+  .settings-tabs .tab {
+    min-width: 0;
+    min-height: 44px;
+    justify-content: center;
+    text-align: center;
+    overflow-wrap: anywhere;
+  }
+  .settings-tabs .tab:last-child:nth-child(odd) { grid-column: 1 / -1; }
+}
+
 .tab.active {
   background: rgba(10, 132, 255, 0.18);
   color: var(--accent-blue);
