@@ -1,0 +1,141 @@
+{
+  "kpi": {
+    "total-budget": 211000,
+    "net-profit": 76500,
+    "avg-check": 52750,
+    "client-debts": 350500,
+    "specialist-debts": 293650,
+    "stat-active": 2,
+    "stat-completed": 4,
+    "stat-clients": 5,
+    "stat-partners": 1,
+    "stat-specialists": 2,
+    "month-income": 50000,
+    "savings": 54650,
+    "balance": 224244,
+    "debt-owed": 15000,
+    "my-debts": 32800
+  },
+  "agencyMonthIncome": 36000,
+  "series": {
+    "completedPaid": [
+      0,
+      0,
+      0,
+      10000,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      20500,
+      60000
+    ],
+    "completedCount": [
+      0,
+      0,
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      1
+    ],
+    "sources": [
+      {
+        "label": "Telegram",
+        "count": 2
+      },
+      {
+        "label": "Instagram",
+        "count": 1
+      },
+      {
+        "label": "Сайт",
+        "count": 1
+      },
+      {
+        "label": "Інше",
+        "count": 1
+      }
+    ],
+    "cashFlow": {
+      "income": [
+        12345,
+        132000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        41000,
+        52500
+      ],
+      "expense": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        16600,
+        7000
+      ]
+    },
+    "bankBalances": {
+      "mono": 57844,
+      "privat": 0,
+      "cash": 10000,
+      "cash_usd": 41000,
+      "cash_eur": 132000,
+      "crypto_usdt": -16600
+    },
+    "savingsGoals": [
+      {
+        "name": "Подушка",
+        "amount": 30000,
+        "goal": 100000
+      },
+      {
+        "name": "Ноутбук",
+        "amount": 500,
+        "goal": 2000
+      },
+      {
+        "name": "Без цілі",
+        "amount": 100,
+        "goal": 0
+      }
+    ],
+    "savingsTotals": {
+      "totalSaved": 54650,
+      "totalGoal": 182000
+    },
+    "agencyIncome": [
+      0,
+      0,
+      15000,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      20500,
+      36000
+    ]
+  }
+}
