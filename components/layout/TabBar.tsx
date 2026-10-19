@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
+import { useBodyScrollLock, useEscapeToTopmost, useFocusTrap } from '@/components/ui/useDialogFocus';
 
 interface TabItem {
   href: string;
@@ -12,7 +13,7 @@ interface TabItem {
 }
 
 const mainTabs: TabItem[] = [
-  { href: '/dashboard', label: 'Дашборд', icon: 'grid' },
+  { href: '/dashboard', label: 'Огляд', icon: 'grid' },
   { href: '/projects', label: 'Проєкти', icon: 'list', badge: 'projects' },
   { href: '/finance', label: 'Фінанси', icon: 'card' },
   { href: '/settings', label: 'Налаштування', icon: 'settings' },
@@ -51,11 +52,10 @@ export default function TabBar() {
   const pathname = usePathname();
   const { badges } = useApp();
   const [moreOpen, setMoreOpen] = useState(false);
+  const sheetRef = useFocusTrap<HTMLDivElement>(moreOpen);
 
-  useEffect(() => {
-    document.body.style.overflow = moreOpen ? 'hidden' : '';
-    return () => { document.body.style.overflow = ''; };
-  }, [moreOpen]);
+  useBodyScrollLock(moreOpen);
+  useEscapeToTopmost(() => setMoreOpen(false), moreOpen);
 
   useEffect(() => { setMoreOpen(false); }, [pathname]);
 
@@ -90,6 +90,9 @@ export default function TabBar() {
           type="button"
           className={`tabbar-item${moreActive || moreOpen ? ' active' : ''}`}
           onClick={() => setMoreOpen(true)}
+          aria-haspopup="dialog"
+          aria-expanded={moreOpen}
+          aria-controls="tabbar-more-sheet"
         >
           <span className="tabbar-icon"><TabIcon icon="more" /></span>
           <span className="tabbar-label">Більше</span>
@@ -99,8 +102,16 @@ export default function TabBar() {
       {moreOpen && (
         <>
           <div className="tabbar-sheet-overlay" onClick={() => setMoreOpen(false)} />
-          <div className="tabbar-sheet" role="dialog" aria-label="Більше розділів">
-            <div className="tabbar-sheet-handle" />
+          <div
+            ref={sheetRef}
+            id="tabbar-more-sheet"
+            className="tabbar-sheet"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Більше розділів"
+            tabIndex={-1}
+          >
+            <div className="tabbar-sheet-handle" aria-hidden="true" />
             <div className="tabbar-sheet-title">Більше</div>
             <div className="tabbar-sheet-grid">
               {moreItems.map((item) => {
@@ -111,8 +122,9 @@ export default function TabBar() {
                     href={item.href}
                     className={`tabbar-sheet-item${isActive(item.href) ? ' active' : ''}`}
                     onClick={() => setMoreOpen(false)}
+                    aria-current={isActive(item.href) ? 'page' : undefined}
                   >
-                    <span className={`tabbar-sheet-icon`}><TabIcon icon={item.icon} /></span>
+                    <span className="tabbar-sheet-icon"><TabIcon icon={item.icon} /></span>
                     <span className="tabbar-sheet-label">{item.label}</span>
                     {val !== null && val !== undefined && <span className="tabbar-badge">{val > 99 ? '99+' : val}</span>}
                   </Link>

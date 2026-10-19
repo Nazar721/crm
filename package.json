@@ -11,7 +11,8 @@
     "test": "node scripts/run-tests.mjs",
     "test:sql": "node scripts/run-sql-tests.mjs",
     "snapshot:dashboard": "node --require ./scripts/test-env.cjs --require ./scripts/test-alias.cjs scripts/dashboard-metrics.cjs",
-    "check:contrast": "node scripts/contrast-audit.mjs"
+    "check:contrast": "node scripts/contrast-audit.mjs",
+    "seed:local": "node --require ./scripts/test-env.cjs --require ./scripts/test-alias.cjs scripts/seed-local-storage.cjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",

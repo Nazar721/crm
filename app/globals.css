@@ -109,6 +109,16 @@
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 
+:focus-visible {
+  outline: 2px solid var(--g-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.modal:focus,
+.tabbar-sheet:focus,
+.sidebar:focus { outline: none; }
+
 html { font-size: 15px; scroll-behavior: smooth; }
 
 body {
@@ -138,6 +148,27 @@ body {
   top: 0; left: 0; bottom: 0;
   z-index: 100;
   transition: transform var(--transition);
+}
+
+/* Sidebar як drawer лише там, де немає ні постійної панелі, ні TabBar */
+@media (min-width: 768px) and (max-width: 1199px) {
+  .sidebar {
+    transform: translateX(-100%);
+    box-shadow: none;
+    background: var(--g-nav);
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+    box-shadow: var(--shadow-md);
+  }
+
+  .sidebar-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 99;
+    background: rgba(0, 0, 0, 0.55);
+  }
 }
 
 
@@ -206,15 +237,13 @@ body {
 }
 
 .nav-item:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--g-elevated);
   color: var(--text-primary);
 }
 
 .nav-item.active {
-  background: rgba(255, 129, 86, 0.16);
-  color: var(--accent-blue);
-  border-color: rgba(255, 129, 86, 0.30);
-  box-shadow: inset 0 0 0 1px rgba(255, 129, 86, 0.30);
+  background: var(--g-elevated);
+  color: var(--g-accent);
 }
 
 .nav-item.active::before {
@@ -231,7 +260,7 @@ body {
 .nav-badge {
   margin-left: auto;
   background: rgba(255, 129, 86, 0.18);
-  color: var(--accent-blue);
+  color: var(--g-accent);
   font-size: 0.7rem;
   font-weight: 600;
   padding: 2px 8px;
@@ -329,12 +358,24 @@ body {
 }
 
 .tabbar-item.active {
-  color: var(--accent-blue);
-  background: rgba(255, 129, 86, 0.14);
+  color: var(--g-accent);
+  background: var(--g-elevated);
+}
+
+.tabbar-item.active::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 18px;
+  height: 2px;
+  border-radius: 99px;
+  background: var(--g-accent);
 }
 
 .tabbar-item:active {
-  color: var(--accent-teal);
+  color: var(--g-accent);
   transform: scale(0.92);
   transition: transform 0.1s;
 }
@@ -432,10 +473,9 @@ body {
 .tabbar-sheet-item:active { transform: scale(0.96); background: var(--glass-bg-strong); }
 
 .tabbar-sheet-item.active {
-  background: rgba(255, 129, 86, 0.16);
-  color: var(--accent-blue);
-  border-color: rgba(255, 129, 86, 0.30);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  background: var(--g-elevated);
+  color: var(--g-accent);
+  border-color: var(--g-accent);
 }
 
 .tabbar-sheet-item .tabbar-badge {
@@ -453,6 +493,45 @@ body {
 }
 
 /* =============================================
+   APP TOPBAR — бургер для планшета/вузького desktop
+   ============================================= */
+.app-topbar {
+  display: none;
+  align-items: center;
+  gap: 10px;
+  margin: -34px -34px 22px;
+  padding: 14px 34px;
+  background: var(--g-bg);
+  border-bottom: 1px solid var(--g-border);
+}
+
+@media (min-width: 768px) and (max-width: 1199px) {
+  .app-topbar { display: flex; }
+}
+
+.app-burger {
+  width: 40px; height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--g-surface);
+  border: 1px solid var(--g-border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background-color var(--transition), border-color var(--transition);
+}
+
+.app-burger:hover { background: var(--g-elevated); border-color: var(--g-accent); }
+
+.app-topbar-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+}
+
+/* =============================================
    MAIN CONTENT
    ============================================= */
 .main-content {
@@ -463,6 +542,11 @@ body {
   overflow-x: hidden;
   position: relative;
   z-index: 1;
+}
+
+/* Тут, ПІСЛЯ базового правила: без цього margin-left перемагає медіазапит. */
+@media (min-width: 768px) and (max-width: 1199px) {
+  .main-content { margin-left: 0; }
 }
 
 /* =============================================
@@ -2479,7 +2563,7 @@ tr.week-b .week-dot {
 .write-block-banner {
   position: sticky;
   top: 0;
-  z-index: 60;
+  z-index: 70;
   display: flex;
   align-items: center;
   gap: 12px;

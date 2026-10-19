@@ -1,14 +1,18 @@
 'use client';
-import React from 'react';
+import React, { useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
+
+/** Drawer-режим: 768–1199px. На ширшому desktop панель постійна,
+ *  на вужчому навігацію повністю бере на себе TabBar. */
+const DRAWER_QUERY = '(min-width: 768px) and (max-width: 1199px)';
 
 const navSections = [
   {
     title: 'Головна',
     items: [
-      { href: '/dashboard', label: 'Dashboard', icon: 'grid', badge: null },
+      { href: '/dashboard', label: 'Огляд', icon: 'grid', badge: null },
     ],
   },
   {
@@ -60,9 +64,23 @@ export default function Sidebar() {
   const pathname = usePathname();
   const { badges, sidebarOpen, closeSidebar } = useApp();
 
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key !== 'Escape') return;
+      if (!window.matchMedia(DRAWER_QUERY).matches) return;
+      closeSidebar();
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [sidebarOpen, closeSidebar]);
+
+  // Закриваємо drawer і при навігації «назад/вперед» браузером.
+  useEffect(() => { closeSidebar(); }, [pathname, closeSidebar]);
+
   return (
     <>
-      <aside className={`sidebar${sidebarOpen ? ' open' : ''}`}>
+      <aside id="app-sidebar" className={`sidebar${sidebarOpen ? ' open' : ''}`}>
         <div className="sidebar-logo">
           <div className="logo-icon">
             <img src="/logo.webp" alt="WebCRM" width="38" height="38" style={{ borderRadius: 'var(--radius-sm)', objectFit: 'cover' }} />
@@ -82,6 +100,7 @@ export default function Sidebar() {
                     key={item.href}
                     href={item.href}
                     className={`nav-item${isActive ? ' active' : ''}`}
+                    aria-current={isActive ? 'page' : undefined}
                     onClick={closeSidebar}
                   >
                     <NavIcon icon={item.icon} />
@@ -100,6 +119,7 @@ export default function Sidebar() {
           <Link
             href="/settings"
             className={`nav-item nav-item--settings${pathname === '/settings' ? ' active' : ''}`}
+            aria-current={pathname === '/settings' ? 'page' : undefined}
             onClick={closeSidebar}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.87l-.06-.06A2 2 0 1 1 7.03 3.84l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3a2 2 0 1 1 4 0v.09A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.23.36.58.61 1 .6h.6a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1.4z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>

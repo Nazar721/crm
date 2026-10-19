@@ -3,6 +3,7 @@ import './globals.css';
 import { AppProvider, StorageWriteBanner } from '@/context/AppContext';
 import Sidebar from '@/components/layout/Sidebar';
 import TabBar from '@/components/layout/TabBar';
+import AppTopbar from '@/components/layout/AppTopbar';
 import ToastContainer from '@/components/ui/Toast';
 import { ToastProvider } from '@/components/ToastProvider';
 import InstallBanner from '@/components/ui/InstallBanner';
@@ -49,6 +50,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <Sidebar />
             <TabBar />
             <main className="main-content">
+              <AppTopbar />
               <StorageWriteBanner />
               {children}
             </main>
