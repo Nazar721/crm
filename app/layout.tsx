@@ -36,7 +36,7 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: 'cover',
-  themeColor: '#000000',
+  themeColor: '#101014',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -46,13 +46,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <Script src="/sw-register.js" strategy="afterInteractive" />
         <CloudAccess><AppProvider>
           <ToastProvider>
-            <div className="orb-bg" aria-hidden="true">
-              <div className="orb orb--blue" />
-              <div className="orb orb--purple" />
-              <div className="orb orb--teal" />
-              <div className="orb orb--green" />
-              <div className="orb orb--pink" />
-            </div>
             <Sidebar />
             <TabBar />
             <main className="main-content">
