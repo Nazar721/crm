@@ -1,6 +1,7 @@
 'use client';
 import { Bar } from 'react-chartjs-2';
 import './ChartSetup';
+import { CHART, CHART_TOOLTIP, CHART_X, CHART_Y } from './ChartSetup';
 
 interface DebtsChartProps {
   owedToMe: number;
@@ -9,14 +10,14 @@ interface DebtsChartProps {
 
 export default function DebtsChart({ owedToMe, myDebts }: DebtsChartProps) {
   return (
-    <div className="chart-body">
+    <div className="chart-body" role="img" aria-label="Борг мені та мої борги">
       <Bar
         data={{
           labels: ['Борг мені', 'Мої борги'],
           datasets: [{
             data: [owedToMe, myDebts],
-            backgroundColor: ['rgba(52, 211, 153, 0.6)', 'rgba(251, 146, 60, 0.6)'],
-            borderColor: ['#30D158', '#FF9F0A'],
+            backgroundColor: [CHART.incomeFill, CHART.expenseFill],
+            borderColor: [CHART.income, CHART.expense],
             borderWidth: 1,
             borderRadius: 4,
           }],
@@ -24,11 +25,8 @@ export default function DebtsChart({ owedToMe, myDebts }: DebtsChartProps) {
         options={{
           responsive: true,
           maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-          scales: {
-            x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#555a70', font: { size: 10 } } },
-            y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#555a70', font: { size: 10 } } },
-          },
+          plugins: { legend: { display: false }, tooltip: { ...CHART_TOOLTIP, displayColors: false } },
+          scales: { x: CHART_X, y: CHART_Y },
         }}
       />
     </div>

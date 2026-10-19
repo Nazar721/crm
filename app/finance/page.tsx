@@ -224,7 +224,7 @@ export default function FinancePage() {
     <ErrorBoundary>
     <section className="page active">
       <div className="page-header">
-        <div><h1 className="page-title">Фінанси</h1><p className="page-subtitle">My Money / Cashflow</p></div>
+        <div><h1 className="page-title">Фінанси</h1><p className="page-subtitle">Рух коштів по рахунках і банках</p></div>
         <div className="header-actions">
           <button className="btn btn-ghost" onClick={() => { setEditTx(null); setInitialType('expense'); setFormOpen(true); }}>+ Витрата</button>
           <button className="btn btn-primary" onClick={() => { setEditTx(null); setInitialType('income'); setFormOpen(true); }}>+ Дохід</button>
@@ -257,7 +257,7 @@ export default function FinancePage() {
       <div className="chart-card" style={{ marginBottom: 30 }}>
         <div className="chart-header">
           <h3 className="chart-title">{weeklyMetric === 'income' ? 'Доходи по тижнях' : 'Витрати по тижнях'}</h3>
-          <div className="weekly-chart-total" style={{ color: weeklyMetric === 'income' ? '#30D158' : '#FF453A' }}>
+          <div className="weekly-chart-total" style={{ color: weeklyMetric === 'income' ? 'var(--g-income)' : 'var(--g-expense)' }}>
             {formatMoney(Math.round(weeklyTotal), weeklyCurrency)}{' '}
             <span className="weekly-chart-total__hint">{weeklyMetric === 'income' ? 'доходи' : 'витрати'} · {monthLabel(weeklyMonthKey)}</span>
           </div>

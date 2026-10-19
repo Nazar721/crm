@@ -2988,3 +2988,104 @@ tr.week-b .week-dot {
   .ov-seg-item { padding: 6px 9px; font-size: 0.72rem; }
   .ov-kpi-value { font-size: 1.3rem; }
 }
+
+/* =============================================
+   PWA INSTALL BANNER
+   ============================================= */
+.install-banner {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 250;
+  width: calc(100% - 32px);
+  max-width: 420px;
+  animation: bannerSlideUp 220ms var(--ease);
+}
+
+@keyframes bannerSlideUp {
+  from { opacity: 0; transform: translateX(-50%) translateY(12px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+.install-banner__content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--g-elevated);
+  border: 1px solid var(--g-border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+}
+
+.install-banner__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  background: rgba(255, 129, 86, 0.14);
+  color: var(--g-accent);
+  flex: none;
+}
+
+.install-banner__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.install-banner__title {
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.install-banner__subtitle { font-size: 0.75rem; color: var(--text-secondary); }
+
+.install-banner__actions { display: flex; align-items: center; gap: 8px; flex: none; }
+
+.install-banner__btn {
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background-color var(--transition), color var(--transition), opacity var(--transition);
+}
+
+.install-banner__btn--primary {
+  padding: 8px 16px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--g-accent-ink);
+  background: var(--g-accent);
+}
+
+.install-banner__btn--primary:hover { background: #FF9470; }
+.install-banner__btn--primary:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.install-banner__btn--close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.install-banner__btn--close:hover { background: var(--g-border); color: var(--text-primary); }
+
+@media (max-width: 480px) {
+  .install-banner { bottom: 72px; width: calc(100% - 24px); }
+  .install-banner__content { padding: 10px 12px; }
+  .install-banner__btn--primary { padding: 7px 13px; font-size: 0.75rem; }
+}

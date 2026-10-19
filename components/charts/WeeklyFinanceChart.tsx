@@ -1,6 +1,7 @@
 'use client';
 import { Line } from 'react-chartjs-2';
 import './ChartSetup';
+import { CHART, CHART_TOOLTIP, CHART_X, CHART_Y } from './ChartSetup';
 import type { TooltipItem } from 'chart.js';
 
 export type WeeklyChartMetric = 'income' | 'expense';
@@ -15,8 +16,8 @@ interface WeeklyFinanceChartProps {
 }
 
 const COLORS: Record<WeeklyChartMetric, { line: string; fill: string }> = {
-  income: { line: '#30D158', fill: 'rgba(52, 211, 153, 0.2)' },
-  expense: { line: '#FF453A', fill: 'rgba(255, 69, 58, 0.18)' },
+  income: { line: CHART.income, fill: CHART.incomeFill },
+  expense: { line: CHART.expense, fill: CHART.expenseFill },
 };
 
 export default function WeeklyFinanceChart({ labels, hints, data, metric, currency }: WeeklyFinanceChartProps) {
@@ -44,6 +45,7 @@ export default function WeeklyFinanceChart({ labels, hints, data, metric, curren
           plugins: {
             legend: { display: false },
             tooltip: {
+              ...CHART_TOOLTIP,
               callbacks: {
                 title: items => hints[items[0]?.dataIndex ?? 0] ?? items[0]?.label ?? '',
                 label: (item: TooltipItem<'line'>) => {
@@ -56,8 +58,8 @@ export default function WeeklyFinanceChart({ labels, hints, data, metric, curren
             },
           },
           scales: {
-            x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#555a70', font: { size: 10 } } },
-            y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#555a70', font: { size: 10 } } },
+            x: CHART_X,
+            y: CHART_Y,
           },
         }}
       />

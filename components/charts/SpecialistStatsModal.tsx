@@ -2,6 +2,7 @@
 import { useMemo } from 'react';
 import { Bar, Doughnut } from 'react-chartjs-2';
 import './ChartSetup';
+import { CHART, CHART_TOOLTIP, CHART_X, CHART_Y } from './ChartSetup';
 import Modal from '@/components/ui/Modal';
 import { getProjects, getCompleted } from '@/lib/storage';
 import { project as calcProject } from '@/lib/calc';
@@ -16,7 +17,8 @@ interface SpecialistStatsModalProps {
 }
 
 const TYPE_LABELS: Record<string, string> = { IT: 'IT', Design: 'Дизайн', Video: 'Відео' };
-const TYPE_COLORS: Record<string, string> = { IT: '#0A84FF', Design: '#BF5AF2', Video: '#FF9F0A' };
+/** Графітова палітра: тип проєкту — категорія, а не фінансове значення. */
+const TYPE_COLORS: Record<string, string> = { IT: '#FF8156', Design: '#E8BD69', Video: '#8E92A0' };
 
 // Місяць, у який проєкт «заробив»: дата завершення, а якщо її немає — старт.
 function projectMonth(p: Project): string {
@@ -117,16 +119,16 @@ export default function SpecialistStatsModal({ isOpen, onClose, specialist }: Sp
                   {
                     label: 'Заробіток фахівця',
                     data: stats.specData,
-                    backgroundColor: 'rgba(10, 132, 255, 0.55)',
-                    borderColor: '#0A84FF',
+                    backgroundColor: CHART.accentFill,
+                    borderColor: CHART.accent,
                     borderWidth: 1,
                     borderRadius: 4,
                   },
                   {
                     label: 'Мій прибуток',
                     data: stats.myData,
-                    backgroundColor: 'rgba(48, 209, 88, 0.5)',
-                    borderColor: '#30D158',
+                    backgroundColor: CHART.incomeFill,
+                    borderColor: CHART.income,
                     borderWidth: 1,
                     borderRadius: 4,
                   },
@@ -135,11 +137,8 @@ export default function SpecialistStatsModal({ isOpen, onClose, specialist }: Sp
               options={{
                 responsive: true,
                 maintainAspectRatio: false,
-                plugins: { legend: { labels: { color: '#8e8e93', font: { size: 11 }, boxWidth: 12 } } },
-                scales: {
-                  x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#555a70', font: { size: 10 } } },
-                  y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#555a70', font: { size: 10 } } },
-                },
+                plugins: { legend: { labels: { color: CHART.legend, font: CHART.font, boxWidth: 12 } }, tooltip: CHART_TOOLTIP },
+                scales: { x: CHART_X, y: CHART_Y },
               }}
             />
           </div>
@@ -155,15 +154,16 @@ export default function SpecialistStatsModal({ isOpen, onClose, specialist }: Sp
                   labels: stats.byType.map(([t]) => TYPE_LABELS[t] || t),
                   datasets: [{
                     data: stats.byType.map(([, v]) => v),
-                    backgroundColor: stats.byType.map(([t]) => TYPE_COLORS[t] || '#8E8E93'),
-                    borderWidth: 0,
+                    backgroundColor: stats.byType.map(([t]) => TYPE_COLORS[t] || CHART.neutral),
+                    borderColor: '#1B1B23',
+                    borderWidth: 2,
                   }],
                 }}
                 options={{
                   responsive: true,
                   maintainAspectRatio: false,
                   cutout: '62%',
-                  plugins: { legend: { position: 'right', labels: { color: '#8e8e93', font: { size: 11 }, boxWidth: 12 } } },
+                  plugins: { legend: { position: 'right', labels: { color: CHART.legend, font: CHART.font, boxWidth: 12 } } },
                 }}
               />
             </div>
