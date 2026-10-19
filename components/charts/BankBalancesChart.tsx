@@ -1,6 +1,7 @@
 'use client';
 import { Bar } from 'react-chartjs-2';
 import './ChartSetup';
+import { CHART, CHART_TOOLTIP, CHART_X, CHART_Y } from './ChartSetup';
 import { BANKS, bankLabel } from '@/lib/banks';
 import { formatMoney } from '@/lib/utils';
 
@@ -16,15 +17,15 @@ export default function BankBalancesChart({ balances, usdtRate = 41 }: BankBalan
   const data = entries.map(([_, v]) => v);
   const colors = entries.map(([id]) => {
     const bank = BANKS.find(b => b.id === id);
-    return bank?.chartColor || 'rgba(128, 128, 128, 0.65)';
+    return bank?.chartColor || CHART.neutralFill;
   });
   const borders = entries.map(([id]) => {
     const bank = BANKS.find(b => b.id === id);
-    return bank?.borderColor || '#888';
+    return bank?.borderColor || CHART.neutral;
   });
 
   return (
-    <div className="chart-body">
+    <div className="chart-body" role="img" aria-label="Активи по банках у гривневому еквіваленті">
       <Bar
         data={{
           labels,
@@ -44,6 +45,7 @@ export default function BankBalancesChart({ balances, usdtRate = 41 }: BankBalan
           plugins: {
             legend: { display: false },
             tooltip: {
+              ...CHART_TOOLTIP,
               callbacks: {
                 label: (ctx) => {
                   const id = entries[ctx.dataIndex]?.[0] || '';
@@ -57,10 +59,7 @@ export default function BankBalancesChart({ balances, usdtRate = 41 }: BankBalan
               },
             },
           },
-          scales: {
-            x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#555a70', font: { size: 10 } } },
-            y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#555a70', font: { size: 10 } } },
-          },
+          scales: { x: CHART_X, y: CHART_Y },
         }}
       />
     </div>

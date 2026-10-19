@@ -1,10 +1,11 @@
 'use client';
-import {incomeForMonth} from '@/lib/income-report';
 import { useState, useMemo, type ReactNode } from 'react';
 import { useApp } from '@/context/AppContext';
-import { dashboardStats, project as calcProject, savingsSummary, bankBalances, toDisplay, bankAmountToDisplay } from '@/lib/calc';
-import { formatMoney, getMonthKey, getMonthLabel, today, itemCurrency } from '@/lib/utils';
+import { buildDashboardView, type DashboardView } from '@/lib/dashboard-view';
+import { formatMoney } from '@/lib/utils';
 import dynamic from 'next/dynamic';
+import Modal from '@/components/ui/Modal';
+
 const IncomeChart = dynamic(() => import('@/components/charts/IncomeChart'), { ssr: false });
 const ProjectsBarChart = dynamic(() => import('@/components/charts/ProjectsBarChart'), { ssr: false });
 const SourcesChart = dynamic(() => import('@/components/charts/SourcesChart'), { ssr: false });
@@ -12,169 +13,243 @@ const FinanceBarChart = dynamic(() => import('@/components/charts/FinanceBarChar
 const BankBalancesChart = dynamic(() => import('@/components/charts/BankBalancesChart'), { ssr: false });
 const SavingsChart = dynamic(() => import('@/components/charts/SavingsChart'), { ssr: false });
 const AgencyIncomeChart = dynamic(() => import('@/components/charts/AgencyIncomeChart'), { ssr: false });
-import Modal from '@/components/ui/Modal';
 
-interface MonthData { income: number; count: number; financeIn: number; financeOut: number; }
-function last12Months(): Record<string, MonthData> {
-  const data: Record<string, MonthData> = {};
-  const now = new Date();
-  for (let i = 11; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    data[key] = { income: 0, count: 0, financeIn: 0, financeOut: 0 };
-  }
-  return data;
-}
-
-const STAT_LABELS: Record<string, string> = {
-  'total-budget': 'Загальний бюджет', 'net-profit': 'Чистий прибуток',
-  'avg-check': 'Середній чек', 'client-debts': 'Борг клієнтів',
-  'specialist-debts': 'Борг фахівцям', 'month-income': 'Дохід за місяць',
-  'savings': 'Відкладення', 'balance': 'Баланс',
-  'debt-owed': 'Борг мені', 'my-debts': 'Мої борги',
+/* Іконки: 24×24, stroke 2 — той самий набір, що й був на головній. */
+const I = (d: ReactNode) => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{d}</svg>
+);
+const ICONS: Record<string, ReactNode> = {
+  profit: I(<><polyline points="22 7 13.5 15.5 8.5 10.5 2 17" /><polyline points="16 7 22 7 22 13" /></>),
+  finance: I(<><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /><line x1="12" y1="14" x2="12" y2="18" /><line x1="10" y1="16" x2="14" y2="16" /></>),
+  agency: I(<><path d="M21 12V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h7" /><line x1="7" y1="9" x2="17" y2="9" /><line x1="7" y1="13" x2="12" y2="13" /></>),
+  budget: I(<><path d="M21 12V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h7" /><line x1="7" y1="9" x2="17" y2="9" /><line x1="7" y1="13" x2="12" y2="13" /></>),
+  avg: I(<><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="9" y1="13" x2="15" y2="13" /><line x1="9" y1="17" x2="15" y2="17" /></>),
+  balance: I(<><line x1="12" y1="2" x2="12" y2="22" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></>),
+  savings: I(<><path d="M19 5c-1.5 0-2.8 1.4-3 2-3.5-1.5-11-.3-11 5 0 1.8 0 3 2 4.5V20h4v-2h3v2h4v-4c1-.5 1.7-1 2-2h2v-4h-2c0-1-.5-1.5-1-2" /><circle cx="10" cy="11" r="1" fill="currentColor" /><circle cx="14" cy="11" r="1" fill="currentColor" /></>),
+  clientDebt: I(<><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></>),
+  specDebt: I(<><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="8.5" cy="7" r="4" /><line x1="20" y1="8" x2="20" y2="14" /><line x1="23" y1="11" x2="17" y2="11" /></>),
+  owed: I(<><rect x="1" y="5" width="22" height="14" rx="2" /><line x1="1" y1="10" x2="23" y2="10" /><path d="M12 5v14" /></>),
+  myDebts: I(<><rect x="2" y="5" width="20" height="14" rx="2" /><line x1="2" y1="10" x2="22" y2="10" /><path d="M7 15h2" /><path d="M15 15h2" /></>),
+  active: I(<><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /></>),
+  completed: I(<><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></>),
+  clients: I(<><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></>),
+  specialists: I(<><path d="M12 14a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" /><path d="M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="20" cy="8" r="3" /><path d="M21 12v2" /><path d="M22.5 11h-1" /></>),
+  partners: I(<><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="8.5" cy="7" r="4" /><path d="M20 8v6" /><path d="M23 11h-6" /></>),
 };
 
-const STAT_ICONS: Record<string, ReactNode> = {
-  'total-budget': <><path d="M21 12V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h7" strokeWidth="2" strokeLinecap="round"/><line x1="7" y1="9" x2="17" y2="9" strokeWidth="2" strokeLinecap="round"/><line x1="7" y1="13" x2="12" y2="13" strokeWidth="2" strokeLinecap="round"/></>,
-  'net-profit': <><polyline points="22 7 13.5 15.5 8.5 10.5 2 17" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><polyline points="16 7 22 7 22 13" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></>,
-  'avg-check': <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><polyline points="14 2 14 8 20 8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><line x1="9" y1="13" x2="15" y2="13" strokeWidth="2" strokeLinecap="round"/><line x1="9" y1="17" x2="15" y2="17" strokeWidth="2" strokeLinecap="round"/></>,
-  'client-debts': <><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><circle cx="9" cy="7" r="4" strokeWidth="2"/><path d="M23 21v-2a4 4 0 0 0-3-3.87" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M16 3.13a4 4 0 0 1 0 7.75" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></>,
-  'specialist-debts': <><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><circle cx="8.5" cy="7" r="4" strokeWidth="2"/><line x1="20" y1="8" x2="20" y2="14" strokeWidth="2" strokeLinecap="round"/><line x1="23" y1="11" x2="17" y2="11" strokeWidth="2" strokeLinecap="round"/></>,
-  'month-income': <><rect x="3" y="4" width="18" height="18" rx="2" ry="2" strokeWidth="2"/><line x1="16" y1="2" x2="16" y2="6" strokeWidth="2" strokeLinecap="round"/><line x1="8" y1="2" x2="8" y2="6" strokeWidth="2" strokeLinecap="round"/><line x1="3" y1="10" x2="21" y2="10" strokeWidth="2"/><line x1="12" y1="14" x2="12" y2="18" strokeWidth="2" strokeLinecap="round"/><line x1="10" y1="16" x2="14" y2="16" strokeWidth="2" strokeLinecap="round"/></>,
-  'savings': <><path d="M19 5c-1.5 0-2.8 1.4-3 2-3.5-1.5-11-.3-11 5 0 1.8 0 3 2 4.5V20h4v-2h3v2h4v-4c1-.5 1.7-1 2-2h2v-4h-2c0-1-.5-1.5-1-2" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><circle cx="10" cy="11" r="1" fill="currentColor"/><circle cx="14" cy="11" r="1" fill="currentColor"/></>,
-  'balance': <><line x1="12" y1="2" x2="12" y2="22" strokeWidth="2" strokeLinecap="round"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></>,
-  'debt-owed': <><rect x="1" y="5" width="22" height="14" rx="2" ry="2" strokeWidth="2"/><line x1="1" y1="10" x2="23" y2="10" strokeWidth="2"/><path d="M12 5v14" strokeWidth="2" strokeLinecap="round"/></>,
-  'my-debts': <><rect x="2" y="5" width="20" height="14" rx="2" strokeWidth="2"/><line x1="2" y1="10" x2="22" y2="10" strokeWidth="2"/><path d="M7 15h2" strokeWidth="2" strokeLinecap="round"/><path d="M15 15h2" strokeWidth="2" strokeLinecap="round"/></>,
-};
+type Tone = 'neutral' | 'accent' | 'income' | 'expense';
 
-const COUNT_ICONS: Record<string, ReactNode> = {
-  'stat-active': <><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></>,
-  'stat-completed': <><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><polyline points="22 4 12 14.01 9 11.01" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></>,
-  'stat-clients': <><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><circle cx="9" cy="7" r="4" strokeWidth="2"/><path d="M23 21v-2a4 4 0 0 0-3-3.87" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M16 3.13a4 4 0 0 1 0 7.75" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></>,
-  'stat-partners': <><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><circle cx="8.5" cy="7" r="4" strokeWidth="2"/><path d="M20 8v6" strokeWidth="2" strokeLinecap="round"/><path d="M23 11h-6" strokeWidth="2" strokeLinecap="round"/></>,
-  'stat-specialists': <><path d="M12 14a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" strokeWidth="2"/><path d="M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><circle cx="20" cy="8" r="3" strokeWidth="2"/><path d="M21 12v2" strokeWidth="2" strokeLinecap="round"/><path d="M22.5 11h-1" strokeWidth="2" strokeLinecap="round"/></>,
-};
+interface KpiRow { id: string; label: string; value: string; note?: string; icon: string; tone: Tone; }
 
-const STAT_COLORS: Record<string, string> = {
-  'total-budget': 'blue', 'net-profit': 'teal', 'avg-check': 'orange',
-  'client-debts': 'orange', 'specialist-debts': 'orange', 'month-income': 'gold',
-  'savings': 'gold', 'balance': 'green', 'debt-owed': 'green', 'my-debts': 'orange',
-};
+const money = (n: number) => formatMoney(n);
+const whole = (n: number) => new Intl.NumberFormat('uk-UA').format(Math.round(n));
+
+const ukDate = (d = new Date()) => d.toLocaleDateString('uk-UA', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+/* Підпис періоду — щоб жоден показник не звучав без контексту часу. */
+const MONTH_NOTE = 'за поточний місяць';
+const ALL_TIME_NOTE = 'за весь час';
 
 export default function DashboardPage() {
   const { snapshot } = useApp();
-  const [showAgencyIncome, setShowAgencyIncome] = useState(false);
+  const [showAgency, setShowAgency] = useState(false);
+  const [flowMode, setFlowMode] = useState<'both' | 'in' | 'out' | 'net'>('both');
+  const [savingsTab, setSavingsTab] = useState<'goals' | 'total'>('goals');
 
-  const data = useMemo(() => {
-    const stats = dashboardStats(snapshot);
-    const completed = snapshot.projectsCompleted;
-    const transactions = snapshot.transactions;
-    const savingsItems = snapshot.savings;
-    const clients = snapshot.clients;
+  const view: DashboardView = useMemo(() => buildDashboardView(snapshot), [snapshot]);
+  const s = view.stats;
 
-    const md = last12Months();
-    completed.forEach(p => {
-      const key = getMonthKey((p as any).endDate || (p as any).finishDate || (p as any).createdAt?.split('T')[0] || '');
-      if (key && md[key]) { md[key].count += 1; md[key].income += toDisplay(calcProject(p as any).paidAmount, itemCurrency(p), snapshot.financeSettings); }
-    });
-    transactions.forEach(t => {
-      // Приховані записи виключаються — так само, як у балансі.
-      if (t.hidden) return;
-      if (t.source && String(t.source).startsWith('project_')) return;
-      const key = getMonthKey(t.date || t.plannedDate);
-      if (key && md[key]) {
-        if (t.type === 'income') md[key].financeIn += bankAmountToDisplay(t.amount, t.bank, snapshot.financeSettings);
-        else if (t.type === 'expense') md[key].financeOut += bankAmountToDisplay(t.amount, t.bank, snapshot.financeSettings);
-      }
-    });
+  const primary: KpiRow[] = [
+    { id: 'net-profit', label: 'Чистий прибуток', value: money(s.netProfit), note: ALL_TIME_NOTE, icon: 'profit', tone: 'accent' },
+    { id: 'month-income', label: 'Дохід у фінансах', value: money(s.monthIncome), note: MONTH_NOTE, icon: 'finance', tone: s.monthIncome >= 0 ? 'income' : 'expense' },
+    { id: 'agency-income', label: 'Мій дохід від агенції', value: money(view.currentMonthAgencyIncome), note: MONTH_NOTE, icon: 'agency', tone: 'neutral' },
+  ];
 
-    const labels = Object.keys(md).map(k => getMonthLabel(k));
-    const balances = bankBalances(transactions, snapshot.financeSettings);
-    const sav = savingsSummary(savingsItems, snapshot.financeSettings);
-    const savedItems = savingsItems.map(s => ({ name: s.name || s.bank || 'Ціль', amount: Number(s.amount) || 0, goal: Number(s.goal) || 0 }));
+  const volume: KpiRow[] = [
+    { id: 'stat-active', label: 'Активні проєкти', value: whole(s.activeCount), icon: 'active', tone: 'accent' },
+    { id: 'stat-completed', label: 'Завершені', value: whole(s.completedCount), icon: 'completed', tone: 'neutral' },
+    { id: 'stat-clients', label: 'Клієнти', value: whole(s.clientsCount), icon: 'clients', tone: 'neutral' },
+    { id: 'stat-specialists', label: 'Фахівці', value: whole(s.specialistsCount), icon: 'specialists', tone: 'neutral' },
+    { id: 'stat-partners', label: 'Партнери', value: whole(s.partnersCount), icon: 'partners', tone: 'neutral' },
+  ];
 
-    const srcMap: Record<string, number> = {};
-    clients.forEach(c => { const s = c.source || 'Інше'; srcMap[s] = (srcMap[s] || 0) + 1; });
-    const srcColors: Record<string, string> = { Telegram: '#0A84FF', Instagram: '#FF375F', YouTube: '#FF9F0A', 'Реклама': '#BF5AF2', 'Сайт': '#64D2FF', 'Сарафанне радіо': '#30D158', 'Інше': '#555a70' };
+  const moneyRows: KpiRow[] = [
+    { id: 'total-budget', label: 'Загальний бюджет', value: money(s.totalBudget), note: ALL_TIME_NOTE, icon: 'budget', tone: 'neutral' },
+    { id: 'avg-check', label: 'Середній чек', value: money(s.avgCheck), note: ALL_TIME_NOTE, icon: 'avg', tone: 'neutral' },
+    { id: 'balance', label: 'Баланс', value: money(s.balance), icon: 'balance', tone: s.balance >= 0 ? 'income' : 'expense' },
+    { id: 'savings', label: 'Відкладення', value: money(s.savingsTotal), icon: 'savings', tone: 'income' },
+    { id: 'client-debts', label: 'Борг клієнтів', value: money(s.clientDebts), icon: 'clientDebt', tone: 'expense' },
+    { id: 'specialist-debts', label: 'Борг фахівцям', value: money(s.specialistDebts), icon: 'specDebt', tone: 'expense' },
+    { id: 'debt-owed', label: 'Борг мені', value: money(s.owedToMe), icon: 'owed', tone: 'income' },
+    { id: 'my-debts', label: 'Мої борги', value: money(s.myDebts), icon: 'myDebts', tone: 'expense' },
+  ];
 
-    const amd = last12Months() as Record<string, { income: number }>;
-    for (const key of Object.keys(amd)) amd[key].income = incomeForMonth(snapshot, key).agencyIncome;
-    const agencyLabels = Object.keys(amd).map(k => getMonthLabel(k));
-    const agencyIncome = Object.values(amd).map(d => d.income);
-    const cmKey = getMonthKey(today());
-    const cmIncome = amd[cmKey || '']?.income || 0;
-
-    return { stats, labels, md, balances, sav, savedItems, srcLabels: Object.keys(srcMap), srcData: Object.values(srcMap), srcColors: Object.keys(srcMap).map(l => srcColors[l] || '#555a70'), agencyLabels, agencyIncome, cmIncome };
-  }, [snapshot]);
-
-  const counterKeysRow1 = ['total-budget', 'net-profit', 'avg-check', 'client-debts', 'specialist-debts'] as const;
-  const counterKeysRow3 = ['month-income', 'savings', 'balance', 'debt-owed', 'my-debts'] as const;
-  const counterVals: Record<string, number> = {
-    'total-budget': data.stats.totalBudget, 'net-profit': data.stats.netProfit, 'avg-check': data.stats.avgCheck,
-    'client-debts': data.stats.clientDebts, 'specialist-debts': data.stats.specialistDebts,
-    'month-income': data.stats.monthIncome, 'savings': data.stats.savingsTotal, 'balance': data.stats.balance,
-    'debt-owed': data.stats.owedToMe, 'my-debts': data.stats.myDebts,
-  };
+  const dateLong = ukDate();
+  const series = view.series;
 
   return (
-    <section className="page active">
-      <div className="page-header">
+    <section className="page ov-page active">
+      {/* 1. Шапка */}
+      <header className="ov-header">
         <div>
-          <h1 className="page-title">Dashboard</h1>
-          <p className="page-subtitle">{new Date().toLocaleDateString('uk-UA', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
+          <h1 className="ov-title">Огляд</h1>
+          <p className="ov-subtitle">{dateLong}</p>
         </div>
+      </header>
+
+      {/* 2. Три ключові показники. Третя — кнопка: відкриває деталізацію агенції. */}
+      <div className="ov-primary">
+        {primary.map((k) => {
+          const clickable = k.id === 'agency-income';
+          return (
+            <article key={k.id} className={`ov-kpi ov-kpi--${k.tone}${clickable ? ' ov-kpi--hit' : ''}`}>
+              {clickable ? (
+                <button type="button" className="ov-kpi-hit-btn" onClick={() => setShowAgency(true)} aria-haspopup="dialog">
+                  <span className="ov-sr">Відкрити деталізацію доходу від агенції по місяцях</span>
+                </button>
+              ) : null}
+              <div className="ov-kpi-top">
+                <span className="ov-kpi-label">{k.label}</span>
+                <span className={`ov-kpi-icon ov-kpi-icon--${k.tone}`}>{ICONS[k.icon]}</span>
+              </div>
+              <div className="ov-kpi-value">{k.value}</div>
+              {k.note ? <div className="ov-kpi-note">{k.note}</div> : null}
+              {clickable ? <span className="ov-kpi-hint" aria-hidden="true">Деталізація →</span> : null}
+            </article>
+          );
+        })}
       </div>
-      <div className="stats-grid stats-grid--wide">
-        {counterKeysRow1.map(id => (
-          <div key={id} className={`stat-card${['client-debts', 'specialist-debts'].includes(id) ? ' stat-card--warn' : ''}`}>
-            <div className={`stat-icon stat-icon--${STAT_COLORS[id]}`}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">{STAT_ICONS[id]}</svg></div>
-            <div className="stat-info"><span className="stat-label">{STAT_LABELS[id]}</span><span className="stat-value">{formatMoney(counterVals[id])}</span></div>
+
+      {/* 3. Обсяг роботи */}
+      <section className="ov-block" aria-labelledby="ov-volume">
+        <h2 className="ov-block-title" id="ov-volume">Обсяг роботи</h2>
+        <div className="ov-cells ov-cells--5">
+          {volume.map((k) => (
+            <div key={k.id} className="ov-cell">
+              <span className={`ov-cell-icon ov-cell-icon--${k.tone}`}>{ICONS[k.icon]}</span>
+              <div className="ov-cell-body">
+                <span className="ov-cell-label">{k.label}</span>
+                <span className="ov-cell-value">{k.value}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* 4. Гроші та зобов'язання */}
+      <section className="ov-block" aria-labelledby="ov-money">
+        <h2 className="ov-block-title" id="ov-money">Гроші та зобов'язання</h2>
+        <div className="ov-cells ov-cells--4">
+          {moneyRows.map((k) => (
+            <div key={k.id} className={`ov-cell ov-cell--${k.tone}`}>
+              <span className={`ov-cell-icon ov-cell-icon--${k.tone}`}>{ICONS[k.icon]}</span>
+              <div className="ov-cell-body">
+                <span className="ov-cell-label">{k.label}</span>
+                <span className="ov-cell-value">{k.value}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* 5. Рух коштів */}
+      <section className="ov-block" aria-labelledby="ov-flow">
+        <div className="ov-block-head">
+          <h2 className="ov-block-title" id="ov-flow">Рух коштів</h2>
+          <div className="ov-seg" role="tablist" aria-label="Серія графіка руху коштів">
+            {([['in', 'Надходження'], ['out', 'Витрати'], ['both', 'Обидва'], ['net', 'Сальдо']] as const).map(([v, l]) => (
+              <button key={v} type="button" role="tab" aria-selected={flowMode === v}
+                className={`ov-seg-item${flowMode === v ? ' is-on' : ''}`} onClick={() => setFlowMode(v)}>{l}</button>
+            ))}
           </div>
-        ))}
-        {[
-          ['stat-active', 'Активні проєкти', data.stats.activeCount, 'purple'],
-          ['stat-completed', 'Завершені', data.stats.completedCount, 'indigo'],
-          ['stat-clients', 'Клієнти', data.stats.clientsCount, 'pink'],
-          ['stat-partners', 'Партнери', data.stats.partnersCount, 'purple'],
-          ['stat-specialists', 'Фахівці', data.stats.specialistsCount, 'indigo'],
-        ].map(([id, label, val, color]) => (
-          <div key={id} className="stat-card">
-            <div className={`stat-icon stat-icon--${color}`}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">{COUNT_ICONS[id as string]}</svg></div>
-            <div className="stat-info"><span className="stat-label">{label}</span><span className="stat-value">{val}</span></div>
+        </div>
+        <div className="ov-panel">
+          <FinanceBarChart labels={view.labels} incomeData={series.financeIn} expenseData={series.financeOut} mode={flowMode} />
+          <p className="ov-panel-foot">
+            Останні 12 місяців. Поточний місяць неповний. Сальдо — надходження мінус витрати.
+          </p>
+        </div>
+      </section>
+
+      {/* 6. Закриті замовлення + Кількість проєктів */}
+      <div className="ov-two">
+        <section className="ov-block" aria-labelledby="ov-closed">
+          <h2 className="ov-block-title" id="ov-closed">Закриті замовлення</h2>
+          <div className="ov-panel">
+            <IncomeChart labels={view.labels} data={series.completedPaid} />
+            <p className="ov-panel-foot">Сума оплат за завершені проєкти, за місяцем завершення.</p>
           </div>
-        ))}
-        {counterKeysRow3.map(id => (
-          <div key={id} className={`stat-card${['debt-owed', 'my-debts'].includes(id) ? ' stat-card--warn' : ''}${id === 'month-income' ? ' stat-card--highlight stat-card--clickable' : ''}`}
-            onClick={id === 'month-income' ? () => setShowAgencyIncome(true) : undefined}>
-            <div className={`stat-icon stat-icon--${STAT_COLORS[id]}`}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">{STAT_ICONS[id]}</svg></div>
-            <div className="stat-info"><span className="stat-label">{STAT_LABELS[id]}</span><span className="stat-value">{formatMoney(counterVals[id])}</span></div>
+        </section>
+        <section className="ov-block" aria-labelledby="ov-count">
+          <h2 className="ov-block-title" id="ov-count">Кількість проєктів</h2>
+          <div className="ov-panel">
+            <ProjectsBarChart labels={view.labels} data={series.completedCount} />
+            <p className="ov-panel-foot">Скільки проєктів завершено щомісяця.</p>
           </div>
-        ))}
+        </section>
       </div>
 
-      <h3 className="section-title">Проєкти</h3>
-      <div className="charts-grid charts-grid--3">
-        <div className="chart-card anim-chart"><div className="chart-header"><h3 className="chart-title">Закрито замовлень (сума за місяць)</h3></div><IncomeChart labels={data.labels} data={Object.values(data.md).map(d => d.income)} /></div>
-        <div className="chart-card anim-chart"><div className="chart-header"><h3 className="chart-title">Кількість проєктів (місяць)</h3></div><ProjectsBarChart labels={data.labels} data={Object.values(data.md).map(d => d.count)} /></div>
-        <div className="chart-card anim-chart"><div className="chart-header"><h3 className="chart-title">Джерела клієнтів</h3></div><SourcesChart labels={data.srcLabels} data={data.srcData} colors={data.srcColors} /></div>
+      {/* 7. Джерела клієнтів + Активи по банках */}
+      <div className="ov-two">
+        <section className="ov-block" aria-labelledby="ov-sources">
+          <h2 className="ov-block-title" id="ov-sources">Джерела клієнтів</h2>
+          <div className="ov-panel">
+            <SourcesChart labels={view.sources.labels} data={view.sources.data} colors={view.sources.colors} />
+            <p className="ov-panel-foot">За кількістю клієнтів, без фільтрації за періодом.</p>
+          </div>
+        </section>
+        <section className="ov-block" aria-labelledby="ov-banks">
+          <h2 className="ov-block-title" id="ov-banks">Активи по банках</h2>
+          <div className="ov-panel">
+            <BankBalancesChart balances={view.balances} />
+            <p className="ov-panel-foot">Неприховані транзакції, у гривневому еквіваленті.</p>
+          </div>
+        </section>
       </div>
 
-      <h3 className="section-title">Фінанси</h3>
-      <div className="charts-grid charts-grid--2">
-        <div className="chart-card anim-chart"><div className="chart-header"><h3 className="chart-title">Доходи / витрати</h3></div><FinanceBarChart labels={data.labels} incomeData={Object.values(data.md).map(d => d.financeIn)} expenseData={Object.values(data.md).map(d => d.financeOut)} /></div>
-        <div className="chart-card anim-chart"><div className="chart-header"><h3 className="chart-title">Активи по банках</h3></div><BankBalancesChart balances={data.balances} /></div>
-      </div>
+      {/* 8. Відкладення */}
+      <section className="ov-block" aria-labelledby="ov-savings">
+        <div className="ov-block-head">
+          <h2 className="ov-block-title" id="ov-savings">Відкладення</h2>
+          <div className="ov-seg" role="tablist" aria-label="Вигляд графіка відкладень">
+            {([['goals', 'По цілях'], ['total', 'Загальний']] as const).map(([v, l]) => (
+              <button key={v} type="button" role="tab" aria-selected={savingsTab === v}
+                className={`ov-seg-item${savingsTab === v ? ' is-on' : ''}`} onClick={() => setSavingsTab(v)}>{l}</button>
+            ))}
+          </div>
+        </div>
+        <div className="ov-panel">
+          {savingsTab === 'goals' ? (
+            <>
+              <SavingsChart
+                labels={view.savedItems.map((x) => x.name)}
+                saved={view.savedItems.map((x) => x.amount)}
+                remaining={view.savedItems.map((x) => Math.max(0, x.goal - x.amount))}
+              />
+              <p className="ov-panel-foot">Кожна ціль окремо: скільки відкладено і скільки ще потрібно.</p>
+            </>
+          ) : (
+            <>
+              <SavingsChart
+                labels={['Всього']}
+                saved={[view.sav.totalSaved]}
+                remaining={[Math.max(0, view.sav.totalGoal - view.sav.totalSaved)]}
+              />
+              <p className="ov-panel-foot">
+                Загальний прогрес: {money(view.sav.totalSaved)} з {money(view.sav.totalGoal)}.
+              </p>
+            </>
+          )}
+        </div>
+      </section>
 
-      <h3 className="section-title">Відкладення</h3>
-      <div className="charts-grid charts-grid--2">
-        <div className="chart-card anim-chart"><div className="chart-header"><h3 className="chart-title">Прогрес по цілях</h3></div><SavingsChart labels={data.savedItems.map(s => s.name)} saved={data.savedItems.map(s => s.amount)} remaining={data.savedItems.map(s => Math.max(0, s.goal - s.amount))} /></div>
-        <div className="chart-card anim-chart"><div className="chart-header"><h3 className="chart-title">Загальний прогрес</h3></div><SavingsChart labels={['Всього']} saved={[data.sav.totalSaved]} remaining={[Math.max(0, data.sav.totalGoal - data.sav.totalSaved)]} /></div>
-      </div>
-
-      <Modal isOpen={showAgencyIncome} onClose={() => setShowAgencyIncome(false)} title="Мій дохід від агенції по місяцях" size="lg">
-        <div className="modal-stat-card"><div className="modal-stat-label">Дохід за актуальний місяць</div><div className="modal-stat-value">{formatMoney(data.cmIncome)}</div></div>
-        <AgencyIncomeChart labels={data.agencyLabels} data={data.agencyIncome} />
-        <div className="modal-footer"><button className="btn btn-ghost" onClick={() => setShowAgencyIncome(false)}>Закрити</button></div>
+      <Modal isOpen={showAgency} onClose={() => setShowAgency(false)} title="Мій дохід від агенції по місяцях" size="lg">
+        <div className="ov-modal-stat">
+          <span className="ov-modal-stat-label">Дохід за актуальний місяць</span>
+          <span className="ov-modal-stat-value">{money(view.currentMonthAgencyIncome)}</span>
+        </div>
+        <AgencyIncomeChart labels={view.agencyLabels} data={view.agencyIncome} />
+        <div className="modal-footer"><button className="btn btn-ghost" onClick={() => setShowAgency(false)}>Закрити</button></div>
       </Modal>
     </section>
   );

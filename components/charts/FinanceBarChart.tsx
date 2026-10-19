@@ -1,32 +1,56 @@
 'use client';
 import { Bar } from 'react-chartjs-2';
 import './ChartSetup';
+import { CHART, CHART_LEGEND, CHART_TOOLTIP, CHART_X, CHART_Y } from './ChartSetup';
+
+export type FinanceMode = 'both' | 'in' | 'out' | 'net';
 
 interface FinanceBarChartProps {
   labels: string[];
   incomeData: number[];
   expenseData: number[];
+  /** 'both' — дві серії (дефолт, сумісно зі старими викликами). */
+  mode?: FinanceMode;
 }
 
-export default function FinanceBarChart({ labels, incomeData, expenseData }: FinanceBarChartProps) {
+const MODE_LABEL: Record<FinanceMode, string> = {
+  both: 'Надходження / витрати',
+  in: 'Надходження',
+  out: 'Витрати',
+  net: 'Сальдо',
+};
+
+export default function FinanceBarChart({ labels, incomeData, expenseData, mode = 'both' }: FinanceBarChartProps) {
+  const datasets =
+    mode === 'both'
+      ? [
+          { label: 'Надходження', data: incomeData, backgroundColor: CHART.incomeFill, borderColor: CHART.income, borderWidth: 1, borderRadius: 4 },
+          { label: 'Витрати', data: expenseData, backgroundColor: CHART.expenseFill, borderColor: CHART.expense, borderWidth: 1, borderRadius: 4 },
+        ]
+      : mode === 'in'
+        ? [{ label: 'Надходження', data: incomeData, backgroundColor: CHART.incomeFill, borderColor: CHART.income, borderWidth: 1, borderRadius: 4 }]
+        : mode === 'out'
+          ? [{ label: 'Витрати', data: expenseData, backgroundColor: CHART.expenseFill, borderColor: CHART.expense, borderWidth: 1, borderRadius: 4 }]
+          : [
+              {
+                label: 'Сальдо',
+                data: incomeData.map((v, i) => v - (expenseData[i] ?? 0)),
+                backgroundColor: CHART.accentFill,
+                borderColor: CHART.accent,
+                borderWidth: 1,
+                borderRadius: 4,
+              },
+            ];
+
   return (
-    <div className="chart-body">
+    <div className="chart-body" role="img" aria-label={`${MODE_LABEL[mode]}, останні 12 місяців`}>
       <Bar
-        data={{
-          labels,
-          datasets: [
-            { label: 'Доходи', data: incomeData, backgroundColor: 'rgba(48, 209, 88, 0.5)', borderColor: '#30D158', borderWidth: 1, borderRadius: 4 },
-            { label: 'Витрати', data: expenseData, backgroundColor: 'rgba(255, 159, 10, 0.5)', borderColor: '#FF9F0A', borderWidth: 1, borderRadius: 4 },
-          ],
-        }}
+        data={{ labels, datasets }}
         options={{
           responsive: true,
           maintainAspectRatio: false,
-          plugins: { legend: { display: true, labels: { color: '#8b90a7', font: { size: 10 } } } },
-          scales: {
-            x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#555a70', font: { size: 10 } } },
-            y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#555a70', font: { size: 10 } } },
-          },
+          plugins: { legend: CHART_LEGEND, tooltip: CHART_TOOLTIP },
+          scales: { x: CHART_X, y: CHART_Y },
         }}
       />
     </div>

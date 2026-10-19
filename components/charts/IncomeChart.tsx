@@ -1,6 +1,7 @@
 'use client';
 import { Line } from 'react-chartjs-2';
 import './ChartSetup';
+import { CHART, CHART_TOOLTIP, CHART_X, CHART_Y } from './ChartSetup';
 
 interface IncomeChartProps {
   labels: string[];
@@ -9,30 +10,31 @@ interface IncomeChartProps {
 
 export default function IncomeChart({ labels, data }: IncomeChartProps) {
   return (
-    <div className="chart-body">
+    <div className="chart-body" role="img" aria-label="Сума закритих замовлень за місяць, останні 12 місяців">
       <Line
         data={{
           labels,
           datasets: [{
             data,
-            borderColor: '#30D158',
-            backgroundColor: 'rgba(52, 211, 153, 0.2)',
+            label: 'Закрито, сума',
+            borderColor: CHART.accent,
+            backgroundColor: CHART.accentFill,
             borderWidth: 2,
             tension: 0.4,
             fill: true,
-            pointBackgroundColor: '#30D158',
+            pointBackgroundColor: CHART.accent,
+            pointBorderColor: '#1B1B23',
+            pointBorderWidth: 2,
             pointRadius: 3,
+            pointHoverRadius: 5,
           }],
         }}
         options={{
           responsive: true,
           maintainAspectRatio: false,
           animation: { duration: 0 },
-          plugins: { legend: { display: false } },
-          scales: {
-            x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#555a70', font: { size: 10 } } },
-            y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#555a70', font: { size: 10 } } },
-          },
+          plugins: { legend: { display: false }, tooltip: CHART_TOOLTIP },
+          scales: { x: CHART_X, y: CHART_Y },
         }}
       />
     </div>

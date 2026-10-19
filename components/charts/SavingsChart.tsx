@@ -1,6 +1,7 @@
 'use client';
 import { Bar } from 'react-chartjs-2';
 import './ChartSetup';
+import { CHART, CHART_LEGEND, CHART_TOOLTIP, CHART_X, CHART_Y } from './ChartSetup';
 
 interface SavingsChartProps {
   labels: string[];
@@ -10,23 +11,20 @@ interface SavingsChartProps {
 
 export default function SavingsChart({ labels, saved, remaining }: SavingsChartProps) {
   return (
-    <div className="chart-body">
+    <div className="chart-body" role="img" aria-label="Прогрес по цілях відкладень: відкладено і залишилось">
       <Bar
         data={{
           labels,
           datasets: [
-            { label: 'Наразі', data: saved, backgroundColor: 'rgba(48, 209, 88, 0.6)', borderColor: '#30D158', borderWidth: 1, borderRadius: 4 },
-            { label: 'Залишилось', data: remaining, backgroundColor: 'rgba(85, 90, 112, 0.4)', borderColor: '#555a70', borderWidth: 1, borderRadius: 4 },
+            { label: 'Відкладено', data: saved, backgroundColor: CHART.incomeFill, borderColor: CHART.income, borderWidth: 1, borderRadius: 4 },
+            { label: 'Залишилось', data: remaining, backgroundColor: CHART.neutralFill, borderColor: CHART.neutral, borderWidth: 1, borderRadius: 4 },
           ],
         }}
         options={{
           responsive: true,
           maintainAspectRatio: false,
-          plugins: { legend: { display: true, labels: { color: '#8b90a7', font: { size: 10 } } } },
-          scales: {
-            x: { stacked: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#555a70', font: { size: 10 } } },
-            y: { stacked: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#555a70', font: { size: 10 } } },
-          },
+          plugins: { legend: CHART_LEGEND, tooltip: CHART_TOOLTIP },
+          scales: { x: { ...CHART_X, stacked: true }, y: { ...CHART_Y, stacked: true } },
         }}
       />
     </div>
