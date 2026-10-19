@@ -156,9 +156,9 @@ export default function DashboardPage() {
       <section className="ov-block" aria-labelledby="ov-flow">
         <div className="ov-block-head">
           <h2 className="ov-block-title" id="ov-flow">Рух коштів</h2>
-          <div className="ov-seg" role="tablist" aria-label="Серія графіка руху коштів">
+          <div className="ov-seg" role="group" aria-label="Серія графіка руху коштів">
             {([['in', 'Надходження'], ['out', 'Витрати'], ['both', 'Обидва'], ['net', 'Сальдо']] as const).map(([v, l]) => (
-              <button key={v} type="button" role="tab" aria-selected={flowMode === v}
+              <button key={v} type="button" aria-pressed={flowMode === v}
                 className={`ov-seg-item${flowMode === v ? ' is-on' : ''}`} onClick={() => setFlowMode(v)}>{l}</button>
             ))}
           </div>
@@ -211,9 +211,9 @@ export default function DashboardPage() {
       <section className="ov-block" aria-labelledby="ov-savings">
         <div className="ov-block-head">
           <h2 className="ov-block-title" id="ov-savings">Відкладення</h2>
-          <div className="ov-seg" role="tablist" aria-label="Вигляд графіка відкладень">
+          <div className="ov-seg" role="group" aria-label="Вигляд графіка відкладень">
             {([['goals', 'По цілях'], ['total', 'Загальний']] as const).map(([v, l]) => (
-              <button key={v} type="button" role="tab" aria-selected={savingsTab === v}
+              <button key={v} type="button" aria-pressed={savingsTab === v}
                 className={`ov-seg-item${savingsTab === v ? ' is-on' : ''}`} onClick={() => setSavingsTab(v)}>{l}</button>
             ))}
           </div>

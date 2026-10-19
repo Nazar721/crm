@@ -92,7 +92,7 @@ export default function TabBar() {
           onClick={() => setMoreOpen(true)}
           aria-haspopup="dialog"
           aria-expanded={moreOpen}
-          aria-controls="tabbar-more-sheet"
+          aria-controls={moreOpen ? 'tabbar-more-sheet' : undefined}
         >
           <span className="tabbar-icon"><TabIcon icon="more" /></span>
           <span className="tabbar-label">Більше</span>
