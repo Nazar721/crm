@@ -24,7 +24,7 @@ export function BankBadge({ bankId }: { bankId: string }) {
   const id = normalizeBank(bankId) || bankId;
   const bank = BANKS.find((b: any) => b.id === id);
   if (!bank) return <Badge variant="gray">{bankId || '—'}</Badge>;
-  return <Badge variant={bank.badge.replace('badge--', '') as any}>{bank.label}</Badge>;
+  return <span className={`badge ${bank.badge}`}>{bank.label}</span>;
 }
 
 export function TypeBadge({ type }: { type: string }) {

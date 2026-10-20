@@ -1,12 +1,12 @@
 import type { Bank } from '@/types';
 
 export const BANKS: Bank[] = [
-  { id: 'mono', label: 'Monobank', currency: 'UAH', badge: 'badge--black', chartColor: 'rgba(112, 116, 124, 0.85)', borderColor: '#8E92A0' },
-  { id: 'privat', label: 'PrivatBank', currency: 'UAH', badge: 'badge--green', chartColor: 'rgba(101, 214, 161, 0.65)', borderColor: '#65D6A1' },
-  { id: 'cash', label: 'Готівка ₴', currency: 'UAH', badge: 'badge--paper', chartColor: 'rgba(232, 189, 105, 0.70)', borderColor: '#E8BD69' },
-  { id: 'cash_usd', label: 'Готівка $', currency: 'USD', badge: 'badge--green', chartColor: 'rgba(172, 172, 187, 0.70)', borderColor: '#ACACBB' },
-  { id: 'cash_eur', label: 'Готівка €', currency: 'EUR', badge: 'badge--blue', chartColor: 'rgba(255, 122, 66, 0.62)', borderColor: '#FF7A42' },
-  { id: 'crypto_usdt', label: 'Крипта USDT', currency: 'USDT', badge: 'badge--teal', chartColor: 'rgba(142, 146, 160, 0.75)', borderColor: '#8E92A0' },
+  { id: 'mono', label: 'Monobank', currency: 'UAH', badge: 'badge--bank-mono', chartColor: 'rgba(192, 200, 213, 0.48)', borderColor: '#C0C8D5' },
+  { id: 'privat', label: 'PrivatBank', currency: 'UAH', badge: 'badge--bank-privat', chartColor: 'rgba(0, 166, 80, 0.58)', borderColor: '#00A650' },
+  { id: 'cash', label: 'Готівка ₴', currency: 'UAH', badge: 'badge--bank-cash', chartColor: 'rgba(218, 170, 88, 0.58)', borderColor: '#DAAA58' },
+  { id: 'cash_usd', label: 'Готівка $', currency: 'USD', badge: 'badge--bank-usd', chartColor: 'rgba(67, 154, 255, 0.56)', borderColor: '#439AFF' },
+  { id: 'cash_eur', label: 'Готівка €', currency: 'EUR', badge: 'badge--bank-eur', chartColor: 'rgba(126, 140, 255, 0.56)', borderColor: '#7E8CFF' },
+  { id: 'crypto_usdt', label: 'Крипта USDT', currency: 'USDT', badge: 'badge--bank-usdt', chartColor: 'rgba(38, 161, 123, 0.56)', borderColor: '#26A17B' },
 ];
 
 export function normalizeBank(value?: string): string {

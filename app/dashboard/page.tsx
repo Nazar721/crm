@@ -81,6 +81,82 @@ export default function DashboardPage() {
         </div>
       </header>
 
+      {/* ========== МОЇ ФІНАНСИ ========== */}
+      <section className="ov-section" aria-labelledby="ov-sec-finance">
+        <div className="ov-section-head">
+          <h2 className="ov-section-title" id="ov-sec-finance">Мої фінанси</h2>
+          <button type="button" className="ov-sec-action" aria-expanded={showAssets} aria-controls="ov-assets"
+            onClick={() => setShowAssets((v) => !v)}>
+            Графік активів
+          </button>
+        </div>
+
+        <div className="ov-row ov-row--57">
+          <article className="ov-card ov-card--balance-highlight">
+            <div className="ov-card-head">
+              <h3 className="ov-card-title">Баланс</h3>
+              <span className="ov-card-cap">{view.displayCurrency}</span>
+            </div>
+            <div className="ov-balance-value">{money(s.balance)}</div>
+            <ul className="ov-accts">
+              {accounts.map((a) => (
+                <li className="ov-acct" key={a.id} data-bank={a.id}>
+                  <span className="ov-acct-label">{a.label}</span>
+                  <span className="ov-acct-nums">
+                    <span className="ov-acct-native">{formatMoney(a.native.amount, a.native.currency)}</span>
+                    {a.native.currency !== a.displayEquivalent.currency ? (
+                      <span className="ov-acct-eq">
+                        еквівалент {formatMoney(a.displayEquivalent.amount, a.displayEquivalent.currency)}
+                      </span>
+                    ) : null}
+                  </span>
+                </li>
+              ))}
+              {accounts.length === 0 ? <li className="ov-acct ov-acct--empty">Руху по рахунках ще немає</li> : null}
+            </ul>
+          </article>
+
+          <article className="ov-card">
+            <div className="ov-card-head">
+              <h3 className="ov-card-title">Надходження / Витрати</h3>
+              <div className="ov-seg" role="group" aria-label="Серія графіка руху коштів">
+                {([['both', 'Разом'], ['in', 'Надходження'], ['out', 'Витрати']] as const).map(([v, l]) => (
+                  <button key={v} type="button" aria-pressed={flowMode === v}
+                    className={`ov-seg-item${flowMode === v ? ' is-on' : ''}`} onClick={() => setFlowMode(v)}>{l}</button>
+                ))}
+              </div>
+            </div>
+            <FinanceBarChart labels={view.labels} incomeData={series.financeIn} expenseData={series.financeOut} mode={flowMode} />
+            <p className="ov-card-foot">Останні 12 місяців. Поточний місяць неповний.</p>
+          </article>
+        </div>
+
+        <div className="ov-row ov-row--even">
+          <article className="ov-card ov-card--sum">
+            <span className="ov-sum-label">Надходження за місяць</span>
+            <span className="ov-sum-value">{money(s.monthIncome)}</span>
+            <span className="ov-sum-note">{view.monthLabel} · {MONTH_NOTE}</span>
+          </article>
+          <article className="ov-card ov-card--sum">
+            <span className="ov-sum-label">Витрати за місяць</span>
+            <span className="ov-sum-value">{money(view.monthExpenses)}</span>
+            <span className="ov-sum-note">{view.monthLabel} · {MONTH_NOTE}</span>
+          </article>
+        </div>
+
+        {showAssets ? (
+          <div className="ov-row ov-row--full" id="ov-assets">
+            <article className="ov-card">
+              <div className="ov-card-head">
+                <h3 className="ov-card-title">Активи рахунків</h3>
+              </div>
+              <BankBalancesChart balances={view.balances} />
+              <p className="ov-card-foot">Неприховані транзакції, у гривневому еквіваленті.</p>
+            </article>
+          </div>
+        ) : null}
+      </section>
+
       {/* ========== АГЕНЦІЯ ========== */}
       <section className="ov-section" aria-labelledby="ov-sec-agency">
         <div className="ov-section-head">
@@ -162,82 +238,6 @@ export default function DashboardPage() {
             </ul>
           </article>
         </div>
-      </section>
-
-      {/* ========== МОЇ ФІНАНСИ ========== */}
-      <section className="ov-section" aria-labelledby="ov-sec-finance">
-        <div className="ov-section-head">
-          <h2 className="ov-section-title" id="ov-sec-finance">Мої фінанси</h2>
-          <button type="button" className="ov-sec-action" aria-expanded={showAssets} aria-controls="ov-assets"
-            onClick={() => setShowAssets((v) => !v)}>
-            Графік активів
-          </button>
-        </div>
-
-        <div className="ov-row ov-row--57">
-          <article className="ov-card">
-            <div className="ov-card-head">
-              <h3 className="ov-card-title">Баланс</h3>
-              <span className="ov-card-cap">{view.displayCurrency}</span>
-            </div>
-            <div className="ov-balance-value">{money(s.balance)}</div>
-            <ul className="ov-accts">
-              {accounts.map((a) => (
-                <li className="ov-acct" key={a.id}>
-                  <span className="ov-acct-label">{a.label}</span>
-                  <span className="ov-acct-nums">
-                    <span className="ov-acct-native">{formatMoney(a.native.amount, a.native.currency)}</span>
-                    {a.native.currency !== a.displayEquivalent.currency ? (
-                      <span className="ov-acct-eq">
-                        еквівалент {formatMoney(a.displayEquivalent.amount, a.displayEquivalent.currency)}
-                      </span>
-                    ) : null}
-                  </span>
-                </li>
-              ))}
-              {accounts.length === 0 ? <li className="ov-acct ov-acct--empty">Руху по рахунках ще немає</li> : null}
-            </ul>
-          </article>
-
-          <article className="ov-card">
-            <div className="ov-card-head">
-              <h3 className="ov-card-title">Надходження / Витрати</h3>
-              <div className="ov-seg" role="group" aria-label="Серія графіка руху коштів">
-                {([['both', 'Разом'], ['in', 'Надходження'], ['out', 'Витрати']] as const).map(([v, l]) => (
-                  <button key={v} type="button" aria-pressed={flowMode === v}
-                    className={`ov-seg-item${flowMode === v ? ' is-on' : ''}`} onClick={() => setFlowMode(v)}>{l}</button>
-                ))}
-              </div>
-            </div>
-            <FinanceBarChart labels={view.labels} incomeData={series.financeIn} expenseData={series.financeOut} mode={flowMode} />
-            <p className="ov-card-foot">Останні 12 місяців. Поточний місяць неповний.</p>
-          </article>
-        </div>
-
-        <div className="ov-row ov-row--even">
-          <article className="ov-card ov-card--sum">
-            <span className="ov-sum-label">Надходження за місяць</span>
-            <span className="ov-sum-value">{money(s.monthIncome)}</span>
-            <span className="ov-sum-note">{view.monthLabel} · {MONTH_NOTE}</span>
-          </article>
-          <article className="ov-card ov-card--sum">
-            <span className="ov-sum-label">Витрати за місяць</span>
-            <span className="ov-sum-value">{money(view.monthExpenses)}</span>
-            <span className="ov-sum-note">{view.monthLabel} · {MONTH_NOTE}</span>
-          </article>
-        </div>
-
-        {showAssets ? (
-          <div className="ov-row ov-row--full" id="ov-assets">
-            <article className="ov-card">
-              <div className="ov-card-head">
-                <h3 className="ov-card-title">Активи рахунків</h3>
-              </div>
-              <BankBalancesChart balances={view.balances} />
-              <p className="ov-card-foot">Неприховані транзакції, у гривневому еквіваленті.</p>
-            </article>
-          </div>
-        ) : null}
       </section>
 
       {/* ========== Відкладення + Особисті борги ========== */}

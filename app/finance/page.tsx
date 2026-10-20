@@ -8,7 +8,7 @@ import { formatMoney, formatDate, today, getMonthKey, getMonthLabel } from '@/li
 import { BANKS, normalizeBank, bankLabel } from '@/lib/banks';
 import { saveTransaction, deleteTransaction, saveRates, convertCurrency } from '@/lib/actions';
 import { emitToast } from '@/lib/toast-bus';
-import { FinanceTypeBadge } from '@/components/ui/Badge';
+import { BankBadge, FinanceTypeBadge } from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
 import TransactionForm from '@/components/forms/TransactionForm';
 import ConfirmModal from '@/components/ui/ConfirmModal';
@@ -348,7 +348,7 @@ export default function FinancePage() {
                 ) : (
                   <td data-label="Сума" style={{ color: t.type === 'income' ? 'var(--accent-green)' : 'var(--accent-orange)', fontWeight: 600 }}>{t.type === 'income' ? '+' : '−'}{formatBankAmount(t.amount, t.bank)}</td>
                 )}
-                <td data-label="Банк">{t.type === 'transfer' ? <><span className={`badge badge--black`}>{bankLabel(normalizeBank(t.bank) || t.bank)}</span> → <span className={`badge badge--green`}>{bankLabel(normalizeBank(t.toBank || ''))}</span></> : <span className={`badge badge--${normalizeBank(t.bank) === 'mono' ? 'black' : 'green'}`}>{bankLabel(normalizeBank(t.bank) || t.bank)}</span>}</td>
+                <td data-label="Банк">{t.type === 'transfer' ? <><BankBadge bankId={t.bank} /> → <BankBadge bankId={t.toBank || ''} /></> : <BankBadge bankId={t.bank} />}</td>
                 <td data-label="Категорія">{t.type === 'transfer' ? 'Конвертація' : (t.category || '—')}</td>
                 <td data-label="Опис">{t.description || '—'}</td>
                 <td data-label="Дата"><span className="week-date"><span className="week-dot"></span>{formatDate(t.date || t.plannedDate)}</span></td>

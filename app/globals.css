@@ -1122,6 +1122,12 @@ body {
 .badge--gold   { background: var(--accent-gold-dim);   color: var(--accent-gold); }
 .badge--black  { background: var(--g-bg);               color: var(--g-text);     border: 1px solid var(--g-border); }
 .badge--paper  { background: rgba(212, 196, 168, 0.15); color: #d4c4a8; border: 1px solid rgba(212, 196, 168, 0.30); }
+.badge--bank-mono { background: rgba(192, 200, 213, 0.12); color: #C0C8D5; border-color: rgba(192, 200, 213, 0.34); }
+.badge--bank-privat { background: rgba(0, 166, 80, 0.15); color: #49D68A; border-color: rgba(0, 166, 80, 0.42); }
+.badge--bank-cash { background: rgba(218, 170, 88, 0.15); color: #E6BD70; border-color: rgba(218, 170, 88, 0.38); }
+.badge--bank-usd { background: rgba(67, 154, 255, 0.15); color: #79B7FF; border-color: rgba(67, 154, 255, 0.38); }
+.badge--bank-eur { background: rgba(126, 140, 255, 0.15); color: #A3ACFF; border-color: rgba(126, 140, 255, 0.38); }
+.badge--bank-usdt { background: rgba(38, 161, 123, 0.15); color: #55C9A1; border-color: rgba(38, 161, 123, 0.38); }
 
 /* =============================================
    DEVELOPERS GRID
@@ -2817,14 +2823,12 @@ tr.week-b .week-dot {
   .ov-row--lead .ov-card--lead .chart-body { min-height: 0; }
 }
 
-/* ---- Акцентна картка: суцільна заливка градієнтом, текст --g-accent-ink ----
-   Найгірша точка градієнта #F45125: ink 5.20:1, ink-dim 4.72:1 (обидва AA).
-   Білий текст на градієнті не проходить — не використовувати. */
+/* ---- Кольоровий акцент перейшов до особистого балансу ---- */
 .ov-hero {
-  background: var(--g-accent-surface);
-  color: var(--g-accent-ink);
+  background: var(--g-surface);
+  color: var(--g-text);
   border-radius: var(--radius-lg);
-  border: 0;
+  border: 1px solid var(--g-border);
   padding: 20px;
   min-height: 200px;
   display: flex;
@@ -2835,7 +2839,7 @@ tr.week-b .week-dot {
 .ov-hero-label {
   font-size: 0.82rem;
   font-weight: 650;
-  color: var(--g-accent-ink-dim);
+  color: var(--g-text-dim);
 }
 
 .ov-hero-value {
@@ -2843,7 +2847,7 @@ tr.week-b .week-dot {
   font-size: 2.45rem;
   font-weight: 750;
   letter-spacing: -0.03em;
-  color: var(--g-accent-ink);
+  color: var(--g-text);
   font-variant-numeric: tabular-nums;
   margin-top: 8px;
   word-break: keep-all;
@@ -2851,7 +2855,7 @@ tr.week-b .week-dot {
 
 .ov-hero-month {
   font-size: 0.78rem;
-  color: var(--g-accent-ink-dim);
+  color: var(--g-text-dim);
   margin-top: 4px;
 }
 
@@ -2861,8 +2865,8 @@ tr.week-b .week-dot {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: var(--g-accent-ink);
-  color: #FFEDE3;
+  background: var(--g-accent);
+  color: var(--g-accent-ink);
   border: 0;
   border-radius: 999px;
   padding: 8px 15px;
@@ -2873,9 +2877,28 @@ tr.week-b .week-dot {
   transition: background-color var(--transition), transform var(--transition);
 }
 
-.ov-hero-action:hover { background: #2E1B12; transform: translateY(-1px); }
+.ov-hero-action:hover { background: var(--g-accent-end); transform: translateY(-1px); }
 .ov-hero-action:active { transform: translateY(0); }
-.ov-hero-action:focus-visible { outline: 2px solid var(--g-accent-ink); outline-offset: 3px; }
+.ov-hero-action:focus-visible { outline: 2px solid var(--g-accent); outline-offset: 3px; }
+
+/* Баланс тепер несе головний помаранчевий акцент після перестановки секцій. */
+.ov-card--balance-highlight {
+  background: var(--g-accent-surface);
+  border-color: transparent;
+  color: var(--g-accent-ink);
+}
+
+.ov-card--balance-highlight .ov-card-title,
+.ov-card--balance-highlight .ov-card-cap,
+.ov-card--balance-highlight .ov-balance-value,
+.ov-card--balance-highlight .ov-acct-native { color: var(--g-accent-ink); }
+
+.ov-card--balance-highlight .ov-card-cap,
+.ov-card--balance-highlight .ov-acct-label,
+.ov-card--balance-highlight .ov-acct-eq,
+.ov-card--balance-highlight .ov-acct--empty { color: var(--g-accent-ink-dim); }
+
+.ov-card--balance-highlight .ov-acct + .ov-acct { border-color: rgb(33 19 13 / 22%); }
 
 /* ---- «Фінанси агенції»: одна графітова панель, комірки без власних карток ----
    Сітка 3+2: перший ряд — бюджет / прибуток / середній чек, другий — борги (ширші).
@@ -3011,9 +3034,34 @@ tr.week-b .week-dot {
   padding: 9px 0;
 }
 
+.ov-acct::before {
+  content: '';
+  flex: 0 0 8px;
+  width: 8px;
+  height: 8px;
+  align-self: center;
+  border-radius: 50%;
+  background: var(--bank-accent, #C0C8D5);
+  box-shadow: 0 0 0 3px var(--bank-accent-wash, rgba(192, 200, 213, 0.16));
+}
+
+.ov-acct[data-bank='mono'] { --bank-accent: #C0C8D5; --bank-accent-wash: rgba(192, 200, 213, 0.18); }
+.ov-acct[data-bank='privat'] { --bank-accent: #00A650; --bank-accent-wash: rgba(0, 166, 80, 0.18); }
+.ov-acct[data-bank='cash'] { --bank-accent: #DAAA58; --bank-accent-wash: rgba(218, 170, 88, 0.2); }
+.ov-acct[data-bank='cash_usd'] { --bank-accent: #439AFF; --bank-accent-wash: rgba(67, 154, 255, 0.2); }
+.ov-acct[data-bank='cash_eur'] { --bank-accent: #7E8CFF; --bank-accent-wash: rgba(126, 140, 255, 0.2); }
+.ov-acct[data-bank='crypto_usdt'] { --bank-accent: #26A17B; --bank-accent-wash: rgba(38, 161, 123, 0.2); }
+
 .ov-acct + .ov-acct { border-top: 1px solid var(--g-border); }
 
-.ov-acct-label { font-size: 0.8rem; color: var(--g-text-dim); min-width: 0; }
+.ov-acct-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: left;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--g-text-dim);
+}
 
 .ov-acct-nums {
   display: flex;
