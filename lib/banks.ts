@@ -5,7 +5,7 @@ export const BANKS: Bank[] = [
   { id: 'privat', label: 'PrivatBank', currency: 'UAH', badge: 'badge--green', chartColor: 'rgba(101, 214, 161, 0.65)', borderColor: '#65D6A1' },
   { id: 'cash', label: 'Готівка ₴', currency: 'UAH', badge: 'badge--paper', chartColor: 'rgba(232, 189, 105, 0.70)', borderColor: '#E8BD69' },
   { id: 'cash_usd', label: 'Готівка $', currency: 'USD', badge: 'badge--green', chartColor: 'rgba(172, 172, 187, 0.70)', borderColor: '#ACACBB' },
-  { id: 'cash_eur', label: 'Готівка €', currency: 'EUR', badge: 'badge--blue', chartColor: 'rgba(255, 129, 86, 0.62)', borderColor: '#FF8156' },
+  { id: 'cash_eur', label: 'Готівка €', currency: 'EUR', badge: 'badge--blue', chartColor: 'rgba(255, 122, 66, 0.62)', borderColor: '#FF7A42' },
   { id: 'crypto_usdt', label: 'Крипта USDT', currency: 'USDT', badge: 'badge--teal', chartColor: 'rgba(142, 146, 160, 0.75)', borderColor: '#8E92A0' },
 ];
 

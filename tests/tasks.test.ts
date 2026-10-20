@@ -7,7 +7,7 @@ import {
   reminderIdsToMark, setInAppRemindersEnabled, snoozeReminderIso,
   taskCounts, taskDateTimeFields, taskSchedule, validateTaskInput,
 } from '@/lib/tasks';
-import { kyivDateTimeToIso } from '@/lib/dates';
+import { kyivDateTimeToIso, todayKyiv } from '@/lib/dates';
 import {
   applyAssistantPlan, cancelTask, completeTask, markRemindersShown, savePlannedProject, saveTask, saveRates, snoozeTaskReminder,
 } from '@/lib/actions';
@@ -29,6 +29,17 @@ function task(overrides: Partial<Task> = {}): Task {
   return {
     id: 'tsk1', title: 'Написати клієнту', priority: 'normal', status: 'planned', ...overrides,
   };
+}
+
+/**
+ * Календарний день у Kyiv + днів. Рахуємо в календарі (UTC-середина дня),
+ * а не Date.now()+N*86400 — інакше на зсуві поясу/DST можна отримати
+ * сусідній або той самий день двічі.
+ */
+function addKyivDays(kyivDate: string, days: number): string {
+  const [y, m, d] = kyivDate.split('-').map(Number);
+  const shifted = new Date(Date.UTC(y, m - 1, d + days));
+  return shifted.toISOString().slice(0, 10);
 }
 
 // ------------------------------------------------------------
@@ -217,6 +228,14 @@ test('дії: створення/редагування/виконання/ск�
 test('дії: нагадування — лише явна дата+час; перенесення не змінює дедлайн', async () => {
   clearAll();
   await bootStore();
+  // Час ізольований: моменти беруться від «сьогодні у Kyiv», бо снуз —
+  // лише майбутній момент (lib/actions → snoozeReminderIso). Фікстура на
+  // «сьогодні 18:00» проходила до 18:00 Kyiv і падала після — збій залежав
+  // від години запуску, а не від бізнес-логіки.
+  const today = todayKyiv();
+  const futureDate = addKyivDays(today, 1);
+  const pastDate = addKyivDays(today, -10);
+
   await saveTask({ title: 'З нагадуванням', reminderDate: '2026-01-19', reminderTime: '10:00', dueDate: '2026-10-20' });
   const t = store.getSnapshot().tasks[0];
   assert.equal(t.reminderAt, kyivDateTimeToIso('2026-01-19', '10:00'));
@@ -232,13 +251,13 @@ test('дії: нагадування — лише явна дата+час; пе
   // Перенесення: дедлайн не змінюється; показ скидається
   await markRemindersShown([t.id]);
   assert.ok(store.getSnapshot().tasks[0].reminderShownAt, 'позначку показу збережено');
-  const snoozed = await snoozeTaskReminder(t.id, '2026-10-19', '18:00');
+  const snoozed = await snoozeTaskReminder(t.id, futureDate, '18:00');
   assert.equal(snoozed.ok, true);
   const after = store.getSnapshot().tasks.find(x => x.id === t.id)!;
-  assert.equal(after.reminderAt, kyivDateTimeToIso('2026-10-19', '18:00'));
+  assert.equal(after.reminderAt, kyivDateTimeToIso(futureDate, '18:00'));
   assert.equal(after.dueDate, '2026-10-20', 'дедлайн не змінився мовчки');
   assert.equal(after.reminderShownAt, undefined, 'перенесення скидає показ');
-  assert.equal((await snoozeTaskReminder(t.id, '2026-10-01', '10:00')).ok, false, 'минулий момент — відмова');
+  assert.equal((await snoozeTaskReminder(t.id, pastDate, '10:00')).ok, false, 'минулий момент — відмова');
   // Прибирання нагадування — явне
   await saveTask({ reminderClear: true } as never, t.id);
   assert.equal(store.getSnapshot().tasks.find(x => x.id === t.id)!.reminderAt, undefined);

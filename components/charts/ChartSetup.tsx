@@ -13,6 +13,17 @@ if (ChartJS.defaults.animation) {
   ChartJS.defaults.animation.easing = 'easeOutQuart';
 }
 
+// react-chartjs-2 ставить role="img" на самому <canvas>, але без тексту —
+// axe це вважає порушенням (role-img-alt). Роль і підпис уже є на
+// батьківському .chart-body, тому сам canvas ховаємо від скрінрідерів.
+ChartJS.register({
+  id: 'canvas-a11y',
+  afterInit(chart) {
+    const c = chart.canvas as HTMLCanvasElement | undefined;
+    if (c && !c.getAttribute('aria-label')) c.setAttribute('aria-hidden', 'true');
+  },
+});
+
 const numbersAnim = ChartJS.defaults.animations?.numbers;
 if (numbersAnim) {
   numbersAnim.duration = 400;
@@ -40,8 +51,8 @@ export const CHART = {
   incomeFill: 'rgba(101,214,161,0.18)',
   expense: '#F48891',
   expenseFill: 'rgba(244,136,145,0.18)',
-  accent: '#FF8156',
-  accentFill: 'rgba(255,129,86,0.18)',
+  accent: '#FF7A42',
+  accentFill: 'rgba(255,122,66,0.18)',
   neutral: '#70747C',
   neutralFill: 'rgba(112,116,124,0.35)',
   warning: '#E8BD69',
@@ -68,7 +79,7 @@ export const CHART_LEGEND = {
 };
 
 export const CHART_TOOLTIP = {
-  backgroundColor: '#24242E',
+  backgroundColor: '#202027',
   titleColor: '#F5F5F7',
   bodyColor: '#ACACBB',
   borderColor: '#70747C',

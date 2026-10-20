@@ -9,6 +9,7 @@ import {
   toDisplay,
 } from '@/lib/calc';
 import { incomeForMonth } from '@/lib/income-report';
+import { accountBalances } from '@/lib/assistant/balance-report';
 import { monthKeyOf } from '@/lib/dates';
 import { formatMoney, getMonthKey, getMonthLabel, itemCurrency, today } from '@/lib/utils';
 
@@ -55,6 +56,12 @@ export interface DashboardView {
     financeOut: number[];
   };
   balances: Record<string, number>;
+  /**
+   * Рахунки одним списком: початкова сума з валютою рахунку і еквівалент у
+   * валюті відображення — розділені підписи. Джерело: bankBalances() у UAH,
+   * зворотна конвертація — чинна, як в assistant/balance-report.
+   */
+  accounts: ReturnType<typeof accountBalances>;
   sav: ReturnType<typeof savingsSummary>;
   savedItems: SavingsGoalRow[];
   /** Серія 3: джерела клієнтів. */
@@ -62,8 +69,18 @@ export interface DashboardView {
   agencyLabels: string[];
   agencyIncome: number[];
   currentMonthAgencyIncome: number;
+  /**
+   * Витрати поточного місяця — чинний звіт incomeForMonth().financeExpenses
+   * (без hidden, без source 'project_…', за date || plannedDate).
+   * НЕ різниця прибутків чи балансів.
+   */
+  monthExpenses: number;
   /** Поточний місяць за Europe/Kyiv (YYYY-MM). */
   monthKey: string;
+  /** Підпис поточного місяця, напр. «жовтень 2026». */
+  monthLabel: string;
+  /** Валюта відображення — для підпису сум і еквівалентів рахунків. */
+  displayCurrency: string;
 }
 
 /**
@@ -95,15 +112,15 @@ export function last12Months(ref: Date = new Date()): Record<string, DashboardMo
  * за фінансовим і статусним значенням.
  */
 const SOURCE_COLORS: Record<string, string> = {
-  Telegram: '#FF8156',
+  Telegram: '#FF7A42',
   Instagram: '#E8BD69',
   YouTube: '#F48891',
   Реклама: '#70747C',
   Сайт: '#ACACBB',
   'Сарафанне радіо': '#8E93A3',
-  Інше: '#555A70',
+  Інше: '#7C8194',
 };
-const SOURCE_FALLBACK = '#555A70';
+const SOURCE_FALLBACK = '#7C8194';
 
 export function buildDashboardView(snapshot: DataSnapshot, ref: Date = new Date()): DashboardView {
   const stats = dashboardStats(snapshot);
@@ -139,6 +156,8 @@ export function buildDashboardView(snapshot: DataSnapshot, ref: Date = new Date(
   const agencyMonthKeys = monthKeys;
   const agencyIncome = agencyMonthKeys.map(key => incomeForMonth(snapshot, key).agencyIncome);
 
+  const monthReport = incomeForMonth(snapshot, monthKey);
+
   return {
     stats,
     monthKeys,
@@ -151,6 +170,7 @@ export function buildDashboardView(snapshot: DataSnapshot, ref: Date = new Date(
       financeOut: monthKeys.map(k => md[k].financeOut),
     },
     balances: bankBalances(snapshot.transactions, settings),
+    accounts: accountBalances(snapshot),
     sav: savingsSummary(snapshot.savings, settings),
     savedItems: snapshot.savings.map(s => ({
       id: s.id,
@@ -169,8 +189,11 @@ export function buildDashboardView(snapshot: DataSnapshot, ref: Date = new Date(
     },
     agencyLabels: agencyMonthKeys.map(k => getMonthLabel(k)),
     agencyIncome,
-    currentMonthAgencyIncome: incomeForMonth(snapshot, monthKey).agencyIncome,
+    currentMonthAgencyIncome: monthReport.agencyIncome,
+    monthExpenses: monthReport.financeExpenses,
     monthKey,
+    monthLabel: getMonthLabel(monthKey),
+    displayCurrency: settings.displayCurrency || 'UAH',
   };
 }
 

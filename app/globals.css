@@ -24,18 +24,28 @@
    ROOT TOKENS — графітова палітра
    ============================================= */
 :root {
-  /* Графіт (ТЗ §2) */
-  --g-bg: #101014;
-  --g-nav: #15151B;
-  --g-surface: #1B1B23;
-  --g-elevated: #24242E;
+  /* Графіт без синього зсуву (ТЗ §2, ітерація 2) */
+  --g-bg: #0D0D0F;
+  --g-nav: #131318;
+  --g-surface: #19191F;
+  --g-elevated: #202027;
   --g-border: #34343F;
   --g-border-strong: #70747C; /* функціональна межа, >=3:1 на всіх поверхнях */
   --g-text: #F5F5F7;
   --g-text-dim: #ACACBB;
-  --g-text-muted: #8E92A0; /* >=4.5:1 на #24242E */
-  --g-accent: #FF8156;
+  --g-text-muted: #8E92A0; /* >=4.5:1 на #202027 */
+
+  /* Акцент: суцільна заливка карток і кнопок — короткий тональний
+     градієнт, без blur/неону/тіней. Текст на заливці тільки --g-accent-ink:
+     у найгіршій точці градієнта (#F45125) контраст 5.20:1.
+     Білий на градієнті не проходить (2.34:1) — не використовувати. */
+  --g-accent: #FF7A42;
   --g-accent-ink: #21130D;
+  --g-accent-ink-dim: #2E1B12; /* другорядний текст на заливці, 4.72:1 у найгіршій точці */
+  --g-accent-start: #FF8A4C;
+  --g-accent-end: #F45125;
+  --g-accent-surface: linear-gradient(135deg, var(--g-accent-start) 0%, var(--g-accent-end) 100%);
+
   --g-income: #65D6A1;
   --g-expense: #F48891;
   --g-warning: #E8BD69;
@@ -77,8 +87,8 @@
   --accent-indigo: var(--g-text-dim);
   --accent-red: var(--g-expense);
 
-  --accent-blue-dim: rgba(255, 129, 86, 0.16);
-  --accent-orange-dim: rgba(255, 129, 86, 0.16);
+  --accent-blue-dim: rgba(255, 122, 66, 0.16);
+  --accent-orange-dim: rgba(255, 122, 66, 0.16);
   --accent-green-dim: rgba(101, 214, 161, 0.16);
   --accent-teal-dim: rgba(101, 214, 161, 0.16);
   --accent-pink-dim: rgba(244, 136, 145, 0.16);
@@ -97,7 +107,7 @@
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.30);
   --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.40);
-  --shadow-focus: 0 0 0 3px rgba(255, 129, 86, 0.30);
+  --shadow-focus: 0 0 0 3px rgba(255, 122, 66, 0.30);
   --shadow-glass: 0 0 0 1px rgba(255, 255, 255, 0.02);
   --shadow-glass-hover: 0 0 0 1px rgba(255, 255, 255, 0.05);
 
@@ -259,7 +269,7 @@ body {
 
 .nav-badge {
   margin-left: auto;
-  background: rgba(255, 129, 86, 0.18);
+  background: rgba(255, 122, 66, 0.18);
   color: var(--g-accent);
   font-size: 0.7rem;
   font-weight: 600;
@@ -628,8 +638,8 @@ body {
 }
 
 .stat-card--warn {
-  background: rgba(255, 129, 86, 0.12);
-  border-color: rgba(255, 129, 86, 0.22);
+  background: rgba(255, 122, 66, 0.12);
+  border-color: rgba(255, 122, 66, 0.22);
 }
 
 .modal-stat-card {
@@ -878,7 +888,7 @@ body {
 }
 
 .tab.active {
-  background: rgba(255, 129, 86, 0.18);
+  background: rgba(255, 122, 66, 0.18);
   color: var(--accent-blue);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
@@ -1065,7 +1075,7 @@ body {
 }
 
 .data-table tbody tr:hover {
-  background: rgba(255, 129, 86, 0.08);
+  background: rgba(255, 122, 66, 0.08);
   box-shadow: inset 3px 0 0 rgba(101, 214, 161, 0.55);
 }
 
@@ -1340,7 +1350,7 @@ body {
 
 .btn-icon--green:hover { color: var(--accent-green); border-color: rgba(101, 214, 161, 0.32); }
 .btn-icon--danger:hover { color: var(--danger); border-color: rgba(244, 136, 145, 0.32); }
-.btn-icon--edit:hover { color: var(--accent-blue); border-color: rgba(255, 129, 86, 0.30); }
+.btn-icon--edit:hover { color: var(--accent-blue); border-color: rgba(255, 122, 66, 0.30); }
 
 .actions-cell { display: flex; gap: 6px; }
 
@@ -1549,7 +1559,7 @@ body {
 
 .backup-warning {
   background: var(--accent-orange-dim);
-  border: 1px solid rgba(255, 129, 86, 0.30);
+  border: 1px solid rgba(255, 122, 66, 0.30);
   border-radius: var(--radius-md);
   color: var(--text-primary);
   display: flex;
@@ -1627,8 +1637,8 @@ body {
   gap: 5px;
   padding: 4px 9px;
   border-radius: 999px;
-  background: rgba(255, 129, 86, 0.14);
-  border: 1px solid rgba(255, 129, 86, 0.28);
+  background: rgba(255, 122, 66, 0.14);
+  border: 1px solid rgba(255, 122, 66, 0.28);
   color: var(--text-secondary);
   font-size: 0.78rem;
   line-height: 1.3;
@@ -2654,6 +2664,9 @@ tr.week-b .week-dot {
 
 /* =============================================
    OVERVIEW (head dashboard) — scoped ov-* classes
+   Ітерація 2: секції Агенція → Мої фінанси → Відкладення/Особисті борги.
+   Панелі тонким волоском, без кольорових смуг зверху; акцентна поверхня —
+   лише картка «Мій дохід від агенції» та primary-кнопки/активні стани.
    ============================================= */
 .ov-page { --ov-gap: 16px; }
 
@@ -2670,248 +2683,427 @@ tr.week-b .week-dot {
   font-size: 1.78rem;
   font-weight: 700;
   letter-spacing: -0.02em;
-  color: var(--text-primary);
+  color: var(--g-text);
 }
 
 .ov-subtitle {
   font-size: 0.85rem;
-  color: var(--text-secondary);
+  color: var(--g-text-dim);
   margin-top: 2px;
 }
 
-/* ---- Primary KPI band ---- */
-.ov-primary {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: var(--ov-gap);
-  margin-bottom: 28px;
-  position: relative;
-}
+/* ---- Секції: помітні заголовки, чіткий рівень над картковими ---- */
+.ov-section { margin-bottom: 28px; }
 
-.ov-kpi {
-  background: var(--g-surface);
-  border: 1px solid var(--g-border);
-  border-top: 2px solid var(--g-border-strong);
-  border-radius: var(--radius-lg);
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-height: 132px;
-  transition: background-color var(--transition), border-color var(--transition), transform var(--transition);
-}
-
-.ov-kpi--accent { border-top-color: var(--g-accent); }
-.ov-kpi--income { border-top-color: var(--g-income); }
-.ov-kpi--expense { border-top-color: var(--g-expense); }
-
-.ov-kpi-top {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.ov-kpi-label {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--text-secondary);
-  letter-spacing: 0.01em;
-}
-
-.ov-kpi-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-md);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-  background: var(--g-elevated);
-  color: var(--text-secondary);
-}
-
-.ov-kpi-icon--accent { background: rgba(255, 129, 86, 0.14); color: var(--g-accent); }
-.ov-kpi-icon--income { background: rgba(101, 214, 161, 0.14); color: var(--g-income); }
-.ov-kpi-icon--expense { background: rgba(244, 136, 145, 0.14); color: var(--g-expense); }
-
-.ov-kpi-value {
-  font-family: var(--font-display);
-  font-size: 1.6rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  color: var(--text-primary);
-  font-variant-numeric: tabular-nums;
-  word-break: keep-all;
-}
-
-.ov-kpi--accent .ov-kpi-value { color: var(--g-accent); }
-
-.ov-kpi-note {
-  font-size: 0.72rem;
-  color: var(--text-muted);
-  margin-top: auto;
-}
-
-/* Clickable KPI: прозора кнопка-оверлей на всю картку + видимий хінт */
-.ov-kpi--hit { position: relative; cursor: pointer; }
-
-.ov-kpi-hit-btn {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  border: 0;
-  border-radius: var(--radius-lg);
-  background: transparent;
-  cursor: pointer;
-  padding: 0;
-  z-index: 1;
-}
-
-.ov-kpi--hit:hover,
-.ov-kpi--hit:focus-within {
-  background: var(--g-elevated);
-  border-color: var(--g-border-strong);
-}
-
-.ov-kpi-hit-btn:focus-visible { outline: 2px solid var(--g-accent); outline-offset: 2px; }
-
-.ov-kpi-hint {
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: var(--g-accent);
-  margin-top: auto;
-}
-
-.ov-sr {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
-  border: 0;
-}
-
-/* ---- Blocks ---- */
-.ov-block { margin-bottom: 28px; }
-
-.ov-block-head {
+.ov-section-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 12px;
   flex-wrap: wrap;
+  margin-bottom: 14px;
 }
 
-.ov-block-title {
-  font-size: 0.98rem;
+.ov-section-title {
+  font-family: var(--font-display);
+  font-size: 1.3rem;
   font-weight: 700;
-  color: var(--text-primary);
-  letter-spacing: -0.01em;
-  margin-bottom: 12px;
+  letter-spacing: -0.02em;
+  color: var(--g-text);
 }
 
-.ov-block-head .ov-block-title { margin-bottom: 0; }
-
-/* ---- Compact cells ---- */
-.ov-cells {
-  display: grid;
-  gap: 10px;
-  margin-bottom: 28px;
-}
-
-.ov-cells--5 { grid-template-columns: repeat(5, 1fr); }
-.ov-cells--4 { grid-template-columns: repeat(4, 1fr); }
-
-.ov-cell {
-  background: var(--g-surface);
-  border: 1px solid var(--g-border);
-  border-radius: var(--radius-md);
-  padding: 14px 16px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-  transition: background-color var(--transition), border-color var(--transition);
-}
-
-.ov-cell:hover { background: var(--g-elevated); border-color: var(--g-border-strong); }
-
-.ov-cell-icon {
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius-sm);
+/* Кнопка секції: активний стан — акцентна поверхня, текст ink */
+.ov-sec-action {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  flex: none;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid var(--g-border);
+  color: var(--g-text-dim);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background-color var(--transition), color var(--transition), border-color var(--transition);
+}
+
+.ov-sec-action:hover {
   background: var(--g-elevated);
-  color: var(--text-muted);
+  border-color: var(--g-border-strong);
+  color: var(--g-text);
 }
 
-.ov-cell-icon svg { width: 16px; height: 16px; }
-
-.ov-cell-icon--accent { background: rgba(255, 129, 86, 0.12); color: var(--g-accent); }
-.ov-cell-icon--income { background: rgba(101, 214, 161, 0.12); color: var(--g-income); }
-.ov-cell-icon--expense { background: rgba(244, 136, 145, 0.12); color: var(--g-expense); }
-
-.ov-cell-body { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-
-.ov-cell-label {
-  font-size: 0.72rem;
-  color: var(--text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.ov-sec-action[aria-expanded="true"] {
+  background: var(--g-accent);
+  border-color: transparent;
+  color: var(--g-accent-ink);
 }
 
-.ov-cell-value {
-  font-size: 1rem;
-  font-weight: 700;
-  color: var(--text-primary);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
+.ov-sec-action:focus-visible { outline: 2px solid var(--g-accent); outline-offset: 2px; }
 
-.ov-cell--income .ov-cell-value { color: var(--g-income); }
-.ov-cell--expense .ov-cell-value { color: var(--g-expense); }
-
-/* ---- Panels + charts ---- */
-.ov-two {
+/* ---- Ряди сітки 12 колонок, gap 16 px ---- */
+.ov-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
   gap: var(--ov-gap);
-  margin-bottom: 28px;
+  margin-bottom: var(--ov-gap);
+  align-items: stretch;
 }
 
-.ov-two .ov-block { margin-bottom: 0; }
+.ov-row--57 { grid-template-columns: 5fr 7fr; }
+.ov-row--75 { grid-template-columns: 7fr 5fr; }
+.ov-row--even { grid-template-columns: 1fr 1fr; }
+.ov-row--full { grid-template-columns: minmax(0, 1fr); }
 
-.ov-panel {
+.ov-row > * { min-width: 0; }
+.ov-page > .ov-row:last-child { margin-bottom: 0; }
+.ov-section > .ov-row:last-child { margin-bottom: 0; }
+
+/* ---- Панель: тонка межа, без кольорової смуги зверху ---- */
+.ov-card {
   background: var(--g-surface);
   border: 1px solid var(--g-border);
   border-radius: var(--radius-lg);
-  padding: 18px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
 
-.ov-panel .chart-body { height: 240px; }
-.ov-panel .chart-body--donut { height: 240px; }
+.ov-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
 
-.ov-panel-foot {
+.ov-card-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--g-text);
+}
+
+.ov-card-cap {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--g-text-muted);
+}
+
+.ov-card-foot {
   font-size: 0.74rem;
-  color: var(--text-muted);
-  margin-top: 12px;
+  color: var(--g-text-muted);
+  margin-top: 8px;
   line-height: 1.45;
 }
 
-/* ---- Segmented control ---- */
+.ov-card .chart-body {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 210px;
+}
+.ov-card .chart-body--donut { min-height: 175px; }
+/* Перший ряд агенції тримаємо в 200–240 px разом з помаранчевою карткою:
+   висота задається рядку, графік заповнює решту. */
+.ov-card--lead .chart-body { min-height: 130px; }
+
+@media (min-width: 1101px) {
+  .ov-row--lead > * { height: 240px; }
+  .ov-row--lead .ov-card--lead .chart-body { min-height: 0; }
+}
+
+/* ---- Акцентна картка: суцільна заливка градієнтом, текст --g-accent-ink ----
+   Найгірша точка градієнта #F45125: ink 5.20:1, ink-dim 4.72:1 (обидва AA).
+   Білий текст на градієнті не проходить — не використовувати. */
+.ov-hero {
+  background: var(--g-accent-surface);
+  color: var(--g-accent-ink);
+  border-radius: var(--radius-lg);
+  border: 0;
+  padding: 20px;
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ov-hero-label {
+  font-size: 0.82rem;
+  font-weight: 650;
+  color: var(--g-accent-ink-dim);
+}
+
+.ov-hero-value {
+  font-family: var(--font-display);
+  font-size: 2.45rem;
+  font-weight: 750;
+  letter-spacing: -0.03em;
+  color: var(--g-accent-ink);
+  font-variant-numeric: tabular-nums;
+  margin-top: 8px;
+  word-break: keep-all;
+}
+
+.ov-hero-month {
+  font-size: 0.78rem;
+  color: var(--g-accent-ink-dim);
+  margin-top: 4px;
+}
+
+.ov-hero-action {
+  margin-top: auto;
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--g-accent-ink);
+  color: #FFEDE3;
+  border: 0;
+  border-radius: 999px;
+  padding: 8px 15px;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color var(--transition), transform var(--transition);
+}
+
+.ov-hero-action:hover { background: #2E1B12; transform: translateY(-1px); }
+.ov-hero-action:active { transform: translateY(0); }
+.ov-hero-action:focus-visible { outline: 2px solid var(--g-accent-ink); outline-offset: 3px; }
+
+/* ---- Компактні ячейки в спільній панелі (без окремих прямокутників) ---- */
+.ov-metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 18px 16px;
+  margin-top: 2px;
+  flex: 1;
+  align-content: center;
+}
+
+.ov-metric { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+
+.ov-metric-label {
+  font-size: 0.76rem;
+  line-height: 1.3;
+  color: var(--g-text-dim);
+}
+
+.ov-metric-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--g-text);
+  font-variant-numeric: tabular-nums;
+  word-break: keep-all;
+}
+
+.ov-metric-note { font-size: 0.68rem; color: var(--g-text-muted); }
+
+/* ---- Масштаб роботи: одна смуга, іконки 16 px без кольорових квадратів ---- */
+.ov-scale {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 0;
+}
+
+.ov-scale-item { display: inline-flex; align-items: center; min-width: 0; }
+
+.ov-scale-icon { display: inline-flex; color: var(--g-text-muted); margin-right: 8px; }
+.ov-scale-icon svg { width: 16px; height: 16px; }
+
+.ov-scale-label { font-size: 0.78rem; color: var(--g-text-dim); margin-right: 7px; }
+
+.ov-scale-value {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--g-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.ov-scale-item::after {
+  content: '·';
+  color: var(--g-text-muted);
+  font-size: 1rem;
+  line-height: 1;
+  margin: 0 16px;
+}
+
+.ov-scale-item:last-child::after { content: none; }
+
+/* ---- Баланс + рахунки: початкова валюта й еквівалент окремими підписами ---- */
+.ov-balance-value {
+  font-family: var(--font-display);
+  font-size: 1.95rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--g-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.ov-accts { list-style: none; margin: 16px 0 0; padding: 0; }
+
+.ov-acct {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 0;
+}
+
+.ov-acct + .ov-acct { border-top: 1px solid var(--g-border); }
+
+.ov-acct-label { font-size: 0.8rem; color: var(--g-text-dim); min-width: 0; }
+
+.ov-acct-nums {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  text-align: right;
+  flex: none;
+}
+
+.ov-acct-native {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--g-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.ov-acct-eq { font-size: 0.7rem; color: var(--g-text-muted); font-variant-numeric: tabular-nums; }
+
+.ov-acct--empty { color: var(--g-text-muted); font-size: 0.8rem; border-top: 0; }
+
+/* ---- Компактні суми місяця ---- */
+.ov-card--sum { gap: 0; }
+
+.ov-sum-label { font-size: 0.8rem; font-weight: 650; color: var(--g-text-dim); }
+
+.ov-sum-value {
+  font-family: var(--font-display);
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--g-text);
+  font-variant-numeric: tabular-nums;
+  margin-top: 6px;
+}
+
+.ov-sum-note { font-size: 0.72rem; color: var(--g-text-muted); margin-top: auto; padding-top: 10px; }
+
+/* ---- Відкладення ---- */
+.ov-sav-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ov-sav-sums { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; min-width: 0; }
+
+.ov-sav-total {
+  font-family: var(--font-display);
+  font-size: 1.7rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--g-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.ov-sav-goal { font-size: 0.8rem; color: var(--g-text-muted); font-variant-numeric: tabular-nums; }
+
+.ov-sav-pct {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--g-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.ov-progress {
+  height: 10px;
+  margin-top: 12px;
+  background: var(--g-elevated);
+  border: 1px solid var(--g-border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.ov-progress-bar { display: block; height: 100%; background: var(--g-accent); }
+
+.ov-progress--sm { height: 7px; margin-top: 7px; }
+
+.ov-goals { list-style: none; margin: 16px 0 0; padding: 0; }
+
+.ov-goal { padding: 11px 0; }
+.ov-goal + .ov-goal { border-top: 1px solid var(--g-border); }
+
+.ov-goal-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ov-goal-name {
+  font-size: 0.82rem;
+  color: var(--g-text-dim);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ov-goal-nums {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--g-text);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+
+.ov-goal-of { font-weight: 500; color: var(--g-text-muted); font-size: 0.75rem; }
+
+/* ---- Особисті борги ---- */
+.ov-debts { display: flex; flex-direction: column; justify-content: center; flex: 1; margin-top: 2px; }
+
+.ov-debt {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 0;
+}
+
+.ov-debt + .ov-debt { border-top: 1px solid var(--g-border); }
+
+.ov-debt-label { font-size: 0.85rem; color: var(--g-text-dim); }
+
+.ov-debt-value {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.ov-debt-value--in { color: var(--g-income); }
+.ov-debt-value--out { color: var(--g-expense); }
+
+/* ---- Сегментований перемикач ---- */
 .ov-seg {
   display: inline-flex;
-  padding: 3px;
+  padding: 2px;
   gap: 2px;
   background: var(--g-elevated);
   border: 1px solid var(--g-border);
@@ -2922,18 +3114,18 @@ tr.week-b .week-dot {
   appearance: none;
   border: 0;
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--g-text-dim);
   font: inherit;
   font-size: 0.75rem;
   font-weight: 600;
-  padding: 6px 12px;
+  padding: 5px 11px;
   border-radius: var(--radius-sm);
   cursor: pointer;
   white-space: nowrap;
   transition: background-color var(--transition), color var(--transition);
 }
 
-.ov-seg-item:hover { color: var(--text-primary); }
+.ov-seg-item:hover { color: var(--g-text); }
 
 .ov-seg-item.is-on {
   background: var(--g-accent);
@@ -2953,7 +3145,7 @@ tr.week-b .week-dot {
   border-radius: var(--radius-md);
 }
 
-.ov-modal-stat-label { font-size: 0.8rem; color: var(--text-secondary); }
+.ov-modal-stat-label { font-size: 0.8rem; color: var(--g-text-dim); }
 
 .ov-modal-stat-value {
   font-family: var(--font-display);
@@ -2963,36 +3155,41 @@ tr.week-b .week-dot {
   font-variant-numeric: tabular-nums;
 }
 
-/* ---- Responsive ---- */
+/* ---- Responsive: порядок секцій не змінюється, лише одна колонка ---- */
 @media (max-width: 1199px) {
-  .ov-cells--5 { grid-template-columns: repeat(3, 1fr); }
-  .ov-cells--4 { grid-template-columns: repeat(3, 1fr); }
-  .ov-kpi-value { font-size: 1.4rem; }
+  .ov-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .ov-hero-value { font-size: 1.85rem; }
 }
 
 @media (max-width: 1100px) {
-  /* Дві колонки графіків нижче 1100 px не вміщують і друга обрізається. */
-  .ov-two { grid-template-columns: 1fr; }
+  /* Дві колонки нижче 1100 px не вміщують — друга обрізалась. */
+  .ov-row--57, .ov-row--75, .ov-row--even { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (max-width: 899px) {
-  .ov-primary { grid-template-columns: 1fr; }
-  .ov-cells--5 { grid-template-columns: repeat(2, 1fr); }
-  .ov-cells--4 { grid-template-columns: repeat(2, 1fr); }
-  .ov-two { grid-template-columns: 1fr; }
-  .ov-kpi { min-height: 0; }
+  .ov-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ov-section-title { font-size: 1.18rem; }
+  .ov-scale-item::after { margin: 0 12px; }
 }
 
 @media (max-width: 480px) {
   .ov-title { font-size: 1.45rem; }
-  .ov-primary { gap: 10px; }
-  .ov-cells { gap: 8px; }
-  .ov-cell { padding: 12px; gap: 10px; }
-  .ov-cell-value { font-size: 0.92rem; }
-  .ov-panel { padding: 14px; }
-  .ov-panel .chart-body, .ov-panel .chart-body--donut { height: 210px; }
+  .ov-section-title { font-size: 1.1rem; }
+  .ov-hero { padding: 16px; min-height: 0; }
+  .ov-hero-value { font-size: 1.7rem; }
+  .ov-card { padding: 14px; }
+  .ov-card .chart-body { min-height: 190px; }
+  .ov-card .chart-body--donut { min-height: 165px; }
+  .ov-card--lead .chart-body { min-height: 150px; }
+  .ov-metrics { gap: 14px 12px; }
+  .ov-metric-value { font-size: 1rem; }
   .ov-seg-item { padding: 6px 9px; font-size: 0.72rem; }
-  .ov-kpi-value { font-size: 1.3rem; }
+  .ov-balance-value { font-size: 1.65rem; }
+  .ov-sum-value { font-size: 1.5rem; }
+  .ov-sav-total { font-size: 1.45rem; }
+  .ov-debt-value { font-size: 1.3rem; }
+  .ov-scale { row-gap: 10px; }
+  .ov-scale-item::after { margin: 0 10px; }
 }
 
 /* =============================================
@@ -3032,7 +3229,7 @@ tr.week-b .week-dot {
   width: 40px;
   height: 40px;
   border-radius: var(--radius-md);
-  background: rgba(255, 129, 86, 0.14);
+  background: rgba(255, 122, 66, 0.14);
   color: var(--g-accent);
   flex: none;
 }

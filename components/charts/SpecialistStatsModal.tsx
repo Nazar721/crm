@@ -18,7 +18,7 @@ interface SpecialistStatsModalProps {
 
 const TYPE_LABELS: Record<string, string> = { IT: 'IT', Design: 'Дизайн', Video: 'Відео' };
 /** Графітова палітра: тип проєкту — категорія, а не фінансове значення. */
-const TYPE_COLORS: Record<string, string> = { IT: '#FF8156', Design: '#E8BD69', Video: '#8E92A0' };
+const TYPE_COLORS: Record<string, string> = { IT: '#FF7A42', Design: '#E8BD69', Video: '#8E92A0' };
 
 // Місяць, у який проєкт «заробив»: дата завершення, а якщо її немає — старт.
 function projectMonth(p: Project): string {

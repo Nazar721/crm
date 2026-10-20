@@ -15,8 +15,12 @@ const css = readFileSync(join(root, 'app/globals.css'), 'utf8');
 const rootBlock = css.match(/:root\s*\{([\s\S]*?)\n\}/);
 if (!rootBlock) throw new Error(':root block not found');
 
+// Спершу прибираємо коментарі: текст на кшталт "--g-accent-ink:" у коментарі
+// інакше зчитується регуляркою токенів і «з'їдає» наступні оголошення.
+const decls = rootBlock[1].replace(/\/\*[\s\S]*?\*\//g, ' ');
+
 const vars = {};
-for (const [, name, value] of rootBlock[1].matchAll(/(--[a-z0-9-]+):\s*([^;]+);/g)) {
+for (const [, name, value] of decls.matchAll(/(--[a-z0-9-]+):\s*([^;]+);/g)) {
   vars[name.trim()] = value.trim();
 }
 
@@ -59,6 +63,12 @@ const TEXT = [
 
 const INK = [
   ['--g-accent-ink on --g-accent', '--g-accent-ink', '--g-accent', 4.5],
+  // Градієнт акцентної поверхні міряємо на обох кінцях; контраст тексту
+  // визначає найгірша точка (темніший кінець --g-accent-end).
+  ['--g-accent-ink on --g-accent-start (верх градієнта)', '--g-accent-ink', '--g-accent-start', 4.5],
+  ['--g-accent-ink on --g-accent-end (низ градієнта)', '--g-accent-ink', '--g-accent-end', 4.5],
+  ['--g-accent-ink-dim on --g-accent-start (верх градієнта)', '--g-accent-ink-dim', '--g-accent-start', 4.5],
+  ['--g-accent-ink-dim on --g-accent-end (найгірша точка)', '--g-accent-ink-dim', '--g-accent-end', 4.5],
   ['--g-accent-ink on --g-income', '--g-accent-ink', '--g-income', 4.5],
   ['--g-accent-ink on --g-expense', '--g-accent-ink', '--g-expense', 4.5],
   ['--g-accent-ink on --g-warning', '--g-accent-ink', '--g-warning', 4.5],
