@@ -2877,14 +2877,65 @@ tr.week-b .week-dot {
 .ov-hero-action:active { transform: translateY(0); }
 .ov-hero-action:focus-visible { outline: 2px solid var(--g-accent-ink); outline-offset: 3px; }
 
-/* ---- Компактні ячейки в спільній панелі (без окремих прямокутників) ---- */
+/* ---- «Фінанси агенції»: одна графітова панель, комірки без власних карток ----
+   Сітка 3+2: перший ряд — бюджет / прибуток / середній чек, другий — борги (ширші).
+   Роздільники — тонкі нейтральні лінії + відступ, не рамки. Порядок показників
+   фіксований (5 позицій), тому nth-child безпечний. Суми не обрізати. */
 .ov-metrics {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 18px 16px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0;
   margin-top: 2px;
   flex: 1;
   align-content: center;
+}
+
+.ov-metrics .ov-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 11px 18px;
+}
+
+.ov-metrics .ov-metric:nth-child(-n + 3) { grid-column: span 2; border-bottom: 1px solid var(--g-border); }
+.ov-metrics .ov-metric:nth-child(n + 4) { grid-column: span 3; }
+
+/* вертикальні роздільники: між 1-2, 2-3 і 4-5 */
+.ov-metrics .ov-metric:nth-child(2),
+.ov-metrics .ov-metric:nth-child(3),
+.ov-metrics .ov-metric:nth-child(5) { border-left: 1px solid var(--g-border); }
+
+/* ліва комірка рядка притиснута до краю панелі, права — до протилежного */
+.ov-metrics .ov-metric:nth-child(1),
+.ov-metrics .ov-metric:nth-child(4) { padding-left: 0; }
+.ov-metrics .ov-metric:nth-child(3),
+.ov-metrics .ov-metric:nth-child(5) { padding-right: 0; }
+
+/* назва фіксує висоту, щоб суми й періоди в рядку стояли на одній лінії;
+   на вужчій панелі назва переноситься на другу лінію — інакше сума в
+   наступній комірці поїхала б під неї */
+.ov-metrics .ov-metric-label { min-height: 2.6em; }
+
+/* Контейнер ширини самої панелі (не в’юпорту) — для @container нижче. */
+.ov-card--agency-money { container-type: inline-size; }
+
+/* Панель достатньо широка (комірка першого рядка ≥ ~138 px): назва вміщується
+   в один рядок, зайвий рядок під нею не потрібен. */
+@container (min-width: 450px) {
+  .ov-metrics .ov-metric-label { min-height: 1.3em; }
+}
+
+/* Панель ≥940 px: п'ять метрик в один ряд, коли в кожній ≥ ~175 px. */
+@container (min-width: 940px) {
+  .ov-metrics { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .ov-metrics .ov-metric:nth-child(n) {
+    grid-column: auto;
+    padding: 11px 18px;
+    border: 0;
+    border-left: 1px solid var(--g-border);
+  }
+  .ov-metrics .ov-metric:nth-child(1) { padding-left: 0; border-left: 0; }
 }
 
 .ov-metric { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
@@ -3156,8 +3207,11 @@ tr.week-b .week-dot {
 }
 
 /* ---- Responsive: порядок секцій не змінюється, лише одна колонка ---- */
-@media (max-width: 1199px) {
-  .ov-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 1279px) {
+  /* Панель «Фінанси агенції» вужча за 500 px: менша сума й тісніший відступ,
+     щоб довгі суми в першому рядку не виходили за комірку. */
+  .ov-metrics .ov-metric { padding: 10px 12px; }
+  .ov-metrics .ov-metric-value { font-size: 1.05rem; }
   .ov-hero-value { font-size: 1.85rem; }
 }
 
@@ -3167,7 +3221,10 @@ tr.week-b .week-dot {
 }
 
 @media (max-width: 899px) {
-  .ov-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* Мобільний: спочатку дві колонки, без роздільників і без 3+2. */
+  .ov-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 16px; }
+  .ov-metrics .ov-metric:nth-child(n) { grid-column: auto; padding: 0; border: 0; }
+  .ov-metrics .ov-metric-label { min-height: 0; }
   .ov-section-title { font-size: 1.18rem; }
   .ov-scale-item::after { margin: 0 12px; }
 }
@@ -3190,6 +3247,11 @@ tr.week-b .week-dot {
   .ov-debt-value { font-size: 1.3rem; }
   .ov-scale { row-gap: 10px; }
   .ov-scale-item::after { margin: 0 10px; }
+}
+
+@media (max-width: 350px) {
+  /* За недостатньої ширини — одна колонка, порядок показників той самий. */
+  .ov-metrics { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* =============================================

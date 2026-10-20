@@ -121,7 +121,7 @@ export default function DashboardPage() {
 
         {/* Другий ряд: 7/12 + 5/12 */}
         <div className="ov-row ov-row--75">
-          <article className="ov-card">
+          <article className="ov-card ov-card--agency-money">
             <div className="ov-card-head">
               <h3 className="ov-card-title">Фінанси агенції</h3>
             </div>
