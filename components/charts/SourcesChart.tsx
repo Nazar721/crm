@@ -1,7 +1,7 @@
 'use client';
 import { Doughnut } from 'react-chartjs-2';
 import './ChartSetup';
-import { CHART } from './ChartSetup';
+import { CHART, chartAnimation } from './ChartSetup';
 
 interface SourcesChartProps {
   labels: string[];
@@ -30,6 +30,7 @@ export default function SourcesChart({ labels, data, colors }: SourcesChartProps
         options={{
           responsive: true,
           maintainAspectRatio: false,
+          animation: chartAnimation(),
           cutout: '62%',
           plugins: {
             legend: {

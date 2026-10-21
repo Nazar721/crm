@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 interface AnimatedNumberProps {
   value: number;
@@ -11,11 +11,14 @@ interface AnimatedNumberProps {
 /** Count-up для великих підсумків; шанує системне налаштування reduced motion. */
 export default function AnimatedNumber({ value, format, duration = 1050 }: AnimatedNumberProps) {
   const [shown, setShown] = useState(0);
+  const shownRef = useRef(0);
 
   useEffect(() => {
     const target = Number.isFinite(value) ? value : 0;
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (reduceMotion || target === 0) {
+    const from = shownRef.current;
+    if (reduceMotion || target === from) {
+      shownRef.current = target;
       setShown(target);
       return;
     }
@@ -25,12 +28,14 @@ export default function AnimatedNumber({ value, format, duration = 1050 }: Anima
     const tick = (now: number) => {
       if (!start) start = now;
       const progress = Math.min(1, (now - start) / duration);
+      // Smoothstep-like ease keeps the count moving at the start, then settles gently.
       const eased = 1 - Math.pow(1 - progress, 4);
-      setShown(target * eased);
+      const next = from + (target - from) * eased;
+      shownRef.current = progress === 1 ? target : next;
+      setShown(shownRef.current);
       if (progress < 1) frame = requestAnimationFrame(tick);
     };
 
-    setShown(0);
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
   }, [value, duration]);

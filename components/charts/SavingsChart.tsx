@@ -1,7 +1,7 @@
 'use client';
 import { Bar } from 'react-chartjs-2';
 import './ChartSetup';
-import { CHART, CHART_LEGEND, CHART_TOOLTIP, CHART_X, CHART_Y } from './ChartSetup';
+import { CHART, CHART_LEGEND, CHART_TOOLTIP, CHART_X, CHART_Y, chartAnimation } from './ChartSetup';
 
 interface SavingsChartProps {
   labels: string[];
@@ -23,6 +23,7 @@ export default function SavingsChart({ labels, saved, remaining }: SavingsChartP
         options={{
           responsive: true,
           maintainAspectRatio: false,
+          animation: chartAnimation(),
           plugins: { legend: CHART_LEGEND, tooltip: CHART_TOOLTIP },
           scales: { x: { ...CHART_X, stacked: true }, y: { ...CHART_Y, stacked: true } },
         }}

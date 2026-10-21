@@ -6,6 +6,7 @@ import { formatMoney } from '@/lib/utils';
 import dynamic from 'next/dynamic';
 import Modal from '@/components/ui/Modal';
 import AnimatedNumber from '@/components/ui/AnimatedNumber';
+import AnimatedSegmentedControl from '@/components/ui/AnimatedSegmentedControl';
 
 const IncomeChart = dynamic(() => import('@/components/charts/IncomeChart'), { ssr: false });
 const ProjectsBarChart = dynamic(() => import('@/components/charts/ProjectsBarChart'), { ssr: false });
@@ -127,12 +128,12 @@ export default function DashboardPage() {
           <article className="ov-card">
             <div className="ov-card-head">
               <h3 className="ov-card-title">Надходження / Витрати</h3>
-              <div className="ov-seg" role="group" aria-label="Серія графіка руху коштів">
-                {([['both', 'Разом'], ['in', 'Надходження'], ['out', 'Витрати']] as const).map(([v, l]) => (
-                  <button key={v} type="button" aria-pressed={flowMode === v}
-                    className={`ov-seg-item${flowMode === v ? ' is-on' : ''}`} onClick={() => setFlowMode(v)}>{l}</button>
-                ))}
-              </div>
+              <AnimatedSegmentedControl
+                label="Серія графіка руху коштів"
+                value={flowMode}
+                options={[{ value: 'both', label: 'Разом' }, { value: 'in', label: 'Надходження' }, { value: 'out', label: 'Витрати' }]}
+                onChange={setFlowMode}
+              />
             </div>
             <FinanceBarChart labels={view.labels} incomeData={series.financeIn} expenseData={series.financeOut} mode={flowMode} />
             <p className="ov-card-foot">Останні 12 місяців. Поточний місяць неповний.</p>
@@ -185,12 +186,12 @@ export default function DashboardPage() {
           <article className="ov-card ov-card--lead">
             <div className="ov-card-head">
               <h3 className="ov-card-title">Завершені проєкти</h3>
-              <div className="ov-seg" role="group" aria-label="Серія графіка завершених проєктів">
-                {([['paid', 'Оплати'], ['count', 'Кількість']] as const).map(([v, l]) => (
-                  <button key={v} type="button" aria-pressed={doneMode === v}
-                    className={`ov-seg-item${doneMode === v ? ' is-on' : ''}`} onClick={() => setDoneMode(v)}>{l}</button>
-                ))}
-              </div>
+              <AnimatedSegmentedControl
+                label="Серія графіка завершених проєктів"
+                value={doneMode}
+                options={[{ value: 'paid', label: 'Оплати' }, { value: 'count', label: 'Кількість' }]}
+                onChange={setDoneMode}
+              />
             </div>
             {doneMode === 'paid'
               ? <IncomeChart labels={view.labels} data={series.completedPaid} />
@@ -253,12 +254,12 @@ export default function DashboardPage() {
         <article className="ov-card ov-card--savings" aria-labelledby="ov-savings-t">
           <div className="ov-card-head">
             <h3 className="ov-card-title" id="ov-savings-t">Відкладення та цілі</h3>
-            <div className="ov-seg" role="group" aria-label="Вигляд відкладень">
-              {([['goals', 'По цілях'], ['total', 'Загальний']] as const).map(([v, l]) => (
-                <button key={v} type="button" aria-pressed={savingsTab === v}
-                  className={`ov-seg-item${savingsTab === v ? ' is-on' : ''}`} onClick={() => setSavingsTab(v)}>{l}</button>
-              ))}
-            </div>
+            <AnimatedSegmentedControl
+              label="Вигляд відкладень"
+              value={savingsTab}
+              options={[{ value: 'goals', label: 'По цілях' }, { value: 'total', label: 'Загальний' }]}
+              onChange={setSavingsTab}
+            />
           </div>
 
           <div className="ov-sav-head">

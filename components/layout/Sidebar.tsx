@@ -1,5 +1,5 @@
 'use client';
-import React, { useEffect } from 'react';
+import React, { useEffect, useLayoutEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
@@ -64,7 +64,37 @@ function NavIcon({ icon }: { icon: string }) {
 export default function Sidebar() {
   const pathname = usePathname();
   const { badges, snapshot, sidebarOpen, closeSidebar, assistantOpen, setAssistantOpen } = useApp();
+  const navRef = useRef<HTMLElement>(null);
   const hostingExpiring = hostingExpiringWithin(snapshot.hostingServices, snapshot.hostingPayments, 5);
+
+  useLayoutEffect(() => {
+    const nav = navRef.current;
+    if (!nav) return;
+
+    const updateActiveMarker = () => {
+      const active = nav.querySelector<HTMLElement>('.nav-item.active');
+      if (!active) {
+        nav.dataset.activeReady = 'false';
+        return;
+      }
+
+      const navRect = nav.getBoundingClientRect();
+      const activeRect = active.getBoundingClientRect();
+      nav.style.setProperty('--nav-marker-x', `${activeRect.left - navRect.left - nav.clientLeft + nav.scrollLeft}px`);
+      nav.style.setProperty('--nav-marker-y', `${activeRect.top - navRect.top - nav.clientTop + nav.scrollTop}px`);
+      nav.style.setProperty('--nav-marker-width', `${activeRect.width}px`);
+      nav.style.setProperty('--nav-marker-height', `${activeRect.height}px`);
+      nav.style.setProperty('--nav-marker-accent', getComputedStyle(active).getPropertyValue('--nav-accent').trim() || 'var(--g-accent)');
+      nav.dataset.activeReady = 'true';
+    };
+
+    updateActiveMarker();
+    const observer = new ResizeObserver(updateActiveMarker);
+    observer.observe(nav);
+    const active = nav.querySelector<HTMLElement>('.nav-item.active');
+    if (active) observer.observe(active);
+    return () => observer.disconnect();
+  }, [pathname, assistantOpen]);
 
   useEffect(() => {
     if (!sidebarOpen) return;
@@ -90,7 +120,8 @@ export default function Sidebar() {
           <span className="logo-text">WebCRM</span>
         </div>
 
-        <nav className="sidebar-nav">
+        <nav ref={navRef} className="sidebar-nav">
+          <span className="sidebar-active-marker" aria-hidden="true" />
           {navSections.map((section) => (
             <div className="nav-section" key={section.title}>
               <div className="nav-section-title">{section.title}</div>

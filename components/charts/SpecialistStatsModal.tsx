@@ -2,7 +2,7 @@
 import { useMemo } from 'react';
 import { Bar, Doughnut } from 'react-chartjs-2';
 import './ChartSetup';
-import { CHART, CHART_TOOLTIP, CHART_X, CHART_Y } from './ChartSetup';
+import { CHART, CHART_TOOLTIP, CHART_X, CHART_Y, chartAnimation } from './ChartSetup';
 import Modal from '@/components/ui/Modal';
 import { getProjects, getCompleted } from '@/lib/storage';
 import { project as calcProject } from '@/lib/calc';
@@ -137,6 +137,7 @@ export default function SpecialistStatsModal({ isOpen, onClose, specialist }: Sp
               options={{
                 responsive: true,
                 maintainAspectRatio: false,
+                animation: chartAnimation(),
                 plugins: { legend: { labels: { color: CHART.legend, font: CHART.font, boxWidth: 12 } }, tooltip: CHART_TOOLTIP },
                 scales: { x: CHART_X, y: CHART_Y },
               }}
@@ -162,6 +163,7 @@ export default function SpecialistStatsModal({ isOpen, onClose, specialist }: Sp
                 options={{
                   responsive: true,
                   maintainAspectRatio: false,
+                  animation: chartAnimation(),
                   cutout: '62%',
                   plugins: { legend: { position: 'right', labels: { color: CHART.legend, font: CHART.font, boxWidth: 12 } } },
                 }}
