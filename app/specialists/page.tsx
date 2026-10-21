@@ -1,6 +1,7 @@
 'use client';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
+import { useRevealCards } from '@/hooks/useViewportMotion';
 import { useApp } from '@/context/AppContext';
 import { specialistStats, getStatsContext } from '@/lib/calc';
 import { resolveMyShare } from '@/lib/my-share';
@@ -26,6 +27,8 @@ function reportErrors(errors: { message: string }[]) {
 }
 
 export default function SpecialistsPage() {
+  const pageRef = useRef<HTMLElement>(null);
+  useRevealCards(pageRef, '.developer-card');
   const { snapshot, triggerRefresh } = useApp();
   const [search, setSearch] = usePersistedState('specialists:search', '');
   const [formOpen, setFormOpen] = useState(false);
@@ -65,7 +68,7 @@ export default function SpecialistsPage() {
   useScrollRestoration('specialists', true);
 
   return (
-    <section className="page active">
+    <section ref={pageRef} className="page specialists-page active">
       <div className="page-header">
         <div><h1 className="page-title">Фахівці</h1><p className="page-subtitle">Статистика з завершених проєктів</p></div>
         <button className="btn btn-primary" onClick={() => { setEditSpec(null); setFormOpen(true); }}>
@@ -86,7 +89,7 @@ export default function SpecialistsPage() {
           const share = resolveMyShare(d);
           const initials = d.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
           return (
-            <div key={d.id} className="developer-card anim-stagger">
+            <div key={d.id} className="developer-card">
               <button className="btn-icon dev-chart-btn" title="Графік заробітків" onClick={() => setChartSpec(d)}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><line x1="4" y1="20" x2="4" y2="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><line x1="10" y1="20" x2="10" y2="4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><line x1="16" y1="20" x2="16" y2="9" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><line x1="22" y1="20" x2="22" y2="15" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
               </button>

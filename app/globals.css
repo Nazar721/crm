@@ -25,15 +25,15 @@
    ============================================= */
 :root {
   /* Графіт без синього зсуву (ТЗ §2, ітерація 2) */
-  --g-bg: #0D0D0F;
-  --g-nav: #131318;
-  --g-surface: #19191F;
-  --g-elevated: #202027;
-  --g-border: #34343F;
-  --g-border-strong: #70747C; /* функціональна межа, >=3:1 на всіх поверхнях */
+  --g-bg: #111318;
+  --g-nav: #191C23;
+  --g-surface: #282C35;
+  --g-elevated: #343944;
+  --g-border: #49505D;
+  --g-border-strong: #828C9C; /* функціональна межа, >=3:1 на всіх поверхнях */
   --g-text: #F5F5F7;
-  --g-text-dim: #ACACBB;
-  --g-text-muted: #8E92A0; /* >=4.5:1 на #202027 */
+  --g-text-dim: #CCD1DC;
+  --g-text-muted: #B3BAC9; /* >=4.5:1 on the lighter graphite surfaces */
 
   /* Акцент: суцільна заливка карток і кнопок — короткий тональний
      градієнт, без blur/неону/тіней. Текст на заливці тільки --g-accent-ink:
@@ -120,7 +120,8 @@
   --shadow-glass-hover: 0 0 0 1px rgba(255, 255, 255, 0.05);
 
   --ease: cubic-bezier(0.32, 0.72, 0, 1);
-  --transition: 0.18s var(--ease);
+  --transition: 0.24s var(--ease);
+  --motion-smooth: cubic-bezier(.2,.8,.2,1);
   --font-main: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
   --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
 }
@@ -1209,17 +1210,19 @@ body {
    ============================================= */
 .developers-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr));
   gap: 20px;
   align-items: stretch;
 }
 
 .developer-card {
+  min-width: 0;
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
   min-height: 292px;
-  background: var(--g-surface);
-  border: 1px solid var(--g-border);
+  background: linear-gradient(145deg, #3B3B50 0%, #2B2F3B 62%);
+  border: 1px solid #585B73;
   border-radius: var(--radius-lg);
   padding: 22px;
   overflow: hidden;
@@ -1230,13 +1233,12 @@ body {
 
 
 .developer-card:hover {
-  background: var(--g-elevated);
   border-color: var(--g-border-strong);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-glass-hover), var(--shadow-md);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.07), 0 18px 36px rgba(0,0,0,.22);
 }
 
 .dev-card-header {
+  padding-right: 42px;
   display: flex;
   align-items: center;
   gap: 14px;
@@ -1257,6 +1259,9 @@ body {
 }
 
 .dev-avatar {
+  --g-accent: #D5CFFF;
+  --g-elevated: #50506B;
+  --g-border: #74708D;
   width: 54px; height: 54px;
   border-radius: 50%;
   background: var(--g-elevated);
@@ -1289,7 +1294,7 @@ body {
 
 .dev-stats {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   margin-bottom: 18px;
 }
@@ -1305,6 +1310,7 @@ body {
 }
 
 .dev-stat-label {
+  overflow-wrap: anywhere;
   font-size: 0.74rem;
   line-height: 1.2;
   color: var(--text-muted);
@@ -1318,7 +1324,8 @@ body {
   line-height: 1.12;
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
   letter-spacing: 0;
 }
 
@@ -1686,8 +1693,15 @@ body {
   min-width: 32px;
 }
 
-.dev-stats--3 { grid-template-columns: repeat(3, 1fr); }
-.dev-stats--4 { grid-template-columns: 0.78fr 0.88fr 1.12fr 0.9fr; }
+.dev-stats--3, .dev-stats--4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@container (min-width: 480px) {
+  .dev-stats--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .dev-stats--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@container (max-width: 235px) {
+  .dev-stats--3, .dev-stats--4 { grid-template-columns: minmax(0, 1fr); }
+  .dev-card-header { flex-direction: column; align-items: flex-start; }
+}
 .dev-contact {
   margin-bottom: 18px;
   font-size: 0.86rem;
@@ -1720,6 +1734,9 @@ body {
 }
 
 .dev-share-chip {
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -1801,7 +1818,7 @@ select.form-input option {
   .charts-grid, .charts-grid--3 { grid-template-columns: repeat(2, 1fr); }
   .charts-grid--2 { grid-template-columns: 1fr 1fr; }
   .finance-summary { grid-template-columns: repeat(2, 1fr); }
-  .developers-grid { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+  .developers-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); }
 }
 
 /* Touch devices — disable hover-dependent effects */
@@ -2850,8 +2867,8 @@ tr.week-b .week-dot {
 
 /* ---- Панель: тонка межа, без кольорової смуги зверху ---- */
 .ov-card {
-  background: linear-gradient(145deg, #1B1B22 0%, var(--g-surface) 70%);
-  border: 1px solid #383842;
+  background: linear-gradient(145deg, #363C48 0%, var(--g-surface) 78%);
+  border: 1px solid #515967;
   border-radius: var(--radius-lg);
   padding: 16px;
   display: flex;
@@ -2860,7 +2877,7 @@ tr.week-b .week-dot {
   box-shadow: 0 14px 34px rgba(0,0,0,.18);
   transition: border-color var(--transition), transform var(--transition), box-shadow var(--transition);
 }
-.ov-card:hover { border-color: #4A4A56; transform: translateY(-1px); box-shadow: 0 18px 38px rgba(0,0,0,.24); }
+.ov-card:hover { border-color: #697689; box-shadow: 0 20px 42px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.06); }
 .ov-card--agency-money { border-top: 2px solid var(--sem-agency); }
 .ov-card--lead { border-top: 2px solid var(--sem-project); }
 
@@ -2910,9 +2927,10 @@ tr.week-b .week-dot {
   .ov-row--lead .ov-card--lead .chart-body { min-height: 0; }
 }
 
-/* ---- Кольоровий акцент перейшов до особистого балансу ---- */
+/* Agency income uses a warm graphite surface with an amber accent. */
 .ov-hero {
-  background: var(--g-surface);
+  background: linear-gradient(135deg, #554738 0%, #37333B 78%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 14px 34px rgba(0,0,0,.16);
   color: var(--g-text);
   border-radius: var(--radius-lg);
   border: 1px solid var(--g-border);
@@ -3714,16 +3732,16 @@ tr.week-b .week-dot {
 }
 
 /* Картки мають власний тихий кольоровий код: дохід, витрати, клієнти, цілі та борги. */
-.ov-card--income { border-top: 2px solid var(--sem-finance); background: linear-gradient(145deg, rgba(49,130,96,.17), var(--g-surface) 72%); }
+.ov-card--income { --g-text-muted: #CCD4D0; border-color: #58776C; background: linear-gradient(135deg, #37564B, #2B3737 80%); }
 .ov-card--income .ov-sum-value { color: var(--sem-finance); }
-.ov-card--expense { border-top: 2px solid var(--g-expense); background: linear-gradient(145deg, rgba(154,69,77,.16), var(--g-surface) 72%); }
+.ov-card--expense { --g-expense: #FFAEB5; border-color: #7B5B66; background: linear-gradient(135deg, #563E48, #383039 80%); }
 .ov-card--expense .ov-sum-value { color: var(--g-expense); }
-.ov-card--client-source { border-top: 2px solid var(--sem-client); }
-.ov-card--scale { border-top: 2px solid var(--sem-hosting); }
+.ov-card--client-source { border-color: #516C8B; background: linear-gradient(145deg, #344860, #2B303D 80%); }
+.ov-card--scale { border-color: #486E72; background: linear-gradient(135deg, #324C50, #2B343C 80%); }
 .ov-card--scale .ov-scale-icon { color: var(--sem-hosting); }
-.ov-card--savings { border-top: 2px solid var(--sem-planned); }
+.ov-card--savings { border-color: #776E50; background: linear-gradient(145deg, #4B4738, #34343A 80%); }
 .ov-card--savings .ov-progress-bar { background: var(--sem-planned); }
-.ov-card--debts { border-top: 2px solid var(--g-expense); }
+.ov-card--debts { border-color: #735968; background: linear-gradient(145deg, #483841, #30313C 80%); }
 .ov-acct {
   padding: 9px 10px;
   border-radius: 10px;
@@ -3734,10 +3752,13 @@ tr.week-b .week-dot {
 /* Гаманець у «Мої фінанси»: графітова основа, живі банківські акценти. */
 .ov-card--balance-highlight {
   background:
-    radial-gradient(ellipse at 88% 8%, rgba(101,214,161,.10), transparent 39%),
-    linear-gradient(145deg, #202027 0%, #19191F 72%);
-  border: 1px solid rgba(101,214,161,.28);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.025), 0 16px 40px rgba(0,0,0,.16);
+    radial-gradient(ellipse at 90% 0%, rgba(163,230,190,.17), transparent 58%),
+    linear-gradient(135deg, #3D6458 0%, #274A40 72%);
+  border: 1px solid #648C7B;
+  box-shadow: inset 0 1px 0 rgba(224,255,236,.12), 0 18px 40px rgba(0,0,0,.20);
+  --g-text-dim: #E1EEE7;
+  --g-text-muted: #C8E1D5;
+  --sem-finance: #A3EAC3;
 }
 .ov-card--balance-highlight .ov-card-head { align-items: flex-start; }
 .ov-wallet-kicker { display: block; margin-bottom: 5px; color: var(--sem-finance); font-size: .63rem; font-weight: 800; letter-spacing: .14em; }
@@ -3762,7 +3783,7 @@ tr.week-b .week-dot {
   padding: 10px;
   border: 1px solid color-mix(in srgb, var(--bank-accent, #C0C8D5) 24%, var(--g-border));
   border-radius: 12px;
-  background: linear-gradient(135deg, color-mix(in srgb, var(--bank-accent, #C0C8D5) 12%, #202027), #19191F 78%);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--bank-accent, #C0C8D5) 15%, #303A40), #29343A 85%);
   transition: border-color 180ms ease, transform 180ms ease, background-color 180ms ease;
 }
 .ov-acct:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--bank-accent, #C0C8D5) 52%, var(--g-border)); }
@@ -3776,22 +3797,47 @@ tr.week-b .week-dot {
 .ov-card--balance-highlight .ov-acct-eq { font-size: .64rem; }
 .ov-acct--empty { grid-column: 1 / -1; }
 
-/* Вхід на огляд: короткий каскад карток, значення рахуються один раз при появі. */
-.ov-page.active .ov-header { animation: fadeIn 420ms cubic-bezier(.2,.75,.25,1) both; }
-.ov-page.active .ov-section { animation: cardIn 480ms cubic-bezier(.2,.75,.25,1) both; }
-.ov-page.active .ov-section:nth-of-type(2) { animation-delay: 70ms; }
-.ov-page.active .ov-section:nth-of-type(3) { animation-delay: 130ms; }
-.ov-page.active .ov-section:nth-of-type(4) { animation-delay: 190ms; }
-.ov-page.active .ov-card { animation: cardIn 520ms cubic-bezier(.2,.75,.25,1) both; }
-.ov-page.active .ov-row > .ov-card:nth-child(2) { animation-delay: 70ms; }
-.ov-page.active .chart-body { animation: fadeIn 750ms 150ms ease-out both; }
-.ov-page.active .chart-body canvas { filter: drop-shadow(0 3px 10px rgba(0,0,0,.12)); }
+/* One calm reveal per card; counters and charts begin only on viewport entry. */
+.ov-page.active .ov-header { animation: fadeIn 480ms var(--motion-smooth) both; }
+.chart-viewport { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; min-height: 0; }
+.chart-viewport > .chart-body { flex: 1 1 auto; }
+.animated-number { font-variant-numeric: tabular-nums; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+[data-motion] {
+  transition: opacity 650ms var(--motion-smooth) var(--reveal-delay, 0ms), translate 650ms var(--motion-smooth) var(--reveal-delay, 0ms), border-color 240ms ease, box-shadow 280ms ease, background-color 240ms ease;
+}
+[data-motion="pending"] { opacity: 0; translate: 0 18px; }
+[data-motion="visible"], [data-motion="pending"]:focus-within { opacity: 1; translate: 0 0; }
+@media (hover: hover) and (pointer: fine) {
+  .ov-card[data-motion="visible"]:hover, .developer-card[data-motion="visible"]:hover { translate: 0 -3px; transition-delay: 0ms; }
+  .ov-card--balance-highlight:hover .ov-wallet-art i:first-child { transform: translateY(-4px) rotate(-18deg); }
+  .ov-card--balance-highlight:hover .ov-wallet-art i:nth-child(3) { transform: translateY(2px) rotate(10deg); }
+}
+.ov-wallet-art i { transition: transform 480ms var(--motion-smooth); }
 @media (prefers-reduced-motion: reduce) {
-  .ov-page.active .ov-header, .ov-page.active .ov-section, .ov-page.active .ov-card, .ov-page.active .chart-body { animation: none !important; }
-  .ov-acct, .ov-seg::before, .ov-seg-item, .nav-item, .nav-item > svg, .sidebar-active-marker, .sidebar-active-marker::before, .tabbar-item, .tabbar-item .tabbar-icon { transition: none !important; }
+  [data-motion] { opacity: 1 !important; translate: none !important; transition: none !important; }
+  .ov-page.active .ov-header { animation: none !important; }
+  .ov-acct, .ov-seg::before, .ov-seg-item, .nav-item, .nav-item > svg, .sidebar-active-marker, .sidebar-active-marker::before, .tabbar-item, .tabbar-item .tabbar-icon, .ov-wallet-art i { transition: none !important; }
 }
 
 @media (max-width: 560px) {
   .ov-accts { grid-template-columns: 1fr; }
   .ov-wallet-art { transform: scale(.82); transform-origin: right center; margin-right: 0; }
+}
+
+/* Hosting overview keeps the summary and renewal chart side by side when space allows. */
+.hosting-overview {
+  display: grid;
+  grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr);
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.hosting-overview > * { min-width: 0; }
+.hosting-overview .settings-card { margin: 0; grid-column: auto; }
+.hosting-renewal-chart { height: 230px; position: relative; min-width: 0; }
+.hosting-overview .settings-info-row { flex-direction: row; align-items: center; gap: 12px; }
+.hosting-overview .settings-info-row span { min-width: 0; overflow-wrap: anywhere; }
+.hosting-overview .settings-info-row strong { flex-shrink: 0; }
+@media (max-width: 800px) {
+  .hosting-overview { grid-template-columns: minmax(0, 1fr); }
 }

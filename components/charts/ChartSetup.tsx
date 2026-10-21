@@ -44,8 +44,8 @@ if (doughnutAnim) {
  */
 export const CHART = {
   grid: 'rgba(255,255,255,0.06)',
-  tick: '#8E92A0',
-  legend: '#ACACBB',
+  tick: '#B3BAC9',
+  legend: '#CCD1DC',
   font: { size: 11 } as const,
   income: '#65D6A1',
   incomeFill: 'rgba(101,214,161,0.18)',
@@ -85,10 +85,10 @@ export const CHART_LEGEND = {
 };
 
 export const CHART_TOOLTIP = {
-  backgroundColor: '#202027',
+  backgroundColor: '#303642',
   titleColor: '#F5F5F7',
-  bodyColor: '#ACACBB',
-  borderColor: '#70747C',
+  bodyColor: '#CCD1DC',
+  borderColor: '#828C9C',
   borderWidth: 1,
   padding: 10,
   cornerRadius: 10,

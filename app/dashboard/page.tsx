@@ -1,11 +1,13 @@
 'use client';
-import { useState, useMemo, type ReactNode } from 'react';
+import { useState, useMemo, useRef, type ReactNode } from 'react';
 import { useApp } from '@/context/AppContext';
 import { buildDashboardView, type DashboardView } from '@/lib/dashboard-view';
 import { formatMoney } from '@/lib/utils';
 import dynamic from 'next/dynamic';
 import Modal from '@/components/ui/Modal';
+import { useRevealCards } from '@/hooks/useViewportMotion';
 import AnimatedNumber from '@/components/ui/AnimatedNumber';
+import ChartViewport from '@/components/ui/ChartViewport';
 import AnimatedSegmentedControl from '@/components/ui/AnimatedSegmentedControl';
 
 const IncomeChart = dynamic(() => import('@/components/charts/IncomeChart'), { ssr: false });
@@ -41,6 +43,8 @@ const ALL_TIME_NOTE = 'за весь час';
 const TODAY_NOTE = 'на сьогодні';
 
 export default function DashboardPage() {
+  const pageRef = useRef<HTMLElement>(null);
+  useRevealCards(pageRef, '.ov-card, .ov-hero');
   const { snapshot } = useApp();
   const [showAgency, setShowAgency] = useState(false);
   const [showAssets, setShowAssets] = useState(false);
@@ -74,7 +78,7 @@ export default function DashboardPage() {
   const goalProgress = view.sav.totalGoal > 0 ? Math.min(100, (view.sav.totalSaved / view.sav.totalGoal) * 100) : 0;
 
   return (
-    <section className="page ov-page active">
+    <section ref={pageRef} className="page ov-page active">
       {/* 1. Шапка */}
       <header className="ov-header">
         <div>
@@ -135,7 +139,7 @@ export default function DashboardPage() {
                 onChange={setFlowMode}
               />
             </div>
-            <FinanceBarChart labels={view.labels} incomeData={series.financeIn} expenseData={series.financeOut} mode={flowMode} />
+            <ChartViewport><FinanceBarChart labels={view.labels} incomeData={series.financeIn} expenseData={series.financeOut} mode={flowMode} /></ChartViewport>
             <p className="ov-card-foot">Останні 12 місяців. Поточний місяць неповний.</p>
           </article>
         </div>
@@ -159,7 +163,7 @@ export default function DashboardPage() {
               <div className="ov-card-head">
                 <h3 className="ov-card-title">Активи рахунків</h3>
               </div>
-              <BankBalancesChart balances={view.balances} />
+              <ChartViewport><BankBalancesChart balances={view.balances} /></ChartViewport>
               <p className="ov-card-foot">Неприховані транзакції, у гривневому еквіваленті.</p>
             </article>
           </div>
@@ -194,8 +198,8 @@ export default function DashboardPage() {
               />
             </div>
             {doneMode === 'paid'
-              ? <IncomeChart labels={view.labels} data={series.completedPaid} />
-              : <ProjectsBarChart labels={view.labels} data={series.completedCount} />}
+              ? <ChartViewport><IncomeChart labels={view.labels} data={series.completedPaid} /></ChartViewport>
+              : <ChartViewport><ProjectsBarChart labels={view.labels} data={series.completedCount} /></ChartViewport>}
             <p className="ov-card-foot">
               {doneMode === 'paid'
                 ? 'Оплати за завершені проєкти, за місяцем завершення. Це не дохід агенції.'
@@ -225,7 +229,7 @@ export default function DashboardPage() {
             <div className="ov-card-head">
               <h3 className="ov-card-title">Джерела клієнтів</h3>
             </div>
-            <SourcesChart labels={view.sources.labels} data={view.sources.data} colors={view.sources.colors} />
+            <ChartViewport><SourcesChart labels={view.sources.labels} data={view.sources.data} colors={view.sources.colors} /></ChartViewport>
             <p className="ov-card-foot">За кількістю клієнтів, без фільтрації за періодом.</p>
           </article>
         </div>
@@ -297,8 +301,8 @@ export default function DashboardPage() {
             )
           ) : (
             <>
-              <SavingsChart labels={['Всього']} saved={[view.sav.totalSaved]}
-                remaining={[Math.max(0, view.sav.totalGoal - view.sav.totalSaved)]} />
+              <ChartViewport><SavingsChart labels={['Всього']} saved={[view.sav.totalSaved]}
+                remaining={[Math.max(0, view.sav.totalGoal - view.sav.totalSaved)]} /></ChartViewport>
               <p className="ov-card-foot">
                 Відкладено {money(view.sav.totalSaved)} з {money(view.sav.totalGoal)}; залишилось {money(Math.max(0, view.sav.totalGoal - view.sav.totalSaved))}.
               </p>
@@ -329,7 +333,7 @@ export default function DashboardPage() {
           <span className="ov-modal-stat-label">Дохід за актуальний місяць</span>
           <span className="ov-modal-stat-value">{money(view.currentMonthAgencyIncome)}</span>
         </div>
-        <AgencyIncomeChart labels={view.agencyLabels} data={view.agencyIncome} />
+        <ChartViewport><AgencyIncomeChart labels={view.agencyLabels} data={view.agencyIncome} /></ChartViewport>
         <div className="modal-footer"><button className="btn btn-ghost" onClick={() => setShowAgency(false)}>Закрити</button></div>
       </Modal>
     </section>

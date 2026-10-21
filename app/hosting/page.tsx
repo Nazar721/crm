@@ -1,5 +1,6 @@
 'use client';
 import { useState, useMemo } from 'react';
+import dynamic from 'next/dynamic';
 import { useApp } from '@/context/AppContext';
 import { formatDate, formatMoney } from '@/lib/utils';
 import {
@@ -23,6 +24,10 @@ import type { HostingPayment, HostingService } from '@/types';
 // без карток «Проєктів»/«Клієнтів». Стани — за фактичним покриттям
 // оплачених періодів (спільний модуль lib/hosting.ts).
 // ============================================================
+
+const HostingRenewalsChart = dynamic(() => import('@/components/charts/HostingRenewalsChart'), {
+  ssr: false, loading: () => <div className="hosting-renewal-chart" aria-busy="true" />,
+});
 
 const STATUS_BADGE: Record<HostingStatus, string> = {
   no_payment: 'badge--gray',
@@ -147,7 +152,7 @@ export default function HostingPage() {
       </div>
 
       {/* Підсумки */}
-      <div className="settings-grid" style={{ marginBottom: 16 }}>
+      <div className="hosting-overview">
         <div className="settings-card">
           <div className="settings-info-row"><span>Активні</span><strong>{summary.active}</strong></div>
           <div className="settings-info-row"><span>Без оплати</span><strong>{summary.noPayment}</strong></div>
@@ -156,16 +161,10 @@ export default function HostingPage() {
           <div className="settings-info-row"><span>В архіві</span><strong>{summary.archived}</strong></div>
         </div>
         <div className="settings-card">
-          <h3 className="settings-title">Витрати за фактичними оплатами</h3>
-          {summary.totals.length === 0 && <p className="settings-text">Оплат ще немає.</p>}
-          {summary.totals.map(t => (
-            <div className="settings-info-row" key={t.currency}>
-              <span>{t.currency} ({t.count})</span>
-              <strong>{formatMoney(t.total, t.currency)}</strong>
-            </div>
-          ))}
-          <p className="settings-text" style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
-            Суми за датою оплати, різні валюти не змішуються. Це облік оплат провайдеру, не записи «Фінансів».
+          <h3 className="settings-title">Коли продовжувати хостинг</h3>
+          <HostingRenewalsChart services={services} payments={payments} />
+          <p className="settings-text" style={{ fontSize: '0.75rem' }}>
+            Кількість послуг за залишком оплачених днів. Без оплати, прострочені й архівні послуги показані в підсумку поруч.
           </p>
         </div>
       </div>
