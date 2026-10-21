@@ -30,7 +30,7 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md' }:
     >
       <div
         ref={trapRef}
-        className={`modal ${sizeClass}`}
+        className={`modal ${sizeClass}${size === 'sm' ? ' modal--compact' : ' modal--drawer'}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}

@@ -40,6 +40,8 @@ interface AppContextType {
   sidebarOpen: boolean;
   setSidebarOpen: (open: boolean) => void;
   closeSidebar: () => void;
+  assistantOpen: boolean;
+  setAssistantOpen: (open: boolean) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -80,6 +82,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [badges, setBadges] = useState<BadgeCounts>(countBadges(EMPTY_SNAPSHOT));
   const [refreshKey, setRefreshKey] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [assistantOpen, setAssistantOpen] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const reportedIssues = useRef<Set<string>>(new Set());
 
@@ -190,7 +193,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     sidebarOpen,
     setSidebarOpen,
     closeSidebar,
-  }), [status, error, snapshot, storageIssues, writeBlock, unsupportedCollections, badges, refreshBadges, refreshKey, triggerRefresh, reinitialize, retry, sidebarOpen, closeSidebar]);
+    assistantOpen,
+    setAssistantOpen,
+  }), [status, error, snapshot, storageIssues, writeBlock, unsupportedCollections, badges, refreshBadges, refreshKey, triggerRefresh, reinitialize, retry, sidebarOpen, closeSidebar, assistantOpen]);
 
   return (
     <AppContext.Provider value={value}>

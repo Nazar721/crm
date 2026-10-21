@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   addCalendarDays, addCalendarMonths, coverageOn, filterHostingServices,
-  hostingCoverage, hostingSummary, hostingTotalsByCurrency, lastPaymentOf,
+  hostingCoverage, hostingExpiringWithin, hostingSummary, hostingTotalsByCurrency, lastPaymentOf,
   mergePeriods, paymentsOfService, proposeExtension,
 } from '@/lib/hosting';
 import { kyivDateString } from '@/lib/dates';
@@ -103,6 +103,17 @@ test('покриття: стани за фактичними періодами 
   // Архів переважає
   assert.equal(hostingCoverage(service({ archived: true }), [payment({ periodEnd: '2026-10-14' })], DAY).status, 'archived');
   assert.equal(hostingCoverage(service({ archived: true }), [], DAY).warnings.length, 0);
+});
+
+test('підсвічування хостингу: лише послуги, що завершуються протягом 5 днів', () => {
+  const services = [service(), service({ id: 'hs2', name: 'Блог' }), service({ id: 'hs3', archived: true })];
+  const payments = [
+    payment({ serviceId: 'hs1', periodEnd: '2026-10-18' }), // рівно 5 днів
+    payment({ id: 'hp2', serviceId: 'hs2', periodEnd: '2026-10-19' }), // 6 днів
+    payment({ id: 'hp3', serviceId: 'hs3', periodEnd: '2026-10-17' }), // архівний
+  ];
+  assert.equal(hostingExpiringWithin(services, payments, 5, DAY), 1);
+  assert.equal(hostingExpiringWithin([service()], [payment({ periodEnd: '2026-10-12' })], 5, DAY), 0, 'прострочене не світиться як таке, що ще має 5 днів');
 });
 
 test('покриття: остання оплата за датою, не за порядком; totals за валютами', () => {

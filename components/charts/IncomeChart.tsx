@@ -1,7 +1,7 @@
 'use client';
 import { Line } from 'react-chartjs-2';
 import './ChartSetup';
-import { CHART, CHART_TOOLTIP, CHART_X, CHART_Y } from './ChartSetup';
+import { CHART, CHART_TOOLTIP, CHART_X, CHART_Y, chartAnimation } from './ChartSetup';
 
 interface IncomeChartProps {
   labels: string[];
@@ -32,7 +32,7 @@ export default function IncomeChart({ labels, data }: IncomeChartProps) {
         options={{
           responsive: true,
           maintainAspectRatio: false,
-          animation: { duration: 0 },
+          animation: chartAnimation(),
           plugins: { legend: { display: false }, tooltip: CHART_TOOLTIP },
           scales: { x: CHART_X, y: CHART_Y },
         }}

@@ -5,6 +5,7 @@ import { buildDashboardView, type DashboardView } from '@/lib/dashboard-view';
 import { formatMoney } from '@/lib/utils';
 import dynamic from 'next/dynamic';
 import Modal from '@/components/ui/Modal';
+import AnimatedNumber from '@/components/ui/AnimatedNumber';
 
 const IncomeChart = dynamic(() => import('@/components/charts/IncomeChart'), { ssr: false });
 const ProjectsBarChart = dynamic(() => import('@/components/charts/ProjectsBarChart'), { ssr: false });
@@ -26,7 +27,7 @@ const ICONS: Record<string, ReactNode> = {
   partners: I(<><path d="M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="8.5" cy="7" r="4" /><path d="M20 8v6" /><path d="M23 11h-6" /></>),
 };
 
-interface Metric { id: string; label: string; value: string; note: string; }
+interface Metric { id: string; label: string; value: number; note: string; }
 interface ScaleItem { id: string; label: string; value: string; icon: string; }
 
 const money = (n: number) => formatMoney(n);
@@ -52,11 +53,11 @@ export default function DashboardPage() {
 
   /* Агенція → компактні фінанси: п'ять показників в одній панелі. */
   const agencyMoney: Metric[] = [
-    { id: 'total-budget', label: 'Загальний бюджет', value: money(s.totalBudget), note: ALL_TIME_NOTE },
-    { id: 'net-profit', label: 'Чистий прибуток', value: money(s.netProfit), note: ALL_TIME_NOTE },
-    { id: 'avg-check', label: 'Середній чек', value: money(s.avgCheck), note: ALL_TIME_NOTE },
-    { id: 'client-debts', label: 'Борг клієнтів', value: money(s.clientDebts), note: TODAY_NOTE },
-    { id: 'specialist-debts', label: 'До виплати фахівцям', value: money(s.specialistDebts), note: TODAY_NOTE },
+    { id: 'total-budget', label: 'Загальний бюджет', value: s.totalBudget, note: ALL_TIME_NOTE },
+    { id: 'net-profit', label: 'Чистий прибуток', value: s.netProfit, note: ALL_TIME_NOTE },
+    { id: 'avg-check', label: 'Середній чек', value: s.avgCheck, note: ALL_TIME_NOTE },
+    { id: 'client-debts', label: 'Борг клієнтів', value: s.clientDebts, note: TODAY_NOTE },
+    { id: 'specialist-debts', label: 'До виплати фахівцям', value: s.specialistDebts, note: TODAY_NOTE },
   ];
 
   /* Масштаб роботи: менша типографіка, іконки без кольорових квадратів. */
@@ -94,14 +95,21 @@ export default function DashboardPage() {
         <div className="ov-row ov-row--57">
           <article className="ov-card ov-card--balance-highlight">
             <div className="ov-card-head">
-              <h3 className="ov-card-title">Баланс</h3>
-              <span className="ov-card-cap">{view.displayCurrency}</span>
+              <div>
+                <span className="ov-wallet-kicker">МОЇ РАХУНКИ</span>
+                <h3 className="ov-card-title">Доступний баланс</h3>
+              </div>
+              <span className="ov-wallet-currency">{view.displayCurrency}</span>
             </div>
-            <div className="ov-balance-value">{money(s.balance)}</div>
+            <div className="ov-wallet-hero">
+              <div className="ov-balance-value"><AnimatedNumber value={s.balance} format={money} /></div>
+              <div className="ov-wallet-art" aria-hidden="true"><i /><i /><i /></div>
+            </div>
+            <div className="ov-wallet-list-head"><span>Рахунки</span><span>{accounts.length} активні</span></div>
             <ul className="ov-accts">
               {accounts.map((a) => (
                 <li className="ov-acct" key={a.id} data-bank={a.id}>
-                  <span className="ov-acct-label">{a.label}</span>
+                  <span className="ov-acct-brand"><span className="ov-acct-mark">{a.label.slice(0, 1)}</span><span className="ov-acct-label">{a.label}</span></span>
                   <span className="ov-acct-nums">
                     <span className="ov-acct-native">{formatMoney(a.native.amount, a.native.currency)}</span>
                     {a.native.currency !== a.displayEquivalent.currency ? (
@@ -132,14 +140,14 @@ export default function DashboardPage() {
         </div>
 
         <div className="ov-row ov-row--even">
-          <article className="ov-card ov-card--sum">
+          <article className="ov-card ov-card--sum ov-card--income">
             <span className="ov-sum-label">Надходження за місяць</span>
-            <span className="ov-sum-value">{money(s.monthIncome)}</span>
+            <span className="ov-sum-value"><AnimatedNumber value={s.monthIncome} format={money} /></span>
             <span className="ov-sum-note">{view.monthLabel} · {MONTH_NOTE}</span>
           </article>
-          <article className="ov-card ov-card--sum">
+          <article className="ov-card ov-card--sum ov-card--expense">
             <span className="ov-sum-label">Витрати за місяць</span>
-            <span className="ov-sum-value">{money(view.monthExpenses)}</span>
+            <span className="ov-sum-value"><AnimatedNumber value={view.monthExpenses} format={money} /></span>
             <span className="ov-sum-note">{view.monthLabel} · {MONTH_NOTE}</span>
           </article>
         </div>
@@ -167,7 +175,7 @@ export default function DashboardPage() {
         <div className="ov-row ov-row--57 ov-row--lead">
           <article className="ov-hero">
             <span className="ov-hero-label">Мій дохід від агенції</span>
-            <span className="ov-hero-value">{money(view.currentMonthAgencyIncome)}</span>
+            <span className="ov-hero-value"><AnimatedNumber value={view.currentMonthAgencyIncome} format={money} /></span>
             <span className="ov-hero-month">{view.monthLabel} · {MONTH_NOTE}</span>
             <button type="button" className="ov-hero-action" onClick={() => setShowAgency(true)} aria-haspopup="dialog">
               Деталізація <span aria-hidden="true">→</span>
@@ -205,14 +213,14 @@ export default function DashboardPage() {
               {agencyMoney.map((m) => (
                 <div className="ov-metric" key={m.id}>
                   <span className="ov-metric-label">{m.label}</span>
-                  <span className="ov-metric-value">{m.value}</span>
+                  <span className="ov-metric-value"><AnimatedNumber value={m.value} format={money} /></span>
                   <span className="ov-metric-note">{m.note}</span>
                 </div>
               ))}
             </div>
           </article>
 
-          <article className="ov-card">
+          <article className="ov-card ov-card--client-source">
             <div className="ov-card-head">
               <h3 className="ov-card-title">Джерела клієнтів</h3>
             </div>
@@ -223,7 +231,7 @@ export default function DashboardPage() {
 
         {/* Третій ряд: на всю ширину */}
         <div className="ov-row ov-row--full">
-          <article className="ov-card">
+          <article className="ov-card ov-card--scale">
             <div className="ov-card-head">
               <h3 className="ov-card-title">Масштаб роботи</h3>
             </div>
@@ -242,7 +250,7 @@ export default function DashboardPage() {
 
       {/* ========== Відкладення + Особисті борги ========== */}
       <div className="ov-row ov-row--even">
-        <article className="ov-card" aria-labelledby="ov-savings-t">
+        <article className="ov-card ov-card--savings" aria-labelledby="ov-savings-t">
           <div className="ov-card-head">
             <h3 className="ov-card-title" id="ov-savings-t">Відкладення та цілі</h3>
             <div className="ov-seg" role="group" aria-label="Вигляд відкладень">
@@ -297,7 +305,7 @@ export default function DashboardPage() {
           )}
         </article>
 
-        <article className="ov-card" aria-labelledby="ov-debts-t">
+        <article className="ov-card ov-card--debts" aria-labelledby="ov-debts-t">
           <div className="ov-card-head">
             <h3 className="ov-card-title" id="ov-debts-t">Особисті борги</h3>
           </div>

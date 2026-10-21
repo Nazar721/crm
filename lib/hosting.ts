@@ -244,6 +244,20 @@ export function hostingSummary(
   return { active, noPayment, endingWithin30, overdue, archived, totals: hostingTotalsByCurrency(payments) };
 }
 
+/** Кількість активних хостингів, що мають оплачене покриття ще на N днів включно. */
+export function hostingExpiringWithin(
+  services: HostingService[],
+  payments: HostingPayment[],
+  days = 5,
+  day: string = today(),
+): number {
+  return services.reduce((count, service) => {
+    if (service.archived) return count;
+    const coverage = hostingCoverage(service, payments, day);
+    return coverage.daysLeft !== null && coverage.daysLeft <= days ? count + 1 : count;
+  }, 0);
+}
+
 /** Пошук/фільтри сторінки (назва, домен, провайдер; стан, провайдер). */
 export function filterHostingServices(
   services: HostingService[],

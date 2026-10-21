@@ -1,7 +1,7 @@
 'use client';
 import { Bar } from 'react-chartjs-2';
 import './ChartSetup';
-import { CHART, CHART_TOOLTIP, CHART_X, CHART_Y } from './ChartSetup';
+import { CHART, CHART_TOOLTIP, CHART_X, CHART_Y, chartAnimation } from './ChartSetup';
 import { BANKS, bankLabel } from '@/lib/banks';
 import { formatMoney } from '@/lib/utils';
 
@@ -41,7 +41,7 @@ export default function BankBalancesChart({ balances, usdtRate = 41 }: BankBalan
         options={{
           responsive: true,
           maintainAspectRatio: false,
-          animation: { duration: 0 },
+          animation: chartAnimation(),
           plugins: {
             legend: { display: false },
             tooltip: {

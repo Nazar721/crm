@@ -7,6 +7,7 @@ import AppTopbar from '@/components/layout/AppTopbar';
 import ToastContainer from '@/components/ui/Toast';
 import { ToastProvider } from '@/components/ToastProvider';
 import InstallBanner from '@/components/ui/InstallBanner';
+import AssistantDrawer from '@/components/assistant/AssistantDrawer';
 import CloudAccess from '@/components/CloudAccess';
 import Script from 'next/script';
 
@@ -55,6 +56,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               {children}
             </main>
             <InstallBanner />
+            <AssistantDrawer />
           </ToastProvider>
         </AppProvider></CloudAccess>
       </body>

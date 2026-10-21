@@ -50,7 +50,7 @@ function TabIcon({ icon }: { icon: string }) {
 
 export default function TabBar() {
   const pathname = usePathname();
-  const { badges } = useApp();
+  const { badges, assistantOpen, setAssistantOpen } = useApp();
   const [moreOpen, setMoreOpen] = useState(false);
   const sheetRef = useFocusTrap<HTMLDivElement>(moreOpen);
 
@@ -116,6 +116,19 @@ export default function TabBar() {
             <div className="tabbar-sheet-grid">
               {moreItems.map((item) => {
                 const val = badgeCount(item);
+                if (item.href === '/assistant') return (
+                  <button
+                    key={item.href}
+                    type="button"
+                    className="tabbar-sheet-item"
+                    onClick={() => { setMoreOpen(false); setAssistantOpen(true); }}
+                    aria-haspopup="dialog"
+                    aria-expanded={assistantOpen}
+                  >
+                    <span className="tabbar-sheet-icon"><TabIcon icon={item.icon} /></span>
+                    <span className="tabbar-sheet-label">{item.label}</span>
+                  </button>
+                );
                 return (
                   <Link
                     key={item.href}

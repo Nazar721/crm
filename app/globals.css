@@ -49,6 +49,14 @@
   --g-income: #65D6A1;
   --g-expense: #F48891;
   --g-warning: #E8BD69;
+  /* Семантична палітра інтерфейсу: колір допомагає знайти потрібний розділ. */
+  --sem-agency: #FF8758;
+  --sem-finance: #67D6A4;
+  --sem-client: #72B7FF;
+  --sem-project: #9B9AFF;
+  --sem-hosting: #52C8C4;
+  --sem-ai: #C39AFF;
+  --sem-planned: #E8BD69;
 
   --bg-base: var(--g-bg);
   --bg-surface: var(--g-surface);
@@ -77,24 +85,24 @@
   --text-tertiary: var(--g-text-dim);
 
   /* Єдиний акцент; зелений/червоний/жовтий = фінансове та статусне значення */
-  --accent-blue: var(--g-accent);
+  --accent-blue: var(--sem-client);
   --accent-orange: var(--g-accent);
   --accent-green: var(--g-income);
   --accent-teal: var(--g-income);
   --accent-pink: var(--g-expense);
   --accent-gold: var(--g-warning);
-  --accent-purple: var(--g-text-dim);
-  --accent-indigo: var(--g-text-dim);
+  --accent-purple: var(--sem-ai);
+  --accent-indigo: var(--sem-project);
   --accent-red: var(--g-expense);
 
-  --accent-blue-dim: rgba(255, 122, 66, 0.16);
+  --accent-blue-dim: rgba(114, 183, 255, 0.16);
   --accent-orange-dim: rgba(255, 122, 66, 0.16);
   --accent-green-dim: rgba(101, 214, 161, 0.16);
   --accent-teal-dim: rgba(101, 214, 161, 0.16);
   --accent-pink-dim: rgba(244, 136, 145, 0.16);
   --accent-gold-dim: rgba(232, 189, 105, 0.16);
-  --accent-purple-dim: rgba(172, 172, 187, 0.14);
-  --accent-indigo-dim: rgba(172, 172, 187, 0.14);
+  --accent-purple-dim: rgba(195, 154, 255, 0.16);
+  --accent-indigo-dim: rgba(155, 154, 255, 0.16);
 
   --danger: var(--g-expense);
   --danger-dim: rgba(244, 136, 145, 0.16);
@@ -244,7 +252,38 @@ body {
   transition: color var(--transition), background-color var(--transition), border-color var(--transition), box-shadow var(--transition), transform var(--transition);
   position: relative;
   border: 1px solid transparent;
+  width: 100%;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 560;
+  line-height: normal;
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
 }
+
+.nav-section:nth-child(1) { --nav-accent: var(--sem-agency); }
+.nav-section:nth-child(2) { --nav-accent: var(--sem-client); }
+.nav-section:nth-child(3) { --nav-accent: var(--sem-finance); }
+.nav-section:nth-child(4) { --nav-accent: var(--sem-ai); }
+.nav-section .nav-item > svg { color: var(--nav-accent, var(--g-text-dim)); opacity: .82; }
+.nav-section .nav-item:hover > svg,
+.nav-section .nav-item.active > svg { opacity: 1; }
+.nav-item[data-nav='/dashboard'] { --nav-accent: var(--sem-agency); }
+.nav-item[data-nav='/projects'] { --nav-accent: var(--sem-project); }
+.nav-item[data-nav='/clients'] { --nav-accent: var(--sem-client); }
+.nav-item[data-nav='/specialists'] { --nav-accent: var(--sem-hosting); }
+.nav-item[data-nav='/partners'] { --nav-accent: var(--sem-ai); }
+.nav-item[data-nav='/hosting'] { --nav-accent: var(--sem-hosting); }
+.nav-item[data-nav='/planned-projects'] { --nav-accent: var(--sem-planned); }
+.nav-item[data-nav='/finance'] { --nav-accent: var(--sem-finance); }
+.nav-item[data-nav='/debts'] { --nav-accent: var(--g-expense); }
+.nav-item[data-nav='/savings'] { --nav-accent: var(--sem-planned); }
+.nav-item--assistant { --nav-accent: var(--sem-ai); }
+.nav-item--hosting-alert { --nav-accent: var(--g-warning); }
+.nav-item--hosting-alert .nav-label { color: #F2C56C; }
+.nav-item--hosting-alert > svg { color: #F2C56C !important; }
+.nav-item--hosting-alert .nav-badge { background: rgba(232, 189, 105, .2); color: #F2C56C; }
 
 .nav-item:hover {
   background: var(--g-elevated);
@@ -253,7 +292,7 @@ body {
 
 .nav-item.active {
   background: var(--g-elevated);
-  color: var(--g-accent);
+  color: var(--nav-accent, var(--g-accent));
 }
 
 .nav-item.active::before {
@@ -264,13 +303,13 @@ body {
   bottom: 9px;
   width: 3px;
   border-radius: 99px;
-  background: var(--accent-blue);
+  background: var(--nav-accent, var(--g-accent));
 }
 
 .nav-badge {
   margin-left: auto;
-  background: rgba(255, 122, 66, 0.18);
-  color: var(--g-accent);
+  background: color-mix(in srgb, var(--nav-accent, var(--g-accent)) 18%, transparent);
+  color: var(--nav-accent, var(--g-accent));
   font-size: 0.7rem;
   font-weight: 600;
   padding: 2px 8px;
@@ -289,6 +328,9 @@ body {
 .nav-item--settings {
   margin-bottom: 12px;
 }
+
+.nav-label { min-width: 0; }
+.nav-item[data-tooltip]::after { content: none; }
 
 .backup-actions {
   display: grid;
@@ -477,6 +519,9 @@ body {
   border-radius: var(--radius-md);
   color: var(--text-secondary);
   text-decoration: none;
+  font-family: var(--font-main);
+  font-size: inherit;
+  cursor: pointer;
   transition: background var(--transition), color var(--transition), transform 0.1s;
 }
 
@@ -1369,9 +1414,9 @@ body {
   inset: 0;
   background: rgba(0, 0, 0, 0.65);
   z-index: 300;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
+  align-items: stretch;
+  justify-content: flex-end;
+  padding: 0;
 }
 
 .modal-overlay.open {
@@ -1384,34 +1429,38 @@ body {
 }
 
 .modal {
-  background: var(--g-elevated);
+  display: flex;
+  flex-direction: column;
+  background: var(--g-surface);
   border: 1px solid var(--g-border);
-  border-radius: var(--radius-xl);
-  width: 100%;
-  max-width: 600px;
-  max-height: 90vh;
-  overflow-y: auto;
-  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.60), var(--shadow-glass);
-  animation: modalIn 180ms var(--ease);
+  border-right: 0;
+  border-radius: 22px 0 0 22px;
+  width: min(680px, 58vw);
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+  box-shadow: -24px 0 80px rgba(0, 0, 0, 0.42);
+  animation: drawerIn 240ms var(--ease);
   position: relative;
-  will-change: transform, opacity;
+  will-change: transform;
 }
 
 
 
-.modal-overlay.closing .modal {
-  animation: modalOut 140ms var(--ease) forwards;
-}
+.modal-overlay.closing .modal { animation: drawerOut 160ms var(--ease) forwards; }
 
 .modal--sm { max-width: 420px; }
-.modal--lg { max-width: 720px; }
+.modal--compact { align-self: center; width: min(420px, calc(100vw - 32px)); height: auto; max-height: min(90dvh, 720px); border: 1px solid var(--g-border); border-radius: var(--radius-xl); margin: auto; animation: modalIn 180ms var(--ease); }
+.modal--lg { width: min(760px, 64vw); }
 
 .modal-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex: 0 0 auto;
   padding: 20px 24px 18px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--g-surface);
 }
 
 .modal-title {
@@ -1433,7 +1482,10 @@ body {
 
 .modal-close:hover { color: var(--text-primary); background: rgba(255, 255, 255, 0.06); }
 
-.modal-body { padding: 24px; }
+.modal-body { padding: 24px; min-height: 0; flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain; }
+
+@keyframes drawerIn { from { transform: translateX(24px); opacity: .75; } to { transform: none; opacity: 1; } }
+@keyframes drawerOut { from { transform: none; opacity: 1; } to { transform: translateX(24px); opacity: .75; } }
 
 .modal-footer {
   display: flex;
@@ -2768,14 +2820,19 @@ tr.week-b .week-dot {
 
 /* ---- Панель: тонка межа, без кольорової смуги зверху ---- */
 .ov-card {
-  background: var(--g-surface);
-  border: 1px solid var(--g-border);
+  background: linear-gradient(145deg, #1B1B22 0%, var(--g-surface) 70%);
+  border: 1px solid #383842;
   border-radius: var(--radius-lg);
   padding: 16px;
   display: flex;
   flex-direction: column;
   min-width: 0;
+  box-shadow: 0 14px 34px rgba(0,0,0,.18);
+  transition: border-color var(--transition), transform var(--transition), box-shadow var(--transition);
 }
+.ov-card:hover { border-color: #4A4A56; transform: translateY(-1px); box-shadow: 0 18px 38px rgba(0,0,0,.24); }
+.ov-card--agency-money { border-top: 2px solid var(--sem-agency); }
+.ov-card--lead { border-top: 2px solid var(--sem-project); }
 
 .ov-card-head {
   display: flex;
@@ -3401,4 +3458,283 @@ tr.week-b .week-dot {
   .install-banner { bottom: 72px; width: calc(100% - 24px); }
   .install-banner__content { padding: 10px 12px; }
   .install-banner__btn--primary { padding: 7px 13px; font-size: 0.75rem; }
+}
+
+/* Фінансові картки тримаються графітової бази, а рахунки впізнаються за своїм кольором. */
+.ov-card--balance-highlight {
+  background: linear-gradient(145deg, #17241F 0%, #19191F 74%);
+  border-color: rgba(101, 214, 161, .30);
+  color: var(--g-text);
+}
+.ov-card--balance-highlight .ov-card-title,
+.ov-card--balance-highlight .ov-card-cap,
+.ov-card--balance-highlight .ov-balance-value,
+.ov-card--balance-highlight .ov-acct-native { color: var(--g-text); }
+.ov-card--balance-highlight .ov-card-cap { color: var(--sem-finance); }
+.ov-card--balance-highlight .ov-acct-label { color: var(--g-text-dim); }
+.ov-card--balance-highlight .ov-acct-eq,
+.ov-card--balance-highlight .ov-acct--empty { color: var(--g-text-muted); }
+.ov-card--balance-highlight .ov-acct + .ov-acct { border-color: var(--g-border); }
+.finance-summary > .stat-card {
+  background: linear-gradient(145deg, #17241F 0%, var(--g-surface) 76%);
+  border-color: rgba(101, 214, 161, .28);
+}
+.finance-summary > .stat-card .stat-label::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--sem-finance);
+  vertical-align: 1px;
+}
+.assistant-drawer-page { padding: 0; min-height: 100%; }
+.assistant-drawer-page .page-header { margin: 0 0 14px; }
+.assistant-drawer-page .page-title { font-size: 1.22rem; }
+.assistant-drawer-page .page-subtitle { font-size: .78rem; }
+.assistant-drawer-page .ai-chat { height: 100%; min-height: 0; padding: 14px; border-radius: 16px; }
+.assistant-drawer-page .ai-messages { height: auto; flex: 1 1 auto; min-height: 240px; }
+
+@media (max-width: 767px) {
+  .modal-overlay { align-items: stretch; justify-content: flex-end; }
+  .modal:not(.modal--compact) { width: 100vw; height: 100dvh; max-height: 100dvh; border-radius: 0; border: 0; padding-bottom: env(safe-area-inset-bottom); }
+  .modal:not(.modal--compact) .modal-header { padding-top: calc(16px + env(safe-area-inset-top)); }
+  .modal:not(.modal--compact) .modal-body { padding: 18px 16px calc(20px + env(safe-area-inset-bottom)); }
+  .modal--compact { align-self: center; margin: auto; }
+  .assistant-drawer-page .page-header { align-items: flex-start; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal, .modal-overlay, .nav-item { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+.assistant-drawer-page { display: flex; flex-direction: column; height: 100%; }
+.assistant-drawer-page .ai-chat { flex: 1 1 auto; height: auto; min-height: 0; }
+.assistant-drawer-page .ai-messages { min-height: 220px; }
+
+/* Компактна плаваюча іконкова рейка з референсу: знак розділу видно без широкої бічної панелі. */
+@media (min-width: 1200px) {
+  .sidebar {
+    top: 14px;
+    bottom: 14px;
+    left: 14px;
+    width: 68px;
+    background: linear-gradient(180deg, #1B1B22 0%, #15151A 100%);
+    border: 1px solid var(--g-border);
+    border-radius: 30px;
+    box-shadow: 0 18px 48px rgba(0,0,0,.24);
+    overflow: visible;
+  }
+  .sidebar-logo {
+    justify-content: center;
+    padding: 12px 8px 14px;
+    border: 0;
+  }
+  .sidebar-logo .logo-icon { width: 42px; height: 42px; }
+  .sidebar-logo .logo-text { display: none; }
+  .sidebar-nav {
+    align-items: center;
+    gap: 12px;
+    padding: 4px 9px 12px;
+    scrollbar-width: none;
+  }
+  .sidebar-nav::-webkit-scrollbar { display: none; }
+  .nav-section {
+    width: 100%;
+    align-items: center;
+    gap: 6px;
+    position: relative;
+  }
+  .nav-section + .nav-section { padding-top: 10px; }
+  .nav-section + .nav-section::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 12px;
+    right: 12px;
+    height: 1px;
+    background: rgba(245, 245, 247, .10);
+  }
+  .nav-section-title { display: none; }
+  .sidebar .nav-item {
+    width: 48px;
+    height: 48px;
+    min-height: 48px;
+    justify-content: center;
+    gap: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    color: #A7A7B5;
+    background: transparent;
+  }
+  .sidebar .nav-item > svg { color: var(--nav-accent, currentColor); opacity: 1; }
+  .sidebar .nav-item:hover { background: #292931; color: #F5F5F7; }
+  .sidebar .nav-item.active {
+    background: #292931;
+    color: #F5F5F7;
+    box-shadow: inset 0 0 0 1px rgba(245,245,247,.12), 0 5px 14px rgba(0,0,0,.24);
+  }
+  .sidebar .nav-item.active > svg { color: var(--nav-accent, #F5F5F7); }
+  .sidebar .nav-item.active::before { content: none; }
+  .sidebar .nav-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0,0,0,0);
+    white-space: nowrap;
+    border: 0;
+  }
+  .sidebar .nav-item[data-tooltip]::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    z-index: 120;
+    left: calc(100% + 12px);
+    top: 50%;
+    transform: translate(-4px, -50%);
+    width: max-content;
+    max-width: 220px;
+    padding: 7px 10px;
+    border-radius: 9px;
+    background: #202126;
+    border: 1px solid rgba(255,255,255,.12);
+    color: #F5F5F7;
+    font-size: .76rem;
+    font-weight: 650;
+    line-height: 1.2;
+    box-shadow: 0 8px 24px rgba(0,0,0,.3);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 120ms ease, transform 120ms ease;
+  }
+  .sidebar .nav-item[data-tooltip]:hover::after,
+  .sidebar .nav-item[data-tooltip]:focus-visible::after { opacity: 1; transform: translate(0, -50%); }
+  .sidebar .nav-badge {
+    position: absolute;
+    right: -4px;
+    top: -3px;
+    min-width: 17px;
+    height: 17px;
+    padding: 0 4px;
+    display: grid;
+    place-items: center;
+    border: 1px solid #1B1B22;
+    border-radius: 999px;
+    background: #3B82F6;
+    color: white;
+    font-size: .58rem;
+    line-height: 1;
+  }
+  .sidebar .nav-item--hosting-alert::before {
+    content: '';
+    position: absolute;
+    right: 1px;
+    top: 1px;
+    width: 8px;
+    height: 8px;
+    border: 1.5px solid #1B1B22;
+    border-radius: 50%;
+    background: #E4A72C;
+    box-shadow: 0 0 0 2px rgba(228,167,44,.18);
+  }
+  .sidebar .nav-item--hosting-ending > svg { color: #B77912 !important; }
+  .sidebar .nav-item--hosting-ending.active > svg { color: #F2C56C !important; }
+  .sidebar .nav-item--hosting-overdue::before { background: #DF5F66; box-shadow: 0 0 0 2px rgba(223,95,102,.18); }
+  .sidebar .nav-item--hosting-overdue > svg { color: #C74952 !important; }
+  .sidebar .nav-item--hosting-overdue.active > svg { color: #F58A91 !important; }
+  .sidebar .nav-item--hosting-alert.active::before { content: ''; left: auto; bottom: auto; width: 8px; height: 8px; }
+  .sidebar .nav-item--hosting-alert .nav-badge { background: #C47F12; }
+  .sidebar-footer {
+    padding: 8px 9px 12px;
+    border: 0;
+  }
+  .sidebar-footer .nav-item--settings { margin: 0; }
+  .sidebar-footer-info { display: none; }
+  .main-content { margin-left: 96px; padding: 30px 32px; }
+}
+
+/* Картки мають власний тихий кольоровий код: дохід, витрати, клієнти, цілі та борги. */
+.ov-card--income { border-top: 2px solid var(--sem-finance); background: linear-gradient(145deg, rgba(49,130,96,.17), var(--g-surface) 72%); }
+.ov-card--income .ov-sum-value { color: var(--sem-finance); }
+.ov-card--expense { border-top: 2px solid var(--g-expense); background: linear-gradient(145deg, rgba(154,69,77,.16), var(--g-surface) 72%); }
+.ov-card--expense .ov-sum-value { color: var(--g-expense); }
+.ov-card--client-source { border-top: 2px solid var(--sem-client); }
+.ov-card--scale { border-top: 2px solid var(--sem-hosting); }
+.ov-card--scale .ov-scale-icon { color: var(--sem-hosting); }
+.ov-card--savings { border-top: 2px solid var(--sem-planned); }
+.ov-card--savings .ov-progress-bar { background: var(--sem-planned); }
+.ov-card--debts { border-top: 2px solid var(--g-expense); }
+.ov-acct {
+  padding: 9px 10px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bank-accent, #C0C8D5) 8%, transparent);
+}
+.ov-acct + .ov-acct { margin-top: 5px; border-top: 0; }
+
+/* Гаманець у «Мої фінанси»: графітова основа, живі банківські акценти. */
+.ov-card--balance-highlight {
+  background:
+    radial-gradient(ellipse at 88% 8%, rgba(101,214,161,.10), transparent 39%),
+    linear-gradient(145deg, #202027 0%, #19191F 72%);
+  border: 1px solid rgba(101,214,161,.28);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.025), 0 16px 40px rgba(0,0,0,.16);
+}
+.ov-card--balance-highlight .ov-card-head { align-items: flex-start; }
+.ov-wallet-kicker { display: block; margin-bottom: 5px; color: var(--sem-finance); font-size: .63rem; font-weight: 800; letter-spacing: .14em; }
+.ov-card--balance-highlight .ov-card-title { color: var(--g-text-dim); font-size: .86rem; }
+.ov-wallet-currency { padding: 6px 9px; border: 1px solid rgba(101,214,161,.22); border-radius: 999px; color: var(--sem-finance); background: rgba(101,214,161,.08); font-size: .67rem; font-weight: 750; letter-spacing: .08em; }
+.ov-wallet-hero { display: flex; align-items: center; justify-content: space-between; min-height: 76px; margin: 4px 0 14px; }
+.ov-card--balance-highlight .ov-balance-value { color: var(--g-text); font-size: clamp(1.9rem, 2.8vw, 2.5rem); letter-spacing: -.045em; }
+.ov-wallet-art { position: relative; width: 82px; height: 58px; margin-right: 8px; }
+.ov-wallet-art i { position: absolute; right: 0; width: 72px; height: 44px; border: 1px solid rgba(255,255,255,.2); border-radius: 11px; background: linear-gradient(135deg, #244C3D, #14231F 72%); box-shadow: 0 7px 18px rgba(0,0,0,.25); transform: rotate(-13deg); }
+.ov-wallet-art i:nth-child(2) { right: 6px; top: 6px; background: linear-gradient(135deg, #343944, #202027 72%); transform: rotate(-4deg); }
+.ov-wallet-art i:nth-child(3) { right: 12px; top: 12px; background: linear-gradient(135deg, #324E46, #202027 72%); transform: rotate(6deg); }
+.ov-wallet-list-head { display: flex; justify-content: space-between; align-items: center; padding-bottom: 8px; border-bottom: 1px solid var(--g-border); color: var(--g-text-dim); font-size: .72rem; font-weight: 700; }
+.ov-wallet-list-head span:last-child { color: var(--g-text-muted); font-weight: 550; }
+.ov-accts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+.ov-acct {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 6px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--bank-accent, #C0C8D5) 24%, var(--g-border));
+  border-radius: 12px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--bank-accent, #C0C8D5) 12%, #202027), #19191F 78%);
+  transition: border-color 180ms ease, transform 180ms ease, background-color 180ms ease;
+}
+.ov-acct:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--bank-accent, #C0C8D5) 52%, var(--g-border)); }
+.ov-acct::before { display: none; }
+.ov-acct + .ov-acct { margin-top: 0; border-top: 1px solid color-mix(in srgb, var(--bank-accent, #C0C8D5) 24%, var(--g-border)); }
+.ov-acct-brand { display: flex; align-items: center; gap: 7px; min-width: 0; width: 100%; }
+.ov-acct-mark { display: grid; flex: 0 0 24px; width: 24px; height: 24px; place-items: center; border-radius: 8px; color: var(--bank-accent); background: var(--bank-accent-wash); font-size: .72rem; font-weight: 800; }
+.ov-card--balance-highlight .ov-acct-label { overflow: hidden; color: var(--g-text-dim); font-size: .72rem; text-overflow: ellipsis; white-space: nowrap; }
+.ov-acct-nums { align-items: flex-start; width: 100%; padding-left: 31px; text-align: left; }
+.ov-card--balance-highlight .ov-acct-native { color: var(--g-text); font-size: .84rem; }
+.ov-card--balance-highlight .ov-acct-eq { font-size: .64rem; }
+.ov-acct--empty { grid-column: 1 / -1; }
+
+/* Вхід на огляд: короткий каскад карток, значення рахуються один раз при появі. */
+.ov-page.active .ov-header { animation: fadeIn 420ms cubic-bezier(.2,.75,.25,1) both; }
+.ov-page.active .ov-section { animation: cardIn 480ms cubic-bezier(.2,.75,.25,1) both; }
+.ov-page.active .ov-section:nth-of-type(2) { animation-delay: 70ms; }
+.ov-page.active .ov-section:nth-of-type(3) { animation-delay: 130ms; }
+.ov-page.active .ov-section:nth-of-type(4) { animation-delay: 190ms; }
+.ov-page.active .ov-card { animation: cardIn 520ms cubic-bezier(.2,.75,.25,1) both; }
+.ov-page.active .ov-row > .ov-card:nth-child(2) { animation-delay: 70ms; }
+.ov-page.active .chart-body { animation: fadeIn 750ms 150ms ease-out both; }
+.ov-page.active .chart-body canvas { filter: drop-shadow(0 3px 10px rgba(0,0,0,.12)); }
+@media (prefers-reduced-motion: reduce) {
+  .ov-page.active .ov-header, .ov-page.active .ov-section, .ov-page.active .ov-card, .ov-page.active .chart-body { animation: none !important; }
+  .ov-acct { transition: none; }
+}
+
+@media (max-width: 560px) {
+  .ov-accts { grid-template-columns: 1fr; }
+  .ov-wallet-art { transform: scale(.82); transform-origin: right center; margin-right: 0; }
 }

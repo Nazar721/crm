@@ -9,7 +9,7 @@ ChartJS.register(
 // Плавніші анімації графіків: мутуємо поля дефолтів, а не замінюємо об'єкти —
 // Chart.js тримає в конфігах внутрішні функції, заміна ламає анімації і тултіпи
 if (ChartJS.defaults.animation) {
-  ChartJS.defaults.animation.duration = 400;
+  ChartJS.defaults.animation.duration = 850;
   ChartJS.defaults.animation.easing = 'easeOutQuart';
 }
 
@@ -26,7 +26,7 @@ ChartJS.register({
 
 const numbersAnim = ChartJS.defaults.animations?.numbers;
 if (numbersAnim) {
-  numbersAnim.duration = 400;
+  numbersAnim.duration = 850;
   numbersAnim.easing = 'easeOutQuart';
 }
 
@@ -57,6 +57,12 @@ export const CHART = {
   neutralFill: 'rgba(112,116,124,0.35)',
   warning: '#E8BD69',
 };
+
+/** Chart.js entrance motion stays smooth while honoring the OS accessibility setting. */
+export const chartAnimation = () => ({
+  duration: typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 850,
+  easing: 'easeOutQuart' as const,
+});
 
 /** X-вісь: без сітки, компактні підписи — 12 місяців на 360 px. */
 export const CHART_X = {

@@ -3,6 +3,7 @@ import React, { useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
+import { hostingExpiringWithin } from '@/lib/hosting';
 
 /** Drawer-режим: 768–1199px. На ширшому desktop панель постійна,
  *  на вужчому навігацію повністю бере на себе TabBar. */
@@ -62,7 +63,8 @@ function NavIcon({ icon }: { icon: string }) {
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const { badges, sidebarOpen, closeSidebar } = useApp();
+  const { badges, snapshot, sidebarOpen, closeSidebar, assistantOpen, setAssistantOpen } = useApp();
+  const hostingExpiring = hostingExpiringWithin(snapshot.hostingServices, snapshot.hostingPayments, 5);
 
   useEffect(() => {
     if (!sidebarOpen) return;
@@ -94,17 +96,44 @@ export default function Sidebar() {
               <div className="nav-section-title">{section.title}</div>
               {section.items.map((item) => {
                 const isActive = pathname === item.href;
-                const badgeValue = item.badge ? (badges as unknown as Record<string, number>)[item.badge] : null;
+                const badgeValue = item.href === '/hosting'
+                  ? (hostingExpiring || null)
+                  : item.badge ? (badges as unknown as Record<string, number>)[item.badge] : null;
+                const hostingAlertClass = item.href === '/hosting' && hostingExpiring > 0
+                  ? ' nav-item--hosting-alert nav-item--hosting-ending'
+                  : '';
+                const navTitle = item.href === '/hosting' && hostingExpiring > 0
+                  ? `Хостинг: ${hostingExpiring} ${hostingExpiring === 1 ? 'послуга завершується' : 'послуги завершуються'} протягом 5 днів`
+                  : item.label;
+                if (item.href === '/assistant') return (
+                  <button
+                    key={item.href}
+                    type="button"
+                    className={`nav-item nav-item--assistant${assistantOpen ? ' active' : ''}`}
+                    aria-expanded={assistantOpen}
+                    aria-label={item.label}
+                    title={navTitle}
+                    data-tooltip={navTitle}
+                    onClick={() => { closeSidebar(); setAssistantOpen(true); }}
+                  >
+                    <NavIcon icon={item.icon} />
+                    <span className="nav-label">{item.label}</span>
+                  </button>
+                );
                 return (
                   <Link
                     key={item.href}
                     href={item.href}
-                    className={`nav-item${isActive ? ' active' : ''}`}
+                    data-nav={item.href}
+                    className={`nav-item${isActive ? ' active' : ''}${hostingAlertClass}`}
                     aria-current={isActive ? 'page' : undefined}
+                    aria-label={item.label}
+                    title={navTitle}
+                    data-tooltip={navTitle}
                     onClick={closeSidebar}
                   >
                     <NavIcon icon={item.icon} />
-                    <span>{item.label}</span>
+                    <span className="nav-label">{item.label}</span>
                     {badgeValue !== null && badgeValue !== undefined && (
                       <span className="nav-badge">{badgeValue}</span>
                     )}
@@ -118,12 +147,16 @@ export default function Sidebar() {
         <div className="sidebar-footer">
           <Link
             href="/settings"
+            data-nav="/settings"
             className={`nav-item nav-item--settings${pathname === '/settings' ? ' active' : ''}`}
             aria-current={pathname === '/settings' ? 'page' : undefined}
+            aria-label="Налаштування"
+            title="Налаштування"
+            data-tooltip="Налаштування"
             onClick={closeSidebar}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.87l-.06-.06A2 2 0 1 1 7.03 3.84l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3a2 2 0 1 1 4 0v.09A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.23.36.58.61 1 .6h.6a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1.4z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
-            <span>Налаштування</span>
+            <span className="nav-label">Налаштування</span>
           </Link>
           <div className="sidebar-footer-info">
             <span className="footer-version">MVP v2.0</span>
