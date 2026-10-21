@@ -3,6 +3,7 @@ import { useState, useMemo, useRef, type ReactNode } from 'react';
 import { useApp } from '@/context/AppContext';
 import { buildDashboardView, type DashboardView } from '@/lib/dashboard-view';
 import { formatMoney } from '@/lib/utils';
+import { monthIncome } from '@/lib/calc';
 import dynamic from 'next/dynamic';
 import Modal from '@/components/ui/Modal';
 import { useRevealCards } from '@/hooks/useViewportMotion';
@@ -14,7 +15,6 @@ const IncomeChart = dynamic(() => import('@/components/charts/IncomeChart'), { s
 const ProjectsBarChart = dynamic(() => import('@/components/charts/ProjectsBarChart'), { ssr: false });
 const SourcesChart = dynamic(() => import('@/components/charts/SourcesChart'), { ssr: false });
 const FinanceBarChart = dynamic(() => import('@/components/charts/FinanceBarChart'), { ssr: false });
-const BankBalancesChart = dynamic(() => import('@/components/charts/BankBalancesChart'), { ssr: false });
 const SavingsChart = dynamic(() => import('@/components/charts/SavingsChart'), { ssr: false });
 const AgencyIncomeChart = dynamic(() => import('@/components/charts/AgencyIncomeChart'), { ssr: false });
 
@@ -47,12 +47,16 @@ export default function DashboardPage() {
   useRevealCards(pageRef, '.ov-card, .ov-hero');
   const { snapshot } = useApp();
   const [showAgency, setShowAgency] = useState(false);
-  const [showAssets, setShowAssets] = useState(false);
+  const [showIncome, setShowIncome] = useState(false);
   const [doneMode, setDoneMode] = useState<'paid' | 'count'>('paid');
   const [flowMode, setFlowMode] = useState<'both' | 'in' | 'out'>('both');
   const [savingsTab, setSavingsTab] = useState<'goals' | 'total'>('goals');
 
   const view: DashboardView = useMemo(() => buildDashboardView(snapshot), [snapshot]);
+  const monthlyIncome = useMemo(
+    () => view.monthKeys.map(key => monthIncome(snapshot.transactions, key, snapshot.financeSettings)),
+    [view.monthKeys, snapshot.transactions, snapshot.financeSettings],
+  );
   const s = view.stats;
   const series = view.series;
 
@@ -91,9 +95,9 @@ export default function DashboardPage() {
       <section className="ov-section" aria-labelledby="ov-sec-finance">
         <div className="ov-section-head">
           <h2 className="ov-section-title" id="ov-sec-finance">Мої фінанси</h2>
-          <button type="button" className="ov-sec-action" aria-expanded={showAssets} aria-controls="ov-assets"
-            onClick={() => setShowAssets((v) => !v)}>
-            Графік активів
+          <button type="button" className="ov-sec-action" aria-expanded={showIncome} aria-controls="ov-income"
+            onClick={() => setShowIncome((v) => !v)}>
+            Графік доходу
           </button>
         </div>
 
@@ -157,14 +161,14 @@ export default function DashboardPage() {
           </article>
         </div>
 
-        {showAssets ? (
-          <div className="ov-row ov-row--full" id="ov-assets">
+        {showIncome ? (
+          <div className="ov-row ov-row--full" id="ov-income">
             <article className="ov-card">
               <div className="ov-card-head">
-                <h3 className="ov-card-title">Активи рахунків</h3>
+                <h3 className="ov-card-title">Дохід по місяцях</h3>
               </div>
-              <ChartViewport><BankBalancesChart balances={view.balances} /></ChartViewport>
-              <p className="ov-card-foot">Неприховані транзакції, у гривневому еквіваленті.</p>
+              <ChartViewport><IncomeChart labels={view.labels} data={monthlyIncome} /></ChartViewport>
+              <p className="ov-card-foot">Останні 12 місяців. Той самий дохід, що у розділі «Фінанси».</p>
             </article>
           </div>
         ) : null}
@@ -198,7 +202,7 @@ export default function DashboardPage() {
               />
             </div>
             {doneMode === 'paid'
-              ? <ChartViewport><IncomeChart labels={view.labels} data={series.completedPaid} /></ChartViewport>
+              ? <ChartViewport><IncomeChart labels={view.labels} data={series.completedPaid} variant="completed" /></ChartViewport>
               : <ChartViewport><ProjectsBarChart labels={view.labels} data={series.completedCount} /></ChartViewport>}
             <p className="ov-card-foot">
               {doneMode === 'paid'

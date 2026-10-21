@@ -6,23 +6,27 @@ import { CHART, CHART_TOOLTIP, CHART_X, CHART_Y, chartAnimation } from './ChartS
 interface IncomeChartProps {
   labels: string[];
   data: number[];
+  variant?: 'income' | 'completed';
 }
 
-export default function IncomeChart({ labels, data }: IncomeChartProps) {
+export default function IncomeChart({ labels, data, variant = 'income' }: IncomeChartProps) {
+  const completed = variant === 'completed';
+  const color = completed ? CHART.accent : CHART.income;
+  const fill = completed ? CHART.accentFill : CHART.incomeFill;
   return (
-    <div className="chart-body" role="img" aria-label="Сума закритих замовлень за місяць, останні 12 місяців">
+    <div className="chart-body" role="img" aria-label={completed ? 'Сума закритих замовлень за місяць, останні 12 місяців' : 'Дохід по місяцях, останні 12 місяців'}>
       <Line
         data={{
           labels,
           datasets: [{
             data,
-            label: 'Закрито, сума',
-            borderColor: CHART.accent,
-            backgroundColor: CHART.accentFill,
+            label: completed ? 'Закрито, сума' : 'Дохід',
+            borderColor: color,
+            backgroundColor: fill,
             borderWidth: 2,
             tension: 0.4,
             fill: true,
-            pointBackgroundColor: CHART.accent,
+            pointBackgroundColor: color,
             pointBorderColor: '#1B1B23',
             pointBorderWidth: 2,
             pointRadius: 3,
