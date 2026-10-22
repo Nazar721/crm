@@ -3866,6 +3866,8 @@ tr.week-b .week-dot {
   border-radius: 14px;
   opacity: 1;
   background: var(--bg, #363C48);
+  backface-visibility: hidden;
+  transform: translateZ(0);
   box-shadow: 0 12px 28px -8px rgba(0, 0, 0, 0.5);
   cursor: pointer;
   overflow: hidden;
@@ -4027,7 +4029,7 @@ tr.week-b .week-dot {
 @media (max-width: 560px) {
   .ov-wallet-pocket { width: min(94vw, 320px); height: 98px; }
   .ov-pocket-value { font-size: 1.4rem; }
-  .ov-wallet-card { width: min(90vw, 300px); }
+  .ov-wallet-card { width: min(90vw, 280px) !important; height: 130px !important; top: 2px !important; }
 }
 
 @media (prefers-reduced-motion: reduce) {
