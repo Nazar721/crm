@@ -6,7 +6,7 @@ import { useApp } from '@/context/AppContext';
 export default function AssistantDrawer() {
   const { assistantOpen, setAssistantOpen } = useApp();
   return (
-    <Modal isOpen={assistantOpen} onClose={() => setAssistantOpen(false)} title="AI-помічник" size="lg">
+    <Modal isOpen={assistantOpen} onClose={() => setAssistantOpen(false)} title="AI" size="lg">
       <AssistantScreen drawerMode />
     </Modal>
   );
