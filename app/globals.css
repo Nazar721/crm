@@ -3840,199 +3840,158 @@ tr.week-b .week-dot {
 .hosting-overview .settings-info-row strong { flex-shrink: 0; }
 
 
-/* ===== Стос карток рахунків («Мої фінанси») — композиція за реifenсом ===== */
+/* Account cards: parent-relative sizes and a fixed, explicitly tinted glass pocket. */
+.ov-wallet-accounts { min-width: 0; width: 100%; }
 .ov-wallet-stack {
   position: relative;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding-bottom: 18px;
+  width: min(100%, 360px);
+  height: calc(218px + var(--stack-rise));
+  margin: 12px auto 0;
+  isolation: isolate;
 }
-
-.ov-card-list {
-  position: relative;
-  width: 100%;
-  overflow: hidden;
-  /* Висота залежить лише від кількості шарів — стабільна під час перемикання. */
-}
-
-/* Картки непрозорі, градієнт на всю поверхню, без внутрішніх рамок і контурів нижніх країв. */
+.ov-card-list { position: absolute; inset: 0 8px; }
 .ov-wallet-card {
   position: absolute;
+  top: 0;
   left: 50%;
-  transform: translateX(-50%);
-  border: none;
-  border-radius: 14px;
-  opacity: 1;
-  background: var(--bg, #363C48);
-  backface-visibility: hidden;
-  transform: translateZ(0);
-  box-shadow: 0 12px 28px -8px rgba(0, 0, 0, 0.5);
+  width: var(--card-width);
+  height: 184px;
+  min-width: 0;
+  padding: 0;
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 16px;
+  color: #fff;
+  text-align: left;
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--bank-color) 45%, #12181E),
+    var(--bank-color) 55%,
+    color-mix(in srgb, var(--bank-color) 50%, #0B1015));
+  box-shadow: 0 10px 24px -8px rgba(0,0,0,.42);
+  transform: translate3d(-50%, var(--card-y), 0);
   cursor: pointer;
   overflow: hidden;
-  outline: none;
-  transition:
-    width 500ms var(--motion-smooth),
-    height 500ms var(--motion-smooth),
-    top 500ms var(--motion-smooth),
-    box-shadow 300ms ease;
+  transition: transform 440ms var(--motion-smooth), width 440ms var(--motion-smooth), box-shadow 180ms ease;
 }
-
-.ov-wallet-card:focus-visible {
-  outline: 3px solid #FFFFFF;
-  outline-offset: 2px;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .ov-wallet-card:not([aria-pressed="true"]):hover {
-    transform: translateX(-50%) translateY(-3px);
-    box-shadow: 0 16px 34px -8px rgba(0, 0, 0, 0.55);
-  }
-}
-
-.ov-card-head {
+.ov-wallet-card:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+/* A separate class avoids inheriting the wrapping/padding of dashboard panel headers. */
+.ov-bank-card-head {
+  position: absolute;
+  inset: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 14px;
+  height: 44px;
+  padding: 7px 12px;
 }
-
 .ov-chip {
   position: relative;
-  width: 42px;
-  height: 26px;
-  border-radius: 8px;
-  flex-shrink: 0;
-  background:
-    linear-gradient(135deg, #B9C2CC 0%, #8F97A1 45%, #B9C2CC 100%);
-  border: 1px solid color-mix(in srgb, #ffffff 35%, transparent);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 50%, transparent);
+  flex: 0 0 34px;
+  width: 34px;
+  height: 24px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #CFD7DF, #8F97A1 48%, #BBC5D0);
+  border: 1px solid rgba(255,255,255,.55);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.5);
   overflow: hidden;
 }
-
-.ov-chip-border {
-  position: absolute;
-  inset: 0;
-  border-radius: 7px;
-  border: 0.5px solid color-mix(in srgb, #ffffff 45%, transparent);
-  pointer-events: none;
-}
-
+.ov-chip-border { position: absolute; inset: 0; border-radius: 5px; border: 1px solid rgba(255,255,255,.25); }
 .ov-chip-contact {
   position: absolute;
   bottom: 5px;
-  width: 1.6px;
-  background: color-mix(in srgb, #5A6470 70%, transparent);
-  border-radius: 0.8px;
-  opacity: 0.85;
+  left: calc(6px + var(--i) * 6px);
+  width: 1.5px;
+  height: 10px;
+  border-radius: 1px;
+  background: rgba(69,83,99,.55);
 }
-
-.ov-chip-contact:nth-child(1) { left: 10px; height: 7px; }
-.ov-chip-contact:nth-child(2) { left: 15px; height: 10px; }
-.ov-chip-contact:nth-child(3) { left: 20px; height: 8px; }
-.ov-chip-contact:nth-child(4) { left: 26px; height: 6px; }
-
-.ov-card-info {
-  min-width: 0;
-  overflow: hidden;
-}
-
+.ov-chip-contact:nth-of-type(3), .ov-chip-contact:nth-of-type(5) { height: 6px; }
+.ov-card-info { display: flex; align-items: baseline; gap: 8px; flex: 1; min-width: 0; }
 .ov-card-name {
+  display: block;
+  min-width: 0;
   font-weight: 700;
-  font-size: 0.86rem;
-  color: #FFFFFF;
+  font-size: .82rem;
+  line-height: 1.3;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-.ov-card-currency {
-  font-size: 0.66rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: color-mix(in srgb, #ffffff 80%, transparent);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Рідке тоноване скло ТІЛЬКИ для нерухомої передньої кишені внизу стосу. */
+.ov-card-currency { flex: 0 0 auto; font-size: .6rem; font-weight: 700; letter-spacing: .06em; color: #DFE6ED; }
 .ov-wallet-pocket {
   position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  width: min(92vw, 360px);
-  height: 108px;
-  bottom: 0;
-  border-radius: 0 0 20px 20px;
-  /* Рідке скло Apple-подібне: висока прозорість, сильний blur, без ліній на верхньому краю */
-  background: color-mix(in srgb, rgba(10, 14, 18, 0.4) 40%, transparent);
-  backdrop-filter: blur(24px) saturate(130%);
-  -webkit-backdrop-filter: blur(24px) saturate(130%);
-  box-shadow:
-    0 -4px 16px -4px rgba(0, 0, 0, 0.3);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 9px 16px;
+  inset: auto 0 0;
   z-index: 4;
-}
-
-.ov-pocket-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
   min-width: 0;
-  overflow: hidden;
-  position: relative;
-  z-index: 2;
+  height: 128px;
+  padding: 17px 18px;
+  border: 1px solid rgba(220,255,238,.14);
+  border-radius: 0 0 22px 22px;
+  /* The glass appearance is painted from selection state, never from a cached
+     backdrop-filter texture. Tint and balance therefore update in the same frame. */
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.04), rgba(8,34,26,.68)),
+    linear-gradient(135deg,
+      color-mix(in srgb, var(--wallet-tint) 65%, #253B35),
+      color-mix(in srgb, var(--wallet-tint) 75%, #17241F));
+  box-shadow: 0 -6px 20px rgba(0,0,0,.16), inset 0 1px 0 rgba(255,255,255,.06);
+  pointer-events: none;
 }
-
+.ov-pocket-text { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; min-width: 0; }
 .ov-pocket-name {
-  margin-top: 10px;
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.08em;
+  max-width: 100%;
+  color: #E1EEE7;
+  font-size: .66rem;
+  font-weight: 700;
+  letter-spacing: .07em;
   text-transform: uppercase;
-  color: var(--g-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-
-.ov-pocket-currency {
-  font-size: 0.82rem;
-  font-weight: 750;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--g-text-dim);
-}
-
 .ov-pocket-value {
+  max-width: 100%;
+  color: #fff;
   font-family: var(--font-display);
   font-weight: 800;
-  font-size: 1.55rem;
-  letter-spacing: -0.02em;
-  color: var(--g-text);
+  font-size: clamp(1.15rem, 5.5vw, 1.65rem);
   font-variant-numeric: tabular-nums;
+  letter-spacing: -.025em;
   line-height: 1.15;
+  overflow-wrap: anywhere;
 }
-
-.ov-pocket-eq {
-  margin-top: 6px;
-  font-size: 0.95rem;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  color: var(--g-text-dim);
-  line-height: 1.35;
+.ov-pocket-eq { max-width: 100%; color: #E1EEE7; font-size: .68rem; line-height: 1.35; overflow-wrap: anywhere; }
+.ov-account-choices { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.ov-account-choice {
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255,255,255,.2);
+  border-radius: 12px;
+  background: rgba(10,24,20,.28);
+  color: #E1EEE7;
+  font-size: .7rem;
+  overflow-wrap: anywhere;
+  cursor: pointer;
 }
-
+.ov-account-choice[aria-pressed="true"] { border-color: #A3EAC3; background: rgba(163,234,195,.16); }
+.ov-account-choice:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+@media (hover: hover) and (pointer: fine) {
+  .ov-wallet-card:not([aria-pressed="true"]):hover {
+    transform: translate3d(-50%, calc(var(--card-y) - 3px), 0);
+    box-shadow: 0 14px 28px -8px rgba(0,0,0,.5);
+  }
+}
 @media (max-width: 560px) {
-  .ov-wallet-pocket { width: min(94vw, 320px); height: 98px; }
-  .ov-pocket-value { font-size: 1.4rem; }
-  .ov-wallet-card { width: min(90vw, 280px) !important; height: 130px !important; top: 2px !important; }
+  .ov-wallet-stack { width: min(100%, 340px); }
+  .ov-bank-card-head { gap: 8px; padding-inline: 10px; }
+  .ov-card-info { gap: 6px; }
+  .ov-card-name { font-size: .76rem; }
+  .ov-card-currency { font-size: .56rem; }
+  .ov-wallet-pocket { padding: 16px; }
+  .ov-wallet-hero { min-height: 62px; margin-bottom: 8px; }
+  .ov-card--balance-highlight .ov-balance-value { max-width: 100%; overflow-wrap: anywhere; }
 }
-
 @media (prefers-reduced-motion: reduce) {
-  .ov-wallet-card { transition: none !important; }
-  .ov-wallet-card:not([aria-pressed="true"]):hover { transform: none !important; }
+  .ov-wallet-card { transition: none; }
+  .ov-wallet-card:not([aria-pressed="true"]):hover { transform: translate3d(-50%, var(--card-y), 0); }
 }
