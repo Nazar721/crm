@@ -10,6 +10,7 @@ import { useRevealCards } from '@/hooks/useViewportMotion';
 import AnimatedNumber from '@/components/ui/AnimatedNumber';
 import ChartViewport from '@/components/ui/ChartViewport';
 import AnimatedSegmentedControl from '@/components/ui/AnimatedSegmentedControl';
+import AccountCardStack from '@/components/dashboard/AccountCardStack';
 
 const IncomeChart = dynamic(() => import('@/components/charts/IncomeChart'), { ssr: false });
 const ProjectsBarChart = dynamic(() => import('@/components/charts/ProjectsBarChart'), { ssr: false });
@@ -112,25 +113,9 @@ export default function DashboardPage() {
             </div>
             <div className="ov-wallet-hero">
               <div className="ov-balance-value"><AnimatedNumber value={s.balance} format={money} /></div>
-              <div className="ov-wallet-art" aria-hidden="true"><i /><i /><i /></div>
             </div>
             <div className="ov-wallet-list-head"><span>Рахунки</span><span>{accounts.length} активні</span></div>
-            <ul className="ov-accts">
-              {accounts.map((a) => (
-                <li className="ov-acct" key={a.id} data-bank={a.id}>
-                  <span className="ov-acct-brand"><span className="ov-acct-mark">{a.label.slice(0, 1)}</span><span className="ov-acct-label">{a.label}</span></span>
-                  <span className="ov-acct-nums">
-                    <span className="ov-acct-native">{formatMoney(a.native.amount, a.native.currency)}</span>
-                    {a.native.currency !== a.displayEquivalent.currency ? (
-                      <span className="ov-acct-eq">
-                        еквівалент {formatMoney(a.displayEquivalent.amount, a.displayEquivalent.currency)}
-                      </span>
-                    ) : null}
-                  </span>
-                </li>
-              ))}
-              {accounts.length === 0 ? <li className="ov-acct ov-acct--empty">Руху по рахунках ще немає</li> : null}
-            </ul>
+            <AccountCardStack accounts={accounts} displayCurrency={view.displayCurrency} />
           </article>
 
           <article className="ov-card">
