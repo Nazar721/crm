@@ -112,6 +112,8 @@
   --radius-md: 14px;
   --radius-lg: 18px;
   --radius-xl: 22px;
+  --field-height: 44px;
+  --field-line-height: 20px;
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.30);
   --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.40);
@@ -1004,6 +1006,41 @@ body {
   pointer-events: none;
 }
 
+/* One geometry for text, numeric, date and select controls across the CRM.
+   Reset native appearance so Safari does not collapse selects to menu height. */
+.form-input, .search-input, .filter-select {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  line-height: var(--field-line-height);
+  color-scheme: dark;
+}
+
+input.form-input, select.form-input, .search-input, .filter-select {
+  height: var(--field-height);
+  min-height: var(--field-height);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+select.form-input, select.filter-select {
+  padding: 10px 38px 10px 12px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23CCD1DC' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 16px;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.form-input::-webkit-datetime-edit { padding: 0; }
+.form-input::-webkit-date-and-time-value {
+  min-height: var(--field-line-height);
+  text-align: left;
+}
+
 .search-input {
   width: 100%;
   background: var(--g-surface);
@@ -1538,15 +1575,18 @@ body {
    ============================================= */
 .form-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 15px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
 }
 
-.form-group { display: flex; flex-direction: column; gap: 6px; }
+.form-group { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .form-group--full { grid-column: 1 / -1; }
 
 .form-label {
+  display: block;
   font-size: 0.76rem;
+  line-height: 1.4;
   font-weight: 650;
   color: var(--text-secondary);
 }
@@ -1580,9 +1620,11 @@ body {
   background: rgba(101, 214, 161, 0.12);
 }
 
-.form-textarea {
+textarea.form-input:not(.ai-composer-input), .form-textarea {
+  display: block;
   resize: vertical;
-  min-height: 80px;
+  min-height: 96px;
+  line-height: 1.5;
 }
 
 .form-hint {
@@ -1757,7 +1799,7 @@ body {
   color: var(--accent-blue);
 }
 
-select.form-input option {
+select.form-input option, select.filter-select option {
   background: var(--g-elevated);
   color: var(--text-primary);
 }
@@ -2084,6 +2126,8 @@ tr.week-b .week-dot {
 
 .client-autocomplete {
   position: relative;
+  min-width: 0;
+  width: 100%;
 }
 
 .client-suggestions {
@@ -2746,7 +2790,7 @@ tr.week-b .week-dot {
 .cloud-access-form h1 { line-height: 1.2; }
 .cloud-access-form > p { color: var(--text-secondary); }
 .cloud-access-form .form-group { text-align: left; gap: 8px; }
-.cloud-access-form .form-input { font-size: 16px; min-height: 48px; }
+.cloud-access-form .form-input { font-size: 16px; min-height: var(--field-height); }
 .cloud-access-form .btn { width: 100%; min-height: 48px; }
 .cloud-access-form .cloud-access-error { color: var(--accent-red, #ff453a); font-size: 0.9rem; }
 
