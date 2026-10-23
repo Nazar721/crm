@@ -1477,7 +1477,62 @@ select.form-input, select.filter-select {
 .btn-icon--danger:hover { color: var(--danger); border-color: rgba(244, 136, 145, 0.32); }
 .btn-icon--edit:hover { color: var(--accent-blue); border-color: rgba(255, 122, 66, 0.30); }
 
-.actions-cell { display: flex; gap: 6px; }
+.actions-cell { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.actions-cell > .btn-icon { flex-shrink: 0; }
+
+/* Textual table actions stay separate, readable and easy to tap. */
+.text-row-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  width: 256px;
+  max-width: 100%;
+}
+
+.text-row-actions .row-action {
+  --row-action-color: var(--text-secondary);
+  --row-action-fill: rgba(255, 255, 255, 0.035);
+  --row-action-border: var(--g-border);
+  min-width: 0;
+  min-height: 40px;
+  padding: 8px;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 11px;
+  font-size: 0.75rem;
+  line-height: 1.2;
+  color: var(--row-action-color);
+  background: var(--row-action-fill);
+  border-color: var(--row-action-border);
+}
+
+.row-action svg { flex: 0 0 16px; }
+.text-row-actions .row-action--payment {
+  --row-action-color: var(--accent-green);
+  --row-action-fill: rgba(101, 214, 161, 0.09);
+  --row-action-border: rgba(101, 214, 161, 0.28);
+}
+.text-row-actions .row-action--edit {
+  --row-action-color: var(--accent-blue);
+  --row-action-fill: rgba(114, 183, 255, 0.07);
+  --row-action-border: rgba(114, 183, 255, 0.25);
+}
+.text-row-actions .row-action--danger {
+  --row-action-color: var(--danger);
+  --row-action-fill: var(--danger-dim);
+  --row-action-border: rgba(244, 136, 145, 0.28);
+}
+.text-row-actions .planned-more { grid-column: 1 / -1; }
+.row-action:disabled { opacity: 0.5; cursor: not-allowed; }
+.row-action:not(:disabled):active { transform: scale(0.97); }
+.row-action:focus-visible { outline-color: var(--row-action-color); outline-offset: 3px; }
+
+@media (hover: hover) and (pointer: fine) {
+  .row-action:not(:disabled):hover {
+    background: color-mix(in srgb, var(--row-action-color) 13%, var(--g-surface));
+    border-color: var(--row-action-color);
+  }
+}
 
 /* =============================================
    MODALS
@@ -2042,7 +2097,9 @@ select.form-input option, select.filter-select option {
   .data-table td[data-label="Дії"] { padding-bottom: 2px; }
   .data-table td[data-label="Дії"]::before { display: none; }
   .data-table td[data-label=""]::before { display: none; }
-  .data-table .actions-cell { gap: 8px; }
+  .data-table .actions-cell { flex-wrap: wrap; gap: 10px; }
+  .text-row-actions { width: 100%; gap: 10px; padding-top: 5px; }
+  .text-row-actions .row-action { min-height: 44px; padding: 10px 8px; font-size: 0.85rem; }
   .empty-row td { padding: 0 !important; border: none !important; }
   .empty-row td::before { display: none; }
 

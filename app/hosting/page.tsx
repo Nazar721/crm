@@ -13,6 +13,7 @@ import {
 import { emitToast } from '@/lib/toast-bus';
 import Modal from '@/components/ui/Modal';
 import ConfirmModal from '@/components/ui/ConfirmModal';
+import RowActionButton from '@/components/ui/RowActionButton';
 import { useConfirm } from '@/hooks/useConfirm';
 import HostServiceForm from '@/components/hosting/HostServiceForm';
 import HostPaymentForm from '@/components/hosting/HostPaymentForm';
@@ -251,19 +252,15 @@ export default function HostingPage() {
                       <div key={i} style={{ fontSize: '0.7rem', color: 'var(--warning, #b45309)', marginTop: 2 }}>{w}</div>
                     ))}
                   </td>
-                  <td data-label="Дії" style={{ whiteSpace: 'nowrap' }}>
-                    <button className="btn btn-ghost" style={{ padding: '4px 6px', fontSize: '0.75rem' }} onClick={() => openAddPayment(service)}>
-                      Оплата
-                    </button>
-                    <button className="btn btn-ghost" style={{ padding: '4px 6px', fontSize: '0.75rem' }} onClick={() => setHistoryService(service)}>
-                      Історія
-                    </button>
-                    <button className="btn btn-ghost" style={{ padding: '4px 6px', fontSize: '0.75rem' }} onClick={() => openEditService(service)}>
-                      Редагувати
-                    </button>
-                    <button className="btn btn-ghost" style={{ padding: '4px 6px', fontSize: '0.75rem' }} onClick={() => handleArchive(service)}>
-                      {service.archived ? 'Повернути' : 'Архівувати'}
-                    </button>
+                  <td data-label="Дії">
+                    <div className="text-row-actions">
+                      <RowActionButton icon="payment" tone="payment" onClick={() => openAddPayment(service)}>Оплата</RowActionButton>
+                      <RowActionButton icon="history" onClick={() => setHistoryService(service)}>Історія</RowActionButton>
+                      <RowActionButton icon="edit" tone="edit" onClick={() => openEditService(service)}>Редагувати</RowActionButton>
+                      <RowActionButton icon={service.archived ? 'restore' : 'archive'} onClick={() => handleArchive(service)}>
+                        {service.archived ? 'Повернути' : 'Архівувати'}
+                      </RowActionButton>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -314,13 +311,11 @@ export default function HostingPage() {
                     <td data-label="Сума">{formatMoney(payment.amount, payment.currency || 'UAH')}</td>
                     <td data-label="Період">{formatDate(payment.periodStart)}–{formatDate(payment.periodEnd)}</td>
                     <td data-label="Примітка">{payment.note || '—'}</td>
-                    <td data-label="Дії" style={{ whiteSpace: 'nowrap' }}>
-                      <button className="btn btn-ghost" style={{ padding: '4px 6px', fontSize: '0.75rem' }} onClick={() => { setHistoryService(null); openEditPayment(payment); }}>
-                        Редагувати
-                      </button>
-                      <button className="btn btn-ghost" style={{ padding: '4px 6px', fontSize: '0.75rem', color: 'var(--danger)' }} onClick={() => handleDeletePayment(payment)}>
-                        Видалити
-                      </button>
+                    <td data-label="Дії">
+                      <div className="text-row-actions">
+                        <RowActionButton icon="edit" tone="edit" onClick={() => { setHistoryService(null); openEditPayment(payment); }}>Редагувати</RowActionButton>
+                        <RowActionButton icon="delete" tone="danger" onClick={() => handleDeletePayment(payment)}>Видалити</RowActionButton>
+                      </div>
                     </td>
                   </tr>
                 ))}

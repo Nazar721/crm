@@ -5,6 +5,7 @@ import { formatDate } from '@/lib/utils';
 import { savePlannedProject, deletePlannedProject } from '@/lib/actions';
 import { emitToast } from '@/lib/toast-bus';
 import ConfirmModal from '@/components/ui/ConfirmModal';
+import RowActionButton from '@/components/ui/RowActionButton';
 import { useConfirm } from '@/hooks/useConfirm';
 import PlannedProjectForm from '@/components/planned/PlannedProjectForm';
 import type { PlannedProject } from '@/types';
@@ -160,22 +161,21 @@ export default function PlannedProjectsPage() {
                   <td data-label="Створено" className="cell-nowrap">
                     {p.createdAt ? formatDate(p.createdAt) : '—'}
                   </td>
-                  <td data-label="Дії" style={{ whiteSpace: 'nowrap' }}>
-                    {p.description && (
-                      <button
-                        className="btn btn-ghost planned-more"
-                        style={{ padding: '4px 6px', fontSize: '0.75rem' }}
-                        onClick={() => setExpandedId(expandedId === p.id ? '' : p.id)}
-                      >
-                        {expandedId === p.id ? 'Приховати' : 'Детальніше'}
-                      </button>
-                    )}
-                    <button className="btn btn-ghost" style={{ padding: '4px 6px', fontSize: '0.75rem' }} onClick={() => openEdit(p)}>
-                      Редагувати
-                    </button>
-                    <button className="btn btn-ghost" style={{ padding: '4px 6px', fontSize: '0.75rem', color: 'var(--danger)' }} onClick={() => handleDelete(p)}>
-                      Видалити
-                    </button>
+                  <td data-label="Дії">
+                    <div className="text-row-actions">
+                      {p.description && (
+                        <RowActionButton
+                          icon={expandedId === p.id ? 'collapse' : 'expand'}
+                          className="planned-more"
+                          aria-expanded={expandedId === p.id}
+                          onClick={() => setExpandedId(expandedId === p.id ? '' : p.id)}
+                        >
+                          {expandedId === p.id ? 'Приховати' : 'Детальніше'}
+                        </RowActionButton>
+                      )}
+                      <RowActionButton icon="edit" tone="edit" onClick={() => openEdit(p)}>Редагувати</RowActionButton>
+                      <RowActionButton icon="delete" tone="danger" onClick={() => handleDelete(p)}>Видалити</RowActionButton>
+                    </div>
                   </td>
                 </tr>
               ))}
