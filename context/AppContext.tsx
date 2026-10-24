@@ -6,6 +6,8 @@ import type { DataSnapshot } from '@/types';
 import type { CollectionKey, StorageIssue } from '@/lib/datasource/types';
 import * as store from '@/lib/store';
 import { runMigrations, type MigrationReport } from '@/lib/migrations';
+import { useKyivDay } from '@/hooks/useKyivDay';
+import { plannedDueCount as countPlannedDue } from '@/lib/planned-projects';
 import { emitToast } from '@/lib/toast-bus';
 
 interface BadgeCounts {
@@ -31,6 +33,8 @@ interface AppContextType {
    */
   unsupportedCollections: { missing: CollectionKey[]; wrongType: CollectionKey[] } | null;
   badges: BadgeCounts;
+  plannedDueCount: number;
+  accountingDay: string;
   refreshBadges: () => void;
   refreshKey: number;
   triggerRefresh: () => void;
@@ -80,6 +84,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [writeBlock, setWriteBlock] = useState<string | null>(null);
   const [unsupportedCollections, setUnsupportedCollections] = useState(store.getUnsupportedCollections());
   const [badges, setBadges] = useState<BadgeCounts>(countBadges(EMPTY_SNAPSHOT));
+  const accountingDay = useKyivDay();
+  const plannedDueCount = useMemo(() => countPlannedDue(snapshot.plannedProjects, accountingDay), [snapshot.plannedProjects, accountingDay]);
   const [refreshKey, setRefreshKey] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
@@ -185,6 +191,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     writeBlock,
     unsupportedCollections,
     badges,
+    plannedDueCount,
+    accountingDay,
     refreshBadges,
     refreshKey,
     triggerRefresh,
@@ -195,7 +203,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     closeSidebar,
     assistantOpen,
     setAssistantOpen,
-  }), [status, error, snapshot, storageIssues, writeBlock, unsupportedCollections, badges, refreshBadges, refreshKey, triggerRefresh, reinitialize, retry, sidebarOpen, closeSidebar, assistantOpen]);
+  }), [status, error, snapshot, storageIssues, writeBlock, unsupportedCollections, badges, plannedDueCount, accountingDay, refreshBadges, refreshKey, triggerRefresh, reinitialize, retry, sidebarOpen, closeSidebar, assistantOpen]);
 
   return (
     <AppContext.Provider value={value}>

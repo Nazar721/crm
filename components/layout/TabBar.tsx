@@ -50,7 +50,7 @@ function TabIcon({ icon }: { icon: string }) {
 
 export default function TabBar() {
   const pathname = usePathname();
-  const { badges, assistantOpen, setAssistantOpen } = useApp();
+  const { badges, plannedDueCount, assistantOpen, setAssistantOpen } = useApp();
   const [moreOpen, setMoreOpen] = useState(false);
   const sheetRef = useFocusTrap<HTMLDivElement>(moreOpen);
 
@@ -61,7 +61,7 @@ export default function TabBar() {
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + '/');
   const moreActive = moreItems.some(i => isActive(i.href));
-  const badgeCount = (t: TabItem) => (t.badge ? (badges as unknown as Record<string, number>)[t.badge] : null);
+  const badgeCount = (t: TabItem) => t.href === '/planned-projects' ? (plannedDueCount || null) : (t.badge ? (badges as unknown as Record<string, number>)[t.badge] : null);
 
   const renderBadge = (t: TabItem) => {
     const val = badgeCount(t);
@@ -92,9 +92,10 @@ export default function TabBar() {
           onClick={() => setMoreOpen(true)}
           aria-haspopup="dialog"
           aria-expanded={moreOpen}
+          aria-label={plannedDueCount > 0 ? `Більше: ${plannedDueCount} запланованих проєктів на найближчі 2 дні` : 'Більше'}
           aria-controls={moreOpen ? 'tabbar-more-sheet' : undefined}
         >
-          <span className="tabbar-icon"><TabIcon icon="more" /></span>
+          <span className="tabbar-icon"><TabIcon icon="more" />{plannedDueCount > 0 && <span className="tabbar-badge tabbar-badge--planned" aria-label="Заплановані проєкти на найближчі 2 дні">{plannedDueCount > 99 ? '99+' : plannedDueCount}</span>}</span>
           <span className="tabbar-label">Більше</span>
         </button>
       </nav>
@@ -139,7 +140,7 @@ export default function TabBar() {
                   >
                     <span className="tabbar-sheet-icon"><TabIcon icon={item.icon} /></span>
                     <span className="tabbar-sheet-label">{item.label}</span>
-                    {val !== null && val !== undefined && <span className="tabbar-badge">{val > 99 ? '99+' : val}</span>}
+                    {val !== null && val !== undefined && <span className={`tabbar-badge${item.href === '/planned-projects' ? ' tabbar-badge--planned' : ''}`}>{val > 99 ? '99+' : val}</span>}
                   </Link>
                 );
               })}

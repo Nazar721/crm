@@ -148,11 +148,14 @@ async function runPlannedProjectsSql(): Promise<void> {
   assert.deepEqual(snap0.tasks, [], 'legacy-колекція tasks у read лишилася');
 
   // ---- commit: секція журналу planned, записи в БД ----
-  const ppCommit = await commit(snap({ plannedProjects: [planned()] }));
+  const ppCommit = await commit(snap({ plannedProjects: [planned('pp1', { plannedDate: '2026-10-27' })] }));
   const ppEvent = await eventByRequest(ppCommit.request);
   assert.equal(ppEvent.section, 'planned', 'секція журналу — planned');
   assert.equal(ppEvent.action, 'create');
   assert.equal((await rowsOf('plannedProjects')).length, 1);
+  assert.equal((await rowsOf('plannedProjects'))[0].plannedDate, '2026-10-27', 'JSON payload preserves the planned date');
+  const readScheduled = await db.query('select public.crm_read() as r');
+  assert.equal((((readScheduled.rows[0].r as AnyRecord).snapshot as AnyRecord).plannedProjects as AnyRecord[])[0].plannedDate, '2026-10-27');
 
   // ---- Старий клієнт (без plannedProjects-ключа): колекція НЕ стирається ----
   const legacySnap = snap({

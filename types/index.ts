@@ -181,6 +181,8 @@ export interface Task {
 // Жодних фінансових полів, статусів чи дат оплати. Категорії — ті самі,
 // що в проєктів (IT / Design / Video), без власного конструктора.
 export interface PlannedProject {
+  /** Optional planned calendar date, YYYY-MM-DD in Europe/Kyiv. */
+  plannedDate?: string;
   id: string;
   name: string;
   category: 'IT' | 'Design' | 'Video' | string;

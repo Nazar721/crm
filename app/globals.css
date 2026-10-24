@@ -4096,3 +4096,17 @@ tr.week-b .week-dot {
   .ov-wallet-card { transition: none; }
   .ov-wallet-card:not([aria-pressed="true"]):hover { transform: translate3d(-50%, var(--card-y), 0); }
 }
+
+/* Planned dates: blue count badges follow the existing navigation convention. */
+.nav-item--planned-alert .nav-badge,
+.tabbar-badge--planned,
+.tabbar-sheet-item .tabbar-badge--planned { background: #3B82F6; color: #fff; }
+.nav-item--planned-alert > svg { color: var(--sem-project); }
+
+/* Footer actions belong to the form, without an inset rectangular panel. */
+.modal .modal-footer {
+  background: transparent;
+  border-top: 0;
+  margin-top: 4px;
+  padding: 20px 0 env(safe-area-inset-bottom, 0px);
+}

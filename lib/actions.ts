@@ -13,6 +13,7 @@ import { validateHostingPaymentInput, validateHostingServiceInput } from '@/lib/
 import { snoozeReminderIso, taskDateTimeFields, validateTaskInput, type TaskDraftInput } from '@/lib/tasks';
 import { kyivDateTimeToIso } from '@/lib/dates';
 import { autoMyPercent, DEFAULT_MY_SHARE } from '@/lib/my-share';
+import { isPlannedDate } from '@/lib/planned-projects';
 import { generateId, today, daysBetween } from '@/lib/utils';
 import * as Storage from '@/lib/storage';
 import * as store from '@/lib/store';
@@ -905,10 +906,14 @@ export const markRemindersShown = (...args: Parameters<typeof _markRemindersShow
 // ------------------------------------------------------------
 
 export function validatePlannedProjectInput(input: Partial<PlannedProject>): FieldError[] {
-  const errors = [
+  const errors: FieldError[] = [];
+  if (input.plannedDate !== undefined && input.plannedDate !== '' && !isPlannedDate(input.plannedDate)) {
+    errors.push({ field: 'plannedDate', message: 'Запланована дата: некоректна дата' });
+  }
+  errors.push(
     ...validateRequiredText(input.name, 'name', 'Назва проєкту', 300),
     ...validateEnum(input.category, ['IT', 'Design', 'Video'], 'category', 'Категорія'),
-  ];
+  );
   // Клієнт: явний непорожній clientId (рядок) АБО ручне ім'я — обов'язково одне
   // з двох. Невідомість ID перевіряється нижче за чинними clients (_savePlannedProject).
   const hasClientId = input.clientId !== undefined && input.clientId !== null && String(input.clientId).trim() !== '';
@@ -961,6 +966,7 @@ async function _savePlannedProject(input: Partial<PlannedProject>, editId?: stri
   const category = input.category as PlannedProject['category'];
   const resolvedClientName = String(clientName).trim();
   const description = String(input.description ?? '').trim() || undefined;
+  const plannedDate = input.plannedDate === undefined ? old?.plannedDate : input.plannedDate || undefined;
   const nowIso = new Date().toISOString();
 
   if (editId) {
@@ -971,6 +977,7 @@ async function _savePlannedProject(input: Partial<PlannedProject>, editId?: stri
       clientName: resolvedClientName,
       clientId,
       description,
+      plannedDate,
       updatedAt: nowIso,
     };
     list[list.indexOf(old!)] = next;
@@ -985,6 +992,7 @@ async function _savePlannedProject(input: Partial<PlannedProject>, editId?: stri
     clientName: resolvedClientName,
     clientId,
     description,
+    plannedDate,
     createdAt: nowIso,
     updatedAt: nowIso,
   };

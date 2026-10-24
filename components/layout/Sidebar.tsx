@@ -63,7 +63,7 @@ function NavIcon({ icon }: { icon: string }) {
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const { badges, snapshot, sidebarOpen, closeSidebar, assistantOpen, setAssistantOpen } = useApp();
+  const { badges, plannedDueCount, snapshot, sidebarOpen, closeSidebar, assistantOpen, setAssistantOpen } = useApp();
   const navRef = useRef<HTMLElement>(null);
   const hostingExpiring = hostingExpiringWithin(snapshot.hostingServices, snapshot.hostingPayments, 5);
 
@@ -129,13 +129,16 @@ export default function Sidebar() {
                 const isActive = pathname === item.href;
                 const badgeValue = item.href === '/hosting'
                   ? (hostingExpiring || null)
+                  : item.href === '/planned-projects' ? (plannedDueCount || null)
                   : item.badge ? (badges as unknown as Record<string, number>)[item.badge] : null;
                 const hostingAlertClass = item.href === '/hosting' && hostingExpiring > 0
                   ? ' nav-item--hosting-alert nav-item--hosting-ending'
                   : '';
                 const navTitle = item.href === '/hosting' && hostingExpiring > 0
                   ? `Хостинг: ${hostingExpiring} ${hostingExpiring === 1 ? 'послуга завершується' : 'послуги завершуються'} протягом 5 днів`
-                  : item.label;
+                  : item.href === '/planned-projects' && plannedDueCount > 0
+                    ? `Заплановані проєкти: ${plannedDueCount} на найближчі 2 дні`
+                    : item.label;
                 if (item.href === '/assistant') return (
                   <button
                     key={item.href}
@@ -156,9 +159,9 @@ export default function Sidebar() {
                     key={item.href}
                     href={item.href}
                     data-nav={item.href}
-                    className={`nav-item${isActive ? ' active' : ''}${hostingAlertClass}`}
+                    className={`nav-item${isActive ? ' active' : ''}${hostingAlertClass}${item.href === '/planned-projects' && plannedDueCount > 0 ? ' nav-item--planned-alert' : ''}`}
                     aria-current={isActive ? 'page' : undefined}
-                    aria-label={item.label}
+                    aria-label={item.href === '/planned-projects' && plannedDueCount > 0 ? navTitle : item.label}
                     title={navTitle}
                     data-tooltip={navTitle}
                     onClick={closeSidebar}

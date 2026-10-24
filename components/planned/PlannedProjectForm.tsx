@@ -14,7 +14,7 @@ interface PlannedProjectFormProps {
   onCancel: () => void;
 }
 
-// Пакет 06: форма «Запланованого проєкту» — лише назва/категорія/клієнт/опис.
+// Форма запланованого проєкту: назва, категорія, клієнт, опис і необов’язкова дата.
 // Клієнт: autocomplete із чинних карток або ручне ім'я. Ручне введення НЕ
 // створює картку клієнта і не лінкується за іменем; clientId зберігається лише
 // за явного вибору зі списку (selectedClientId, патерн ProjectForm).
@@ -23,6 +23,7 @@ export default function PlannedProjectForm({ isOpen, project, onSave, onCancel }
   const [category, setCategory] = useState('IT');
   const [clientName, setClientName] = useState('');
   const [description, setDescription] = useState('');
+  const [plannedDate, setPlannedDate] = useState('');
   const [selectedClientId, setSelectedClientId] = useState('');
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
@@ -33,12 +34,14 @@ export default function PlannedProjectForm({ isOpen, project, onSave, onCancel }
       setCategory(project.category || 'IT');
       setClientName(project.clientName || '');
       setDescription(project.description || '');
+      setPlannedDate(project.plannedDate || '');
       setSelectedClientId(project.clientId || '');
     } else {
       setName('');
       setCategory('IT');
       setClientName('');
       setDescription('');
+      setPlannedDate('');
       setSelectedClientId('');
     }
   }, [project, isOpen]);
@@ -67,6 +70,7 @@ export default function PlannedProjectForm({ isOpen, project, onSave, onCancel }
         category: category as PlannedProject['category'],
         clientName: clientName.trim(),
         description: description.trim() || undefined,
+        plannedDate,
         clientId: selectedClientId || undefined,
       });
     } finally {
@@ -112,6 +116,11 @@ export default function PlannedProjectForm({ isOpen, project, onSave, onCancel }
               Пов&apos;язано з карткою клієнта. Ручне ім&apos;я не створює картку автоматично.
             </p>
           )}
+        </div>
+        <div className="form-group form-group--full">
+          <label className="form-label" htmlFor="planned-project-date">Запланована дата</label>
+          <input id="planned-project-date" type="date" className="form-input" value={plannedDate} onChange={e => setPlannedDate(e.target.value)} />
+          <small className="form-hint">Індикатор у меню з’явиться за 2 дні до цієї дати.</small>
         </div>
         <div className="form-group form-group--full">
           <label className="form-label">Опис</label>

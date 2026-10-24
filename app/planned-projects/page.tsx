@@ -1,6 +1,7 @@
 'use client';
 import { useState, useMemo } from 'react';
 import { useApp } from '@/context/AppContext';
+import { plannedDaysLeft } from '@/lib/planned-projects';
 import { formatDate } from '@/lib/utils';
 import { savePlannedProject, deletePlannedProject } from '@/lib/actions';
 import { emitToast } from '@/lib/toast-bus';
@@ -21,7 +22,7 @@ const CATEGORIES = ['IT', 'Design', 'Video'] as const;
 const CATEGORY_BADGE: Record<string, string> = { IT: 'badge--blue', Design: 'badge--purple', Video: 'badge--orange' };
 
 export default function PlannedProjectsPage() {
-  const { snapshot, writeBlock, unsupportedCollections, triggerRefresh } = useApp();
+  const { snapshot, accountingDay, writeBlock, unsupportedCollections, triggerRefresh } = useApp();
   const [query, setQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [formOpen, setFormOpen] = useState(false);
@@ -138,6 +139,7 @@ export default function PlannedProjectsPage() {
                 <th>Проєкт</th>
                 <th>Категорія</th>
                 <th>Клієнт</th>
+                <th>Запланована дата</th>
                 <th>Створено</th>
                 <th aria-label="Дії" />
               </tr>
@@ -157,6 +159,15 @@ export default function PlannedProjectsPage() {
                   <td data-label="Клієнт">
                     {p.clientName || '—'}
                     {p.clientId && <div className="cell-secondary">з картки клієнта</div>}
+                  </td>
+                  <td data-label="Запланована дата">
+                    {p.plannedDate ? formatDate(p.plannedDate) : '—'}
+                    {(() => {
+                      const days = plannedDaysLeft(p, accountingDay);
+                      return days !== null && days >= 0 && days <= 2
+                        ? <div><span className="badge badge--blue">{days === 0 ? 'Сьогодні' : days === 1 ? 'Завтра' : 'Через 2 дні'}</span></div>
+                        : null;
+                    })()}
                   </td>
                   <td data-label="Створено" className="cell-nowrap">
                     {p.createdAt ? formatDate(p.createdAt) : '—'}

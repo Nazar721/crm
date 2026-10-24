@@ -5,6 +5,7 @@ import { COLLECTION_KEYS } from '@/lib/datasource/types';
 import { normalizeSettings } from '@/lib/settings';
 import { kyivDateString } from '@/lib/dates';
 import { toFiniteNumber } from '@/lib/validate';
+import { isPlannedDate } from '@/lib/planned-projects';
 import { HOSTING_CURRENCIES } from '@/lib/hosting';
 import { isIsoInstant, isValidTaskDate, isValidTaskTime } from '@/lib/tasks';
 import { kyivDateTimeToIso } from '@/lib/dates';
@@ -493,6 +494,10 @@ function validateTaskRecord(rec: unknown, ctx: Ctx, acc: Acc): Task | null {
 function validatePlannedProjectRecord(rec: unknown, ctx: Ctx, acc: Acc): PlannedProject | null {
   const r = baseRecordChecks(rec, ctx, acc);
   if (!r) return null;
+  if (r.plannedDate !== undefined && r.plannedDate !== '' && !isPlannedDate(r.plannedDate)) {
+    acc.errors.push({ ...ctx, message: 'некоректна запланована дата' });
+    return null;
+  }
   const name = str(r.name).trim();
   if (!name) {
     acc.errors.push({ ...ctx, message: 'відсутня назва запланованого проєкту' });
@@ -516,6 +521,7 @@ function validatePlannedProjectRecord(rec: unknown, ctx: Ctx, acc: Acc): Planned
     clientName,
     clientId: validId(r.clientId) ? str(r.clientId).trim() : undefined,
     description: str(r.description) || undefined,
+    plannedDate: isPlannedDate(r.plannedDate) ? r.plannedDate : undefined,
     createdAt: typeof r.createdAt === 'string' ? r.createdAt : undefined,
     updatedAt: typeof r.updatedAt === 'string' ? r.updatedAt : undefined,
   };
