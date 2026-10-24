@@ -4110,3 +4110,16 @@ tr.week-b .week-dot {
   margin-top: 4px;
   padding: 20px 0 env(safe-area-inset-bottom, 0px);
 }
+
+/* Hosting overview stacks before columns become too narrow for text/charts. */
+.hosting-toolbar > input { max-width: 260px; }
+.hosting-toolbar > select { max-width: 180px; }
+.hosting-toolbar > select:last-child { max-width: 200px; }
+@media (max-width: 768px) {
+  .hosting-overview { grid-template-columns: minmax(0, 1fr); }
+  .hosting-overview .settings-card { align-self: start; }
+  .hosting-page .hosting-toolbar > .form-input { width: 100%; max-width: none; }
+  .hosting-page .header-actions .btn { justify-content: center; }
+  /* The sticky header already includes the top safe area; count it only once. */
+  .main-content:has(.hosting-page) { padding-top: 14px; }
+}

@@ -141,7 +141,7 @@ export default function HostingPage() {
   };
 
   return (
-    <section className="page active">
+    <section className="page active hosting-page">
       <div className="page-header">
         <div>
           <h1 className="page-title">Хостинг</h1>
@@ -165,17 +165,16 @@ export default function HostingPage() {
           <h3 className="settings-title">Коли продовжувати хостинг</h3>
           <HostingRenewalsChart services={services} payments={payments} />
           <p className="settings-text" style={{ fontSize: '0.75rem' }}>
-            Кількість послуг за залишком оплачених днів. Без оплати, прострочені й архівні послуги показані в підсумку поруч.
+            Кількість послуг за залишком оплачених днів. Без оплати, прострочені й архівні послуги показані в підсумку послуг.
           </p>
         </div>
       </div>
 
       {/* Пошук і фільтри */}
-      <div className="table-toolbar" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+      <div className="table-toolbar hosting-toolbar" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
         <input
           type="search"
           className="form-input"
-          style={{ maxWidth: 260 }}
           value={query}
           onChange={e => setQuery(e.target.value)}
           placeholder="Пошук: назва, домен, провайдер"
@@ -183,7 +182,6 @@ export default function HostingPage() {
         />
         <select
           className="form-input"
-          style={{ maxWidth: 180 }}
           value={statusFilter}
           onChange={e => setStatusFilter(e.target.value as HostingStatus | '')}
           aria-label="Фільтр за станом"
@@ -195,7 +193,6 @@ export default function HostingPage() {
         </select>
         <select
           className="form-input"
-          style={{ maxWidth: 200 }}
           value={providerFilter}
           onChange={e => setProviderFilter(e.target.value)}
           aria-label="Фільтр за провайдером"
