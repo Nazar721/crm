@@ -64,7 +64,7 @@ export default function SpecialistForm({ isOpen, specialist, onSave, onCancel }:
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onCancel} title={specialist ? 'Редагувати фахівця' : 'Новий фахівець'}>
+    <Modal isOpen={isOpen} onClose={onCancel} title={specialist ? 'Редагувати фахівця' : 'Новий фахівець'} onSubmit={handleSave}>
       <div className="form-grid">
         <div className="form-group">
           <label className="form-label">Ім&apos;я *</label>

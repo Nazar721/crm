@@ -50,7 +50,7 @@ export default function PartnerForm({ isOpen, partner, onSave, onCancel }: Partn
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onCancel} title={partner ? 'Редагувати партнера' : 'Новий партнер'}>
+    <Modal isOpen={isOpen} onClose={onCancel} title={partner ? 'Редагувати партнера' : 'Новий партнер'} onSubmit={handleSave}>
       <div className="form-grid">
         <div className="form-group form-group--full">
           <label className="form-label">Назва / ім&apos;я *</label>

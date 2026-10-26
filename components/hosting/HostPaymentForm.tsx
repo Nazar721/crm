@@ -89,6 +89,7 @@ export default function HostPaymentForm({
       onClose={onCancel}
       title={payment ? 'Редагувати оплату' : `Оплата: ${service?.name || ''}`}
       size="md"
+      onSubmit={handleSave}
     >
       {service?.site && (
         <p style={{ marginTop: 0, color: 'var(--text-secondary)' }}>{service.site}</p>

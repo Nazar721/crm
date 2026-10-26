@@ -1,5 +1,5 @@
 'use client';
-import { useId, type ReactNode } from 'react';
+import { useId, type ReactNode, useEffect } from 'react';
 import { useBodyScrollLock, useEscapeToTopmost, useFocusTrap } from './useDialogFocus';
 
 interface ModalProps {
@@ -8,14 +8,32 @@ interface ModalProps {
   title: string;
   children: ReactNode;
   size?: 'sm' | 'md' | 'lg';
+  onSubmit?: () => void;
 }
 
-export default function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalProps) {
+export default function Modal({ isOpen, onClose, title, children, size = 'md', onSubmit }: ModalProps) {
   const titleId = useId();
   const trapRef = useFocusTrap<HTMLDivElement>(isOpen);
 
   useBodyScrollLock(isOpen);
   useEscapeToTopmost(onClose, isOpen);
+
+  useEffect(() => {
+    if (!isOpen || !onSubmit) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        const target = e.target as HTMLElement;
+        // Не обробляємо Enter для textarea і кнопок
+        if (target.tagName === 'TEXTAREA' || target.tagName === 'BUTTON') return;
+        e.preventDefault();
+        onSubmit();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onSubmit]);
 
   if (!isOpen) return null;
 

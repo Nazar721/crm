@@ -271,7 +271,7 @@ export default function ProjectForm({ isOpen, project, copyPrefill, copyWarnings
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onCancel} title={project ? 'Редагувати проєкт' : 'Новий проєкт'} size="lg">
+    <Modal isOpen={isOpen} onClose={onCancel} title={project ? 'Редагувати проєкт' : 'Новий проєкт'} size="lg" onSubmit={handleSave}>
       {copyWarnings && copyWarnings.length > 0 && (
         <div className="backup-warning" style={{ marginBottom: 12 }}>
           <strong>Копіювання: перевірте підставлений проєкт</strong>

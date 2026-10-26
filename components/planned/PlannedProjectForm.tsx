@@ -80,7 +80,7 @@ export default function PlannedProjectForm({ isOpen, project, onSave, onCancel }
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onCancel} title={project ? 'Редагувати запланований проєкт' : 'Новий запланований проєкт'} size="md">
+    <Modal isOpen={isOpen} onClose={onCancel} title={project ? 'Редагувати запланований проєкт' : 'Новий запланований проєкт'} size="md" onSubmit={handleSave}>
       <div className="form-grid">
         <div className="form-group form-group--full">
           <label className="form-label">Назва проєкту *</label>

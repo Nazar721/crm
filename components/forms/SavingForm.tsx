@@ -39,7 +39,7 @@ export default function SavingForm({ isOpen, saving, onSave, onCancel }: SavingF
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onCancel} title={saving ? 'Редагувати відкладення' : 'Нове відкладення'}>
+    <Modal isOpen={isOpen} onClose={onCancel} title={saving ? 'Редагувати відкладення' : 'Нове відкладення'} onSubmit={handleSave}>
       <div className="form-grid">
         <div className="form-group form-group--full">
           <label className="form-label">Назва цілі</label>

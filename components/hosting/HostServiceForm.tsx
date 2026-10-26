@@ -64,7 +64,7 @@ export default function HostServiceForm({ isOpen, service, onSave, onCancel }: H
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onCancel} title={service ? 'Редагувати хостинг' : 'Новий хостинг'} size="md">
+    <Modal isOpen={isOpen} onClose={onCancel} title={service ? 'Редагувати хостинг' : 'Новий хостинг'} size="md" onSubmit={handleSave}>
       <div className="form-grid">
         <div className="form-group form-group--full">
           <label className="form-label">Назва послуги *</label>

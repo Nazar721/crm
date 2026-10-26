@@ -40,7 +40,7 @@ export default function DebtForm({ isOpen, debt, initialType = 'owed_to_me', onS
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onCancel} title={debt ? 'Редагувати борг' : (type === 'owed_to_me' ? 'Новий борг мені' : 'Новий мій борг')}>
+    <Modal isOpen={isOpen} onClose={onCancel} title={debt ? 'Редагувати борг' : (type === 'owed_to_me' ? 'Новий борг мені' : 'Новий мій борг')} onSubmit={handleSave}>
       <div className="form-grid">
         <div className="form-group">
           <label className="form-label">Тип *</label>

@@ -63,7 +63,7 @@ export default function TransactionForm({ isOpen, transaction, initialType = 'in
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onCancel} title={transaction ? 'Редагувати транзакцію' : 'Нова транзакція'}>
+    <Modal isOpen={isOpen} onClose={onCancel} title={transaction ? 'Редагувати транзакцію' : 'Нова транзакція'} onSubmit={handleSave}>
       <div className="form-grid">
         <div className="form-group">
           <label className="form-label">Тип *</label>
