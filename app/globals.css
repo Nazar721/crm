@@ -680,26 +680,34 @@ body {
 }
 
 .stat-card {
-  background: var(--g-surface);
-  border: 1px solid var(--g-border);
+  /* Матове скло: тонована підкладка + помірне розмиття */
+  background: rgba(40, 44, 53, 0.85);
+  border: 1px solid rgba(73, 80, 93, 0.6);
   border-radius: var(--radius-lg);
   padding: 18px;
   display: flex;
   align-items: flex-start;
   gap: 14px;
   transition: color var(--transition), background-color var(--transition), border-color var(--transition), box-shadow var(--transition), transform var(--transition);
-  box-shadow: var(--shadow-glass), var(--shadow-sm);
+  box-shadow: 
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset,
+    0 1px 2px rgba(0, 0, 0, 0.30),
+    0 4px 12px rgba(0, 0, 0, 0.15);
   position: relative;
   overflow: hidden;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 
 
 .stat-card:hover {
-  background: var(--g-elevated);
-  border-color: var(--g-border-strong);
+  background: rgba(52, 57, 68, 0.90);
+  border-color: rgba(130, 140, 156, 0.7);
   transform: translateY(-2px);
-  box-shadow: var(--shadow-glass-hover), var(--shadow-md);
+  box-shadow: 
+    0 0 0 1px rgba(255, 255, 255, 0.08) inset,
+    0 8px 24px rgba(0, 0, 0, 0.40);
 }
 
 .stat-card--clickable {
@@ -711,13 +719,17 @@ body {
 }
 
 .stat-card--highlight {
-  background: rgba(232, 189, 105, 0.12);
-  border-color: rgba(232, 189, 105, 0.20);
+  background: rgba(232, 189, 105, 0.18);
+  border-color: rgba(232, 189, 105, 0.50);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 .stat-card--warn {
-  background: rgba(255, 122, 66, 0.12);
-  border-color: rgba(255, 122, 66, 0.22);
+  background: rgba(255, 122, 66, 0.18);
+  border-color: rgba(255, 122, 66, 0.50);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 .modal-stat-card {
@@ -727,8 +739,11 @@ body {
   margin-bottom: 18px;
   padding: 16px 18px;
   border-radius: var(--radius-lg);
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--g-border);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(73, 80, 93, 0.5);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .modal-stat-label {
@@ -801,13 +816,17 @@ body {
 .finance-converter {
   flex: 1;
   min-width: 0;
-  background: var(--g-surface);
-  border: 1px solid var(--g-border);
+  background: rgba(40, 44, 53, 0.85);
+  border: 1px solid rgba(73, 80, 93, 0.6);
   border-radius: var(--radius-lg);
   padding: 12px;
   display: grid;
   gap: 10px;
-  box-shadow: var(--shadow-glass);
+  box-shadow: 
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset,
+    0 1px 2px rgba(0, 0, 0, 0.30);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 .converter-rates,
@@ -863,13 +882,18 @@ body {
 }
 
 .chart-card {
-  background: var(--g-surface);
-  border: 1px solid var(--g-border);
+  background: rgba(40, 44, 53, 0.85);
+  border: 1px solid rgba(73, 80, 93, 0.6);
   border-radius: var(--radius-lg);
   padding: 18px;
-  box-shadow: var(--shadow-glass), var(--shadow-sm);
+  box-shadow: 
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset,
+    0 1px 2px rgba(0, 0, 0, 0.30),
+    0 4px 12px rgba(0, 0, 0, 0.15);
   position: relative;
   overflow: hidden;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 
@@ -919,13 +943,17 @@ body {
 .tabs {
   display: flex;
   gap: 4px;
-  background: var(--g-surface);
-  border: 1px solid var(--g-border);
+  background: rgba(40, 44, 53, 0.85);
+  border: 1px solid rgba(73, 80, 93, 0.6);
   border-radius: var(--radius-md);
   padding: 4px;
   width: fit-content;
   margin-bottom: 20px;
-  box-shadow: var(--shadow-glass);
+  box-shadow: 
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset,
+    0 1px 2px rgba(0, 0, 0, 0.30);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 .tab {
@@ -1080,15 +1108,20 @@ select.form-input, select.filter-select {
    TABLES
    ============================================= */
 .table-wrap {
-  /* Суцільний фон без розмиття: довгі таблиці (сотні рядків після імпорту)
-     інакше дають мерехтіння та вичерпують пам'ять WebKit на iOS. */
-  background: var(--g-surface);
-  border: 1px solid var(--g-border);
+  /* Матове скло з тонованою підкладкою. Для довгих таблиць (сотні рядків)
+     розмиття обмежене до 12px для збереження продуктивності. */
+  background: rgba(40, 44, 53, 0.90);
+  border: 1px solid rgba(73, 80, 93, 0.6);
   border-radius: var(--radius-lg);
   overflow: hidden;
   overflow-x: auto;
-  box-shadow: var(--shadow-glass), var(--shadow-sm);
+  box-shadow: 
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset,
+    0 1px 2px rgba(0, 0, 0, 0.30),
+    0 4px 12px rgba(0, 0, 0, 0.15);
   position: relative;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 
@@ -1258,20 +1291,28 @@ select.form-input, select.filter-select {
   display: flex;
   flex-direction: column;
   min-height: 292px;
-  background: linear-gradient(145deg, #3B3B50 0%, #2B2F3B 62%);
-  border: 1px solid #585B73;
+  background: rgba(43, 47, 59, 0.85);
+  border: 1px solid rgba(88, 91, 115, 0.6);
   border-radius: var(--radius-lg);
   padding: 22px;
   overflow: hidden;
   transition: transform var(--transition), background var(--transition), border-color var(--transition), box-shadow var(--transition);
-  box-shadow: var(--shadow-glass), var(--shadow-sm);
+  box-shadow: 
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset,
+    0 1px 2px rgba(0, 0, 0, 0.30),
+    0 4px 12px rgba(0, 0, 0, 0.15);
   position: relative;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 
 .developer-card:hover {
-  border-color: var(--g-border-strong);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.07), 0 18px 36px rgba(0,0,0,.22);
+  background: rgba(52, 57, 68, 0.90);
+  border-color: rgba(130, 140, 156, 0.7);
+  box-shadow: 
+    0 0 0 1px rgba(255, 255, 255, 0.08) inset,
+    0 18px 36px rgba(0, 0, 0, 0.30);
 }
 
 .dev-card-header {
@@ -1708,13 +1749,18 @@ textarea.form-input:not(.ai-composer-input), .form-textarea {
 }
 
 .settings-card {
-  background: var(--g-surface);
-  border: 1px solid var(--g-border);
+  background: rgba(40, 44, 53, 0.85);
+  border: 1px solid rgba(73, 80, 93, 0.6);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-glass), var(--shadow-sm);
+  box-shadow: 
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset,
+    0 1px 2px rgba(0, 0, 0, 0.30),
+    0 4px 12px rgba(0, 0, 0, 0.15);
   padding: 20px;
   position: relative;
   overflow: hidden;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 
