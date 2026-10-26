@@ -1,5 +1,7 @@
 'use client';
-import { useId, type ReactNode, useEffect } from 'react';
+import { useId, useRef, useState, type ReactNode, type FormEvent } from 'react';
+import { DialogSubmitContext } from './DialogSubmitContext';
+import { emitToast } from '@/lib/toast-bus';
 import { useBodyScrollLock, useEscapeToTopmost, useFocusTrap } from './useDialogFocus';
 
 interface ModalProps {
@@ -8,32 +10,35 @@ interface ModalProps {
   title: string;
   children: ReactNode;
   size?: 'sm' | 'md' | 'lg';
-  onSubmit?: () => void;
+  onSubmit?: () => void | Promise<void>;
+  initialFocusSelector?: string;
 }
 
-export default function Modal({ isOpen, onClose, title, children, size = 'md', onSubmit }: ModalProps) {
+export default function Modal({ isOpen, onClose, title, children, size = 'md', onSubmit, initialFocusSelector }: ModalProps) {
   const titleId = useId();
-  const trapRef = useFocusTrap<HTMLDivElement>(isOpen);
+  const trapRef = useFocusTrap<HTMLDivElement>(isOpen, initialFocusSelector ?? (onSubmit
+    ? 'input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled]), [data-dialog-submit]:not([disabled])'
+    : undefined));
+  const submittingRef = useRef(false);
+  const [submitting, setSubmitting] = useState(false);
 
   useBodyScrollLock(isOpen);
   useEscapeToTopmost(onClose, isOpen);
 
-  useEffect(() => {
-    if (!isOpen || !onSubmit) return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
-        const target = e.target as HTMLElement;
-        // Не обробляємо Enter для textarea і кнопок
-        if (target.tagName === 'TEXTAREA' || target.tagName === 'BUTTON') return;
-        e.preventDefault();
-        onSubmit();
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onSubmit]);
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!onSubmit || submittingRef.current) return;
+    submittingRef.current = true;
+    setSubmitting(true);
+    try {
+      await onSubmit();
+    } catch (error) {
+      emitToast(error instanceof Error ? error.message : 'Не вдалося зберегти зміни', 'error');
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -65,7 +70,21 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md', o
             </svg>
           </button>
         </div>
-        <div className="modal-body">{children}</div>
+        <DialogSubmitContext.Provider value={{ nativeSubmit: !!onSubmit, submitting }}>
+          {onSubmit ? (
+            <form className="modal-body" noValidate onSubmit={handleSubmit} aria-busy={submitting}
+              onKeyDown={event => {
+                // Holding Enter must not generate duplicate submissions.
+                if (event.key !== 'Enter' || event.nativeEvent.isComposing) return;
+                const target = event.target as HTMLElement;
+                if (event.repeat || (target.tagName !== 'TEXTAREA' && (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey))) {
+                  event.preventDefault();
+                }
+              }}>
+              {children}
+            </form>
+          ) : <div className="modal-body">{children}</div>}
+        </DialogSubmitContext.Provider>
       </div>
     </div>
   );

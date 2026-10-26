@@ -8,7 +8,7 @@ import ModalFooter from '@/components/ui/ModalFooter';
 interface PartnerFormProps {
   isOpen: boolean;
   partner?: Partner | null;
-  onSave: (data: Partial<Partner>) => void;
+  onSave: (data: Partial<Partner>) => void | Promise<void>;
   onCancel: () => void;
 }
 
@@ -39,7 +39,7 @@ export default function PartnerForm({ isOpen, partner, onSave, onCancel }: Partn
   }, [partner, isOpen]);
 
   const handleSave = () => {
-    onSave({
+    return onSave({
       name, services, currency,
       paidToPartner: Number(paidToPartner) || 0,
       givenProjectsCount: Number(givenProjectsCount) || 0,

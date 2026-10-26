@@ -4123,3 +4123,5 @@ tr.week-b .week-dot {
   /* The sticky header already includes the top safe area; count it only once. */
   .main-content:has(.hosting-page) { padding-top: 14px; }
 }
+
+.client-suggestion-item[aria-selected="true"] { background: var(--g-elevated); outline: 1px solid var(--border-focus); outline-offset: -1px; }

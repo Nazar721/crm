@@ -9,7 +9,7 @@ import ModalFooter from '@/components/ui/ModalFooter';
 interface SavingFormProps {
   isOpen: boolean;
   saving?: Saving | null;
-  onSave: (data: Partial<Saving>) => void;
+  onSave: (data: Partial<Saving>) => void | Promise<void>;
   onCancel: () => void;
 }
 
@@ -35,7 +35,7 @@ export default function SavingForm({ isOpen, saving, onSave, onCancel }: SavingF
   }, [saving, isOpen]);
 
   const handleSave = () => {
-    onSave({ name, bank, amount: Number(amount) || 0, goal: Number(goal) || 0, currency, date });
+    return onSave({ name, bank, amount: Number(amount) || 0, goal: Number(goal) || 0, currency, date });
   };
 
   return (

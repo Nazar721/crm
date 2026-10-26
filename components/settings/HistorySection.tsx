@@ -105,7 +105,7 @@ export default function HistorySection() {
   };
 
   const confirmUndo = async () => {
-    if (!preview) return;
+    if (!preview || busy) return;
     setBusy(true);
     try {
       const result = await store.undoHistory({
@@ -289,7 +289,7 @@ export default function HistorySection() {
         </div>
       )}
 
-      <Modal isOpen={!!preview} onClose={() => { if (!busy) setPreview(null); }} title="Попередній перегляд відновлення" size="lg">
+      <Modal isOpen={!!preview} onClose={() => { if (!busy) setPreview(null); }} title="Попередній перегляд відновлення" size="lg" onSubmit={confirmUndo} initialFocusSelector="[data-dialog-submit]:not([disabled])">
         {preview && (
           <>
             <p style={{ marginTop: 0 }}>
@@ -320,8 +320,8 @@ export default function HistorySection() {
               </table>
             </div>
             <div className="modal-footer">
-              <button className="btn btn-ghost" onClick={() => setPreview(null)} disabled={busy}>Скасувати</button>
-              <button className="btn btn-danger" onClick={() => void confirmUndo()} disabled={busy}>
+              <button type="button" className="btn btn-ghost" onClick={() => setPreview(null)} disabled={busy}>Скасувати</button>
+              <button type="submit" data-dialog-submit className="btn btn-danger" disabled={busy}>
                 {busy ? 'Виконую…' : 'Підтвердити відновлення'}
               </button>
             </div>

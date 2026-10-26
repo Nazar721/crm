@@ -13,7 +13,7 @@ interface TransactionFormProps {
   isOpen: boolean;
   transaction?: Transaction | null;
   initialType?: 'income' | 'expense';
-  onSave: (data: Partial<Transaction>) => void;
+  onSave: (data: Partial<Transaction>) => void | Promise<void>;
   onCancel: () => void;
 }
 
@@ -50,7 +50,7 @@ export default function TransactionForm({ isOpen, transaction, initialType = 'in
   }, [transaction, isOpen, initialType]);
 
   const handleSave = () => {
-    onSave({
+    return onSave({
       type,
       amount: Number(amount) || 0,
       bank,

@@ -7,7 +7,7 @@ import ModalFooter from '@/components/ui/ModalFooter';
 interface ClientFormProps {
   isOpen: boolean;
   client?: Client | null;
-  onSave: (data: Partial<Client>) => void;
+  onSave: (data: Partial<Client>) => void | Promise<void>;
   onCancel: () => void;
 }
 
@@ -27,7 +27,7 @@ export default function ClientForm({ isOpen, client, onSave, onCancel }: ClientF
   }, [client, isOpen]);
 
   const handleSave = () => {
-    onSave({ name, telegram, source });
+    return onSave({ name, telegram, source });
   };
 
   return (

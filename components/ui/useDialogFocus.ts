@@ -10,7 +10,7 @@ const FOCUSABLE =
  * переміщує фокус на перший керований елемент, циклить Tab/Shift+Tab
  * і після закриття повертає фокус на елемент, що відкрив діалог.
  */
-export function useFocusTrap<T extends HTMLElement>(active: boolean) {
+export function useFocusTrap<T extends HTMLElement>(active: boolean, initialFocusSelector?: string) {
   const ref = useRef<T | null>(null);
   const restoreRef = useRef<HTMLElement | null>(null);
 
@@ -27,7 +27,7 @@ export function useFocusTrap<T extends HTMLElement>(active: boolean) {
         (el) => !el.hasAttribute('disabled') && el.getAttribute('aria-hidden') !== 'true',
       );
 
-    const initial = nodes()[0] ?? container;
+    const initial = (initialFocusSelector ? container.querySelector<HTMLElement>(initialFocusSelector) : null) ?? nodes()[0] ?? container;
     initial.focus({ preventScroll: true });
 
     function onKeyDown(e: KeyboardEvent) {
@@ -60,7 +60,7 @@ export function useFocusTrap<T extends HTMLElement>(active: boolean) {
       const target = restoreRef.current;
       if (target && document.contains(target)) target.focus({ preventScroll: true });
     };
-  }, [active]);
+  }, [active, initialFocusSelector]);
 
   return ref;
 }

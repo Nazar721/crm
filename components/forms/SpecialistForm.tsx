@@ -19,7 +19,7 @@ export interface SpecialistFormData {
 interface SpecialistFormProps {
   isOpen: boolean;
   specialist?: Specialist | null;
-  onSave: (data: SpecialistFormData) => void;
+  onSave: (data: SpecialistFormData) => void | Promise<void>;
   onCancel: () => void;
 }
 
@@ -60,7 +60,7 @@ export default function SpecialistForm({ isOpen, specialist, onSave, onCancel }:
       emitToast(errors.map(e => e.message).join('; '), 'error');
       return;
     }
-    onSave(data);
+    return onSave(data);
   };
 
   return (

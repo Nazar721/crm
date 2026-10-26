@@ -1,5 +1,5 @@
 'use client';
-import { useState, useRef, useMemo, useEffect } from 'react';
+import { useState, useRef, useMemo, useEffect, useId } from 'react';
 
 export interface AutocompleteOption {
   value: string;
@@ -31,6 +31,8 @@ export default function AutocompleteInput({
   inputMode,
 }: AutocompleteInputProps) {
   const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const listId = useId();
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -53,6 +55,7 @@ export default function AutocompleteInput({
     onChange(option.value);
     onSelect?.(option);
     setOpen(false);
+    setActiveIndex(-1);
   };
 
   return (
@@ -61,17 +64,45 @@ export default function AutocompleteInput({
         type="text"
         className="form-input"
         value={value}
-        onChange={e => { onChange(e.target.value); setOpen(true); }}
+        onChange={e => { onChange(e.target.value); setActiveIndex(-1); setOpen(true); }}
         onFocus={() => { if (filtered.length > 0) setOpen(true); }}
         placeholder={placeholder}
+        role="combobox"
+        aria-autocomplete="list"
+        aria-expanded={open && filtered.length > 0}
+        aria-controls={open && filtered.length > 0 ? listId : undefined}
+        aria-activedescendant={open && filtered[activeIndex] ? `${listId}-${activeIndex}` : undefined}
+        onKeyDown={event => {
+          if (event.nativeEvent.isComposing) return;
+          if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && filtered.length) {
+            event.preventDefault();
+            setOpen(true);
+            setActiveIndex(index => event.key === 'ArrowDown'
+              ? (index + 1) % filtered.length
+              : (index <= 0 ? filtered.length - 1 : index - 1));
+          } else if (event.key === 'Enter' && open && filtered[activeIndex]) {
+            event.preventDefault();
+            select(filtered[activeIndex]);
+            setActiveIndex(-1);
+          } else if (event.key === 'Escape' && open) {
+            event.preventDefault();
+            event.stopPropagation();
+            setOpen(false);
+            setActiveIndex(-1);
+          }
+        }}
+        onBlur={() => { setOpen(false); setActiveIndex(-1); }}
         autoComplete="off"
         inputMode={inputMode}
       />
       {open && filtered.length > 0 && (
-        <div className="client-suggestions">
+        <div className="client-suggestions" id={listId} role="listbox">
           {filtered.map((opt, i) => (
             <div
               key={`${opt.value}-${i}`}
+              id={`${listId}-${i}`}
+              role="option"
+              aria-selected={i === activeIndex}
               className="client-suggestion-item"
               onPointerDown={e => { e.preventDefault(); select(opt); }}
             >

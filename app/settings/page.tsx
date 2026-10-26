@@ -247,7 +247,7 @@ function SettingsTabsBody() {
   };
 
   const confirmImport = async () => {
-    if (!preview || !preview.validation.ok || rawPayload === null) return;
+    if (!preview || !preview.validation.ok || rawPayload === null || importing || (preview.validation.recordIssues.length > 0 && !ackSkipped)) return;
     setImporting(true);
     try {
       const report: ImportReport = await applyImport(rawPayload);
@@ -363,7 +363,7 @@ function SettingsTabsBody() {
           onIssuesCleared={() => setIssues([])}
         />
       )}
-      <Modal isOpen={!!preview} onClose={() => { if (!importing) setPreview(null); }} title={`Імпорт: ${fileName || 'файл'}`} size="lg">
+      <Modal isOpen={!!preview} onClose={() => { if (!importing) setPreview(null); }} title={`Імпорт: ${fileName || 'файл'}`} size="lg" onSubmit={confirmImport} initialFocusSelector="input[type=checkbox], [data-dialog-submit]:not([disabled])">
         {preview && (
           <>
             <div className="settings-info-row">
@@ -457,10 +457,11 @@ function SettingsTabsBody() {
             )}
 
             <div className="modal-footer">
-              <button className="btn btn-ghost" onClick={() => setPreview(null)} disabled={importing}>Скасувати</button>
+              <button type="button" className="btn btn-ghost" onClick={() => setPreview(null)} disabled={importing}>Скасувати</button>
               <button
                 className="btn btn-primary"
-                onClick={confirmImport}
+                type="submit"
+                data-dialog-submit
                 disabled={!preview.validation.ok || importing || (preview.validation.recordIssues.length > 0 && !ackSkipped)}
               >
                 {importing ? 'Імпортую…' : 'Імпортувати'}

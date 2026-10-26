@@ -9,7 +9,7 @@ interface DebtFormProps {
   isOpen: boolean;
   debt?: PersonalDebt | null;
   initialType?: 'owed_to_me' | 'my_debt';
-  onSave: (data: Partial<PersonalDebt>) => void;
+  onSave: (data: Partial<PersonalDebt>) => void | Promise<void>;
   onCancel: () => void;
 }
 
@@ -36,7 +36,7 @@ export default function DebtForm({ isOpen, debt, initialType = 'owed_to_me', onS
   }, [debt, isOpen, initialType]);
 
   const handleSave = () => {
-    onSave({ type, person, amount: Number(amount) || 0, currency, note, date });
+    return onSave({ type, person, amount: Number(amount) || 0, currency, note, date });
   };
 
   return (
