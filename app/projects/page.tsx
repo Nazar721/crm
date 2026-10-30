@@ -1,7 +1,7 @@
 'use client';
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
-import { project as calcProject, projectStartDate, projectEndDate, projectDaysUsed, getStatsContext } from '@/lib/calc';
+import { project as calcProject, projectStartDate, projectEndDate, projectDaysUsed, getStatsContext, toDisplay } from '@/lib/calc';
 import { formatMoney, formatDate, today, daysBetween, getMonthKey, getMonthLabel, itemCurrency } from '@/lib/utils';
 import { saveProject, completeProject, deleteProject } from '@/lib/actions';
 import { initialProjectForCopy, copyMissingWarnings } from '@/lib/copy-project';
@@ -114,9 +114,9 @@ export default function ProjectsPage() {
     );
     return [...list].sort((a, b) => {
       switch (completedSort) {
-        case 'budget_desc': return (Number(b.budget) || 0) - (Number(a.budget) || 0);
-        case 'budget_asc': return (Number(a.budget) || 0) - (Number(b.budget) || 0);
-        case 'income_desc': return calcProject(b).myIncome - calcProject(a).myIncome;
+        case 'budget_desc': return toDisplay(calcProject(b).budget, itemCurrency(b), statsCtx.settings) - toDisplay(calcProject(a).budget, itemCurrency(a), statsCtx.settings);
+        case 'budget_asc': return toDisplay(calcProject(a).budget, itemCurrency(a), statsCtx.settings) - toDisplay(calcProject(b).budget, itemCurrency(b), statsCtx.settings);
+        case 'income_desc': return toDisplay(calcProject(b).myIncome, itemCurrency(b), statsCtx.settings) - toDisplay(calcProject(a).myIncome, itemCurrency(a), statsCtx.settings);
         case 'days_asc': return (Number(a.days) || 0) - (Number(b.days) || 0);
         case 'days_desc': return (Number(b.days) || 0) - (Number(a.days) || 0);
         case 'date_asc': return (a.completedAt || 0) - (b.completedAt || 0);
@@ -124,16 +124,17 @@ export default function ProjectsPage() {
         default: return (b.completedAt || 0) - (a.completedAt || 0);
       }
     });
-  }, [allCompleted, filterList, inPeriod, specFilter, clientFilter, completedSort]);
+  }, [allCompleted, filterList, inPeriod, specFilter, clientFilter, completedSort, statsCtx.settings]);
 
   // Підсумки по відфільтрованих завершених — по повному набору, не по сторінці
   const completedSummary = useMemo(() => {
     let totalBudget = 0, totalIncome = 0, biggest: Project | null = null, biggestBudget = 0;
     completed.forEach(p => {
       const c = calcProject(p);
-      totalBudget += c.budget;
-      totalIncome += c.myIncome;
-      if (c.budget > biggestBudget) { biggestBudget = c.budget; biggest = p; }
+      const budget = toDisplay(c.budget, itemCurrency(p), statsCtx.settings);
+      totalBudget += budget;
+      totalIncome += toDisplay(c.myIncome, itemCurrency(p), statsCtx.settings);
+      if (budget > biggestBudget) { biggestBudget = budget; biggest = p; }
     });
     return {
       count: completed.length,
@@ -143,7 +144,7 @@ export default function ProjectsPage() {
       biggest: biggest as Project | null,
       biggestBudget,
     };
-  }, [completed]);
+  }, [completed, statsCtx.settings]);
 
   const resetCompletedFilters = () => {
     setPeriodFilter(''); setSpecFilter(''); setClientFilter(''); setCompletedSort('date_desc'); setTypeFilter(''); setSearch('');
@@ -185,7 +186,7 @@ export default function ProjectsPage() {
       const c = calcProject(p);
       const cur = itemCurrency(p);
       const specPay = c.specialistCost;
-      totalSpecPay += specPay;
+      totalSpecPay += toDisplay(specPay, cur, statsCtx.settings);
       const paid = Number(p.paidToSpecialist) || 0;
       const rest = specPay - paid;
       const status = rest <= 0 ? '✅ виплачено' : `⏳ залишок ${formatMoney(rest, cur)}`;
@@ -200,7 +201,7 @@ export default function ProjectsPage() {
     lines.push(`💸 Всього фахівцю: ${formatMoney(Math.round(totalSpecPay))}`);
     lines.push(`📈 Середній чек: ${formatMoney(completedSummary.avgCheck)}`);
     return lines.join('\n');
-  }, [completed, completedSummary, periodTitle, reportSpecName]);
+  }, [completed, completedSummary, periodTitle, reportSpecName, statsCtx.settings]);
 
   const copyReport = async () => {
     if (!reportText) return;
