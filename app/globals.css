@@ -66,14 +66,18 @@
   --bg-input: var(--g-surface);
   --bg-input-focus: var(--g-elevated);
 
-  --glass-bg: rgba(255, 255, 255, 0.03);
-  --glass-bg-strong: rgba(255, 255, 255, 0.05);
-  --glass-border: var(--g-border);
-  --glass-border-strong: var(--g-border-strong);
-  --glass-shine: transparent;
-  --glass-blur: 0px;
-  --glass-blur-strong: 0px;
-  --glass-tint: transparent;
+  /* «Рідке скло» в дусі референсу: прозорі поверхні, крізь які м'яко
+     просвічує кольорове світло фону; межі ледь помітні, відблиск
+     дифузний, тіні розмиті. Fallback без blur — у @supports наприкінці. */
+  --glass-bg: linear-gradient(160deg, rgba(255, 255, 255, 0.10) 0%, rgba(255, 255, 255, 0.03) 45%), rgba(26, 29, 36, 0.38);
+  --glass-bg-strong: linear-gradient(160deg, rgba(255, 255, 255, 0.13) 0%, rgba(255, 255, 255, 0.05) 45%), rgba(33, 37, 45, 0.55);
+  --glass-border: rgba(255, 255, 255, 0.09);
+  --glass-border-strong: rgba(255, 255, 255, 0.17);
+  --glass-shine: inset 0 1px 0 rgba(255, 255, 255, 0.10), inset 0 14px 30px -14px rgba(255, 255, 255, 0.09);
+  --glass-blur: 30px;
+  --glass-blur-strong: 42px;
+  --glass-saturate: 1.6;
+  --glass-tint: rgba(255, 138, 76, 0.03);
 
   --border: var(--g-border);
   --border-strong: var(--g-border-strong);
@@ -110,16 +114,16 @@
   --sidebar-width: 260px;
   --radius-sm: 10px;
   --radius-md: 14px;
-  --radius-lg: 18px;
-  --radius-xl: 22px;
+  --radius-lg: 20px;
+  --radius-xl: 24px;
   --field-height: 44px;
   --field-line-height: 20px;
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.30);
   --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.40);
   --shadow-focus: 0 0 0 3px rgba(255, 122, 66, 0.30);
-  --shadow-glass: 0 0 0 1px rgba(255, 255, 255, 0.02);
-  --shadow-glass-hover: 0 0 0 1px rgba(255, 255, 255, 0.05);
+  --shadow-glass: var(--glass-shine), 0 2px 6px rgba(0, 0, 0, 0.20), 0 20px 48px -8px rgba(0, 0, 0, 0.30);
+  --shadow-glass-hover: var(--glass-shine), 0 2px 6px rgba(0, 0, 0, 0.22), 0 26px 60px -8px rgba(0, 0, 0, 0.40);
 
   --ease: cubic-bezier(0.32, 0.72, 0, 1);
   --transition: 0.24s var(--ease);
@@ -156,6 +160,23 @@ body {
   -webkit-text-size-adjust: 100%;
 }
 
+/* Глибина фону: темний графіт + м'які затемнені світлові плями
+   у кольорах теми (акцент, клієнти, проєкти). Фіксований шар —
+   не прокручується, малюється один раз. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(1400px 900px at 18% -12%, rgba(255, 138, 76, 0.16), transparent 65%),
+    radial-gradient(1100px 800px at -8% 32%, rgba(101, 214, 161, 0.08), transparent 60%),
+    radial-gradient(1000px 700px at 110% 10%, rgba(114, 183, 255, 0.10), transparent 58%),
+    radial-gradient(1300px 900px at 55% 115%, rgba(155, 154, 255, 0.09), transparent 62%),
+    linear-gradient(180deg, #15171D 0%, #101218 52%, #0D0F13 100%);
+}
+
 /* =============================================
    SIDEBAR
    ============================================= */
@@ -176,7 +197,9 @@ body {
   .sidebar {
     transform: translateX(-100%);
     box-shadow: none;
-    background: var(--g-nav);
+    background: var(--glass-bg-strong);
+    backdrop-filter: blur(var(--glass-blur-strong)) saturate(var(--glass-saturate));
+    -webkit-backdrop-filter: blur(var(--glass-blur-strong)) saturate(var(--glass-saturate));
   }
 
   .sidebar.open {
@@ -409,13 +432,15 @@ body {
   left: 12px; right: 12px;
   bottom: calc(8px + env(safe-area-inset-bottom));
   z-index: 200;
-  background: var(--g-elevated);
-  border: 1px solid var(--g-border);
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(var(--glass-blur-strong)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur-strong)) saturate(var(--glass-saturate));
+  border: 1px solid var(--glass-border);
   border-radius: 28px;
   padding: 4px 6px;
   display: none;
   justify-content: space-around;
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.40);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 8px 40px rgba(0, 0, 0, 0.40);
 }
 
 
@@ -508,12 +533,14 @@ body {
   position: fixed;
   left: 0; right: 0; bottom: 0;
   z-index: 299;
-  background: var(--g-elevated);
-  border: 1px solid var(--g-border);
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(var(--glass-blur-strong)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur-strong)) saturate(var(--glass-saturate));
+  border: 1px solid var(--glass-border);
   border-bottom: none;
   border-radius: 24px 24px 0 0;
   padding: 10px 16px calc(18px + env(safe-area-inset-bottom));
-  box-shadow: 0 -18px 70px rgba(0, 0, 0, 0.60);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 -18px 70px rgba(0, 0, 0, 0.60);
   animation: sheetUp 200ms var(--ease);
   will-change: transform;
 }
@@ -681,33 +708,28 @@ body {
 
 .stat-card {
   /* Матове скло: тонована підкладка + помірне розмиття */
-  background: rgba(40, 44, 53, 0.85);
-  border: 1px solid rgba(73, 80, 93, 0.6);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
   padding: 18px;
   display: flex;
   align-items: flex-start;
   gap: 14px;
   transition: color var(--transition), background-color var(--transition), border-color var(--transition), box-shadow var(--transition), transform var(--transition);
-  box-shadow: 
-    0 0 0 1px rgba(255, 255, 255, 0.04) inset,
-    0 1px 2px rgba(0, 0, 0, 0.30),
-    0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--shadow-glass);
   position: relative;
   overflow: hidden;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 }
 
 
 
 .stat-card:hover {
-  background: rgba(52, 57, 68, 0.90);
-  border-color: rgba(130, 140, 156, 0.7);
+  background: var(--glass-bg-strong);
+  border-color: var(--glass-border-strong);
   transform: translateY(-2px);
-  box-shadow: 
-    0 0 0 1px rgba(255, 255, 255, 0.08) inset,
-    0 8px 24px rgba(0, 0, 0, 0.40);
+  box-shadow: var(--shadow-glass-hover);
 }
 
 .stat-card--clickable {
@@ -719,17 +741,17 @@ body {
 }
 
 .stat-card--highlight {
-  background: rgba(232, 189, 105, 0.18);
-  border-color: rgba(232, 189, 105, 0.50);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(232, 189, 105, 0.12);
+  border-color: rgba(232, 189, 105, 0.45);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 }
 
 .stat-card--warn {
-  background: rgba(255, 122, 66, 0.18);
-  border-color: rgba(255, 122, 66, 0.50);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(255, 122, 66, 0.12);
+  border-color: rgba(255, 122, 66, 0.45);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 }
 
 .modal-stat-card {
@@ -739,11 +761,11 @@ body {
   margin-bottom: 18px;
   padding: 16px 18px;
   border-radius: var(--radius-lg);
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(73, 80, 93, 0.5);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.03) inset;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-glass);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 }
 
 .modal-stat-label {
@@ -816,17 +838,15 @@ body {
 .finance-converter {
   flex: 1;
   min-width: 0;
-  background: rgba(40, 44, 53, 0.85);
-  border: 1px solid rgba(73, 80, 93, 0.6);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
   padding: 12px;
   display: grid;
   gap: 10px;
-  box-shadow: 
-    0 0 0 1px rgba(255, 255, 255, 0.04) inset,
-    0 1px 2px rgba(0, 0, 0, 0.30);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-glass);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 }
 
 .converter-rates,
@@ -882,18 +902,15 @@ body {
 }
 
 .chart-card {
-  background: rgba(40, 44, 53, 0.85);
-  border: 1px solid rgba(73, 80, 93, 0.6);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
   padding: 18px;
-  box-shadow: 
-    0 0 0 1px rgba(255, 255, 255, 0.04) inset,
-    0 1px 2px rgba(0, 0, 0, 0.30),
-    0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--shadow-glass);
   position: relative;
   overflow: hidden;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 }
 
 
@@ -943,17 +960,15 @@ body {
 .tabs {
   display: flex;
   gap: 4px;
-  background: rgba(40, 44, 53, 0.85);
-  border: 1px solid rgba(73, 80, 93, 0.6);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-md);
   padding: 4px;
   width: fit-content;
   margin-bottom: 20px;
-  box-shadow: 
-    0 0 0 1px rgba(255, 255, 255, 0.04) inset,
-    0 1px 2px rgba(0, 0, 0, 0.30);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-glass);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 }
 
 .tab {
@@ -1109,19 +1124,16 @@ select.form-input, select.filter-select {
    ============================================= */
 .table-wrap {
   /* Матове скло з тонованою підкладкою. Для довгих таблиць (сотні рядків)
-     розмиття обмежене до 12px для збереження продуктивності. */
-  background: rgba(40, 44, 53, 0.90);
-  border: 1px solid rgba(73, 80, 93, 0.6);
+     розмиття обмежене для збереження продуктивності. */
+  background: var(--glass-bg-strong);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
   overflow: hidden;
   overflow-x: auto;
-  box-shadow: 
-    0 0 0 1px rgba(255, 255, 255, 0.04) inset,
-    0 1px 2px rgba(0, 0, 0, 0.30),
-    0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--shadow-glass);
   position: relative;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 }
 
 
@@ -1291,28 +1303,23 @@ select.form-input, select.filter-select {
   display: flex;
   flex-direction: column;
   min-height: 292px;
-  background: rgba(43, 47, 59, 0.85);
-  border: 1px solid rgba(88, 91, 115, 0.6);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
   padding: 22px;
   overflow: hidden;
   transition: transform var(--transition), background var(--transition), border-color var(--transition), box-shadow var(--transition);
-  box-shadow: 
-    0 0 0 1px rgba(255, 255, 255, 0.04) inset,
-    0 1px 2px rgba(0, 0, 0, 0.30),
-    0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--shadow-glass);
   position: relative;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 }
 
 
 .developer-card:hover {
-  background: rgba(52, 57, 68, 0.90);
-  border-color: rgba(130, 140, 156, 0.7);
-  box-shadow: 
-    0 0 0 1px rgba(255, 255, 255, 0.08) inset,
-    0 18px 36px rgba(0, 0, 0, 0.30);
+  background: var(--glass-bg-strong);
+  border-color: var(--glass-border-strong);
+  box-shadow: var(--shadow-glass-hover);
 }
 
 .dev-card-header {
@@ -1601,15 +1608,17 @@ select.form-input, select.filter-select {
 .modal {
   display: flex;
   flex-direction: column;
-  background: var(--g-surface);
-  border: 1px solid var(--g-border);
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(var(--glass-blur-strong)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur-strong)) saturate(var(--glass-saturate));
+  border: 1px solid var(--glass-border);
   border-right: 0;
   border-radius: 22px 0 0 22px;
   width: min(680px, 58vw);
   height: 100dvh;
   max-height: 100dvh;
   overflow: hidden;
-  box-shadow: -24px 0 80px rgba(0, 0, 0, 0.42);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), -24px 0 80px rgba(0, 0, 0, 0.42);
   animation: drawerIn 240ms var(--ease);
   position: relative;
   will-change: transform;
@@ -1620,7 +1629,7 @@ select.form-input, select.filter-select {
 .modal-overlay.closing .modal { animation: drawerOut 160ms var(--ease) forwards; }
 
 .modal--sm { max-width: 420px; }
-.modal--compact { align-self: center; width: min(420px, calc(100vw - 32px)); height: auto; max-height: min(90dvh, 720px); border: 1px solid var(--g-border); border-radius: var(--radius-xl); margin: auto; animation: modalIn 180ms var(--ease); }
+.modal--compact { align-self: center; width: min(420px, calc(100vw - 32px)); height: auto; max-height: min(90dvh, 720px); border: 1px solid var(--glass-border); border-radius: var(--radius-xl); margin: auto; animation: modalIn 180ms var(--ease); }
 .modal--lg { width: min(760px, 64vw); }
 
 .modal-header {
@@ -1629,8 +1638,8 @@ select.form-input, select.filter-select {
   justify-content: space-between;
   flex: 0 0 auto;
   padding: 20px 24px 18px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  background: var(--g-surface);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: transparent;
 }
 
 .modal-title {
@@ -1662,8 +1671,8 @@ select.form-input, select.filter-select {
   justify-content: flex-end;
   gap: 10px;
   padding: 18px 24px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(255, 255, 255, 0.02);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: transparent;
 }
 
 /* =============================================
@@ -1749,18 +1758,15 @@ textarea.form-input:not(.ai-composer-input), .form-textarea {
 }
 
 .settings-card {
-  background: rgba(40, 44, 53, 0.85);
-  border: 1px solid rgba(73, 80, 93, 0.6);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
-  box-shadow: 
-    0 0 0 1px rgba(255, 255, 255, 0.04) inset,
-    0 1px 2px rgba(0, 0, 0, 0.30),
-    0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--shadow-glass);
   padding: 20px;
   position: relative;
   overflow: hidden;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 }
 
 
@@ -1927,8 +1933,10 @@ select.form-input option, select.filter-select option {
 }
 
 .toast {
-  background: var(--g-elevated);
-  border: 1px solid var(--g-border);
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-md);
   padding: 12px 16px;
   color: var(--text-primary);
@@ -1938,7 +1946,7 @@ select.form-input option, select.filter-select option {
   gap: 10px;
   min-width: 260px;
   animation: toastIn 160ms var(--ease);
-  box-shadow: var(--shadow-glass), var(--shadow-md);
+  box-shadow: var(--shadow-glass);
 }
 
 .toast--success { border-left: 3px solid var(--accent-green); }
@@ -1980,14 +1988,28 @@ select.form-input option, select.filter-select option {
 @media (max-width: 768px) {
   html { font-size: 15px; }
 
-  /* На вузьких екранах тримаємо суцільні непрозорі поверхні:
-     прозорість + прокрутка довгих таблиць інакше дає мерехтіння. */
+  /* На вузьких екранах контентні картки — суцільні, з градієнтом у стилі
+     матового скла: прозорість + прокрутка довгих таблиць дають мерехтіння
+     на iOS, а blur на сотнях рядків вичерпує пам'ять. Скло лишають лише
+     поодинокі елементи інтерфейсу: таббар, модалки, sheet, стікі-хедер. */
   .stat-card, .finance-converter, .chart-card, .tabs,
+  .modal-stat-card,
+  .toast {
+    background:
+      linear-gradient(160deg, rgba(255, 255, 255, 0.11) 0%, rgba(255, 255, 255, 0.02) 42%),
+      linear-gradient(160deg, #2D323D 0%, #23272F 100%);
+    box-shadow: var(--shadow-glass);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
   .search-input, .filter-select, .form-input,
-  .modal-stat-card, .stat-icon, .dev-stat, .backup-btn,
-  .toast { background: var(--g-surface); }
-  .modal, .modal-footer, .tabbar-sheet { background: var(--g-elevated); }
-  .page-header { background: var(--g-bg); }
+  .stat-icon, .dev-stat, .backup-btn { background: var(--g-surface); }
+  .modal, .modal-footer, .tabbar-sheet {
+    background: var(--glass-bg-strong);
+    backdrop-filter: blur(var(--glass-blur-strong)) saturate(var(--glass-saturate));
+    -webkit-backdrop-filter: blur(var(--glass-blur-strong)) saturate(var(--glass-saturate));
+  }
+  .page-header { background: var(--glass-bg-strong); }
 
   /* --- Sidebar -> TabBar --- */
   .sidebar { display: none; }
@@ -2007,9 +2029,11 @@ select.form-input option, select.filter-select option {
     z-index: 50;
     margin: -14px -14px 18px;
     padding: calc(12px + env(safe-area-inset-top)) 14px 12px;
-    /* Стікі-хедер: суцільний фон, без розмиття (iOS-пам'ять) */
-    background: var(--g-bg);
-    border-bottom: 1px solid var(--g-border);
+    /* Стікі-хедер: матове скло — плашка помітна під час прокручування */
+    background: var(--glass-bg-strong);
+    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+    border-bottom: 1px solid var(--glass-border);
   }
 
   .stats-grid, .stats-grid--wide { grid-template-columns: 1fr; gap: 12px; }
@@ -2239,12 +2263,14 @@ tr.week-b .week-dot {
   left: 0;
   right: 0;
   z-index: 100;
-  background: var(--g-elevated);
-  border: 1px solid var(--g-border);
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(var(--glass-blur-strong)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur-strong)) saturate(var(--glass-saturate));
+  border: 1px solid var(--glass-border-strong);
   border-radius: var(--radius-sm);
   max-height: 200px;
   overflow-y: auto;
-  box-shadow: var(--shadow-glass), 0 8px 24px rgba(0, 0, 0, 0.50);
+  box-shadow: var(--shadow-glass);
   margin-top: 2px;
 }
 
@@ -2546,10 +2572,13 @@ tr.week-b .week-dot {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  background: var(--g-elevated);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-xl);
   padding: 16px;
+  box-shadow: var(--shadow-glass);
 }
 
 .ai-chat-head {
@@ -3014,17 +3043,21 @@ tr.week-b .week-dot {
 
 /* ---- Панель: тонка межа, без кольорової смуги зверху ---- */
 .ov-card {
-  background: linear-gradient(145deg, #363C48 0%, var(--g-surface) 78%);
-  border: 1px solid #515967;
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0.025) 45%),
+    linear-gradient(150deg, rgba(58, 64, 77, 0.36) 0%, rgba(40, 44, 53, 0.42) 78%);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
   padding: 16px;
   display: flex;
   flex-direction: column;
   min-width: 0;
-  box-shadow: 0 14px 34px rgba(0,0,0,.18);
+  box-shadow: var(--shadow-glass);
   transition: border-color var(--transition), transform var(--transition), box-shadow var(--transition);
 }
-.ov-card:hover { border-color: #697689; box-shadow: 0 20px 42px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.06); }
+.ov-card:hover { border-color: var(--glass-border-strong); box-shadow: var(--shadow-glass-hover); }
 .ov-card--agency-money { border-top: 2px solid var(--sem-agency); }
 .ov-card--lead { border-top: 2px solid var(--sem-project); }
 
@@ -3076,11 +3109,15 @@ tr.week-b .week-dot {
 
 /* Agency income uses a warm graphite surface with an amber accent. */
 .ov-hero {
-  background: linear-gradient(135deg, #554738 0%, #37333B 78%);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 14px 34px rgba(0,0,0,.16);
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0.025) 45%),
+    linear-gradient(135deg, rgba(85, 71, 56, 0.50) 0%, rgba(55, 51, 59, 0.54) 78%);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  box-shadow: var(--shadow-glass);
   color: var(--g-text);
   border-radius: var(--radius-lg);
-  border: 1px solid var(--g-border);
+  border: 1px solid var(--glass-border);
   padding: 20px;
   min-height: 200px;
   display: flex;
@@ -3690,7 +3727,7 @@ tr.week-b .week-dot {
 .ov-card--balance-highlight .ov-acct--empty { color: var(--g-text-muted); }
 .ov-card--balance-highlight .ov-acct + .ov-acct { border-color: var(--g-border); }
 .finance-summary > .stat-card {
-  background: linear-gradient(145deg, #17241F 0%, var(--g-surface) 76%);
+  background: linear-gradient(145deg, rgba(23, 36, 31, 0.45) 0%, rgba(40, 44, 53, 0.40) 76%);
   border-color: rgba(101, 214, 161, .28);
 }
 .finance-summary > .stat-card .stat-label::before {
@@ -3735,10 +3772,12 @@ tr.week-b .week-dot {
     bottom: 14px;
     left: 14px;
     width: 68px;
-    background: linear-gradient(180deg, #1B1B22 0%, #15151A 100%);
-    border: 1px solid var(--g-border);
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+    border: 1px solid var(--glass-border);
     border-radius: 30px;
-    box-shadow: 0 18px 48px rgba(0,0,0,.24);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 18px 48px rgba(0, 0, 0, 0.24);
     overflow: visible;
   }
   .sidebar-logo {
@@ -3880,17 +3919,18 @@ tr.week-b .week-dot {
   .main-content { margin-left: 96px; padding: 30px 32px; }
 }
 
-/* Картки мають власний тихий кольоровий код: дохід, витрати, клієнти, цілі та борги. */
-.ov-card--income { --g-text-muted: #CCD4D0; border-color: #58776C; background: linear-gradient(135deg, #37564B, #2B3737 80%); }
+/* Картки мають власний тихий кольоровий код: дохід, витрати, клієнти, цілі та борги.
+   Відтінки ті самі, заливка напівпрозора — колір читається крізь скло. */
+.ov-card--income { --g-text-muted: #CCD4D0; border-color: rgba(101, 214, 161, 0.30); background: linear-gradient(135deg, rgba(55, 86, 75, 0.38), rgba(43, 55, 55, 0.40) 80%); }
 .ov-card--income .ov-sum-value { color: var(--sem-finance); }
-.ov-card--expense { --g-expense: #FFAEB5; border-color: #7B5B66; background: linear-gradient(135deg, #563E48, #383039 80%); }
+.ov-card--expense { --g-expense: #FFAEB5; border-color: rgba(244, 136, 145, 0.30); background: linear-gradient(135deg, rgba(86, 62, 72, 0.38), rgba(56, 48, 57, 0.40) 80%); }
 .ov-card--expense .ov-sum-value { color: var(--g-expense); }
-.ov-card--client-source { border-color: #516C8B; background: linear-gradient(145deg, #344860, #2B303D 80%); }
-.ov-card--scale { border-color: #486E72; background: linear-gradient(135deg, #324C50, #2B343C 80%); }
+.ov-card--client-source { border-color: rgba(114, 183, 255, 0.30); background: linear-gradient(145deg, rgba(52, 72, 96, 0.38), rgba(43, 48, 61, 0.40) 80%); }
+.ov-card--scale { border-color: rgba(82, 200, 196, 0.30); background: linear-gradient(145deg, rgba(50, 76, 80, 0.38), rgba(43, 52, 60, 0.40) 80%); }
 .ov-card--scale .ov-scale-icon { color: var(--sem-hosting); }
-.ov-card--savings { border-color: #776E50; background: linear-gradient(145deg, #4B4738, #34343A 80%); }
+.ov-card--savings { border-color: rgba(232, 189, 105, 0.30); background: linear-gradient(145deg, rgba(75, 71, 56, 0.38), rgba(52, 52, 58, 0.40) 80%); }
 .ov-card--savings .ov-progress-bar { background: var(--sem-planned); }
-.ov-card--debts { border-color: #735968; background: linear-gradient(145deg, #483841, #30313C 80%); }
+.ov-card--debts { border-color: rgba(195, 154, 255, 0.26); background: linear-gradient(145deg, rgba(72, 56, 65, 0.38), rgba(48, 49, 60, 0.40) 80%); }
 .ov-acct {
   padding: 9px 10px;
   border-radius: 10px;
@@ -3901,9 +3941,9 @@ tr.week-b .week-dot {
 /* Гаманець у «Мої фінанси»: графітова основа, живі банківські акценти. */
 .ov-card--balance-highlight {
   background:
-    radial-gradient(ellipse at 90% 0%, rgba(163,230,190,.17), transparent 58%),
-    linear-gradient(135deg, #3D6458 0%, #274A40 72%);
-  border: 1px solid #648C7B;
+    radial-gradient(ellipse at 90% 0%, rgba(163,230,190,.14), transparent 58%),
+    linear-gradient(135deg, rgba(61, 100, 88, 0.50) 0%, rgba(39, 74, 64, 0.52) 72%);
+  border: 1px solid rgba(100, 140, 123, 0.55);
   box-shadow: inset 0 1px 0 rgba(224,255,236,.12), 0 18px 40px rgba(0,0,0,.20);
   --g-text-dim: #E1EEE7;
   --g-text-muted: #C8E1D5;
@@ -3932,7 +3972,9 @@ tr.week-b .week-dot {
   padding: 10px;
   border: 1px solid color-mix(in srgb, var(--bank-accent, #C0C8D5) 24%, var(--g-border));
   border-radius: 12px;
-  background: linear-gradient(135deg, color-mix(in srgb, var(--bank-accent, #C0C8D5) 15%, #303A40), #29343A 85%);
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--bank-accent, #C0C8D5) 16%, transparent),
+    color-mix(in srgb, var(--bank-accent, #C0C8D5) 7%, transparent) 85%);
   transition: border-color 180ms ease, transform 180ms ease, background-color 180ms ease;
 }
 .ov-acct:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--bank-accent, #C0C8D5) 52%, var(--g-border)); }
@@ -4208,3 +4250,30 @@ tr.week-b .week-dot {
 }
 
 .client-suggestion-item[aria-selected="true"] { background: var(--g-elevated); outline: 1px solid var(--border-focus); outline-offset: -1px; }
+
+/* =============================================
+   FALLBACK — браузери без backdrop-filter
+   Скляні поверхні отримують суцільний читабельний фон.
+   ============================================= */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .sidebar, .stat-card, .chart-card, .tabs, .table-wrap,
+  .settings-card, .finance-converter, .developer-card,
+  .modal-stat-card, .ai-chat, .client-suggestions,
+  .ov-card, .ov-hero {
+    background: var(--g-surface);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .modal, .tabbar, .tabbar-sheet, .toast {
+    background: var(--g-elevated);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  @media (max-width: 768px) {
+    .page-header {
+      background: var(--g-bg);
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
+  }
+}
