@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   addCalendarDays, addCalendarMonths, coverageOn, filterHostingServices,
-  hostingCoverage, hostingExpiringWithin, hostingSummary, hostingTotalsByCurrency, lastPaymentOf,
+  hostingCoverage, hostingExpiringWithin, hostingSummary, hostingTariffLabel, hostingTotalsByCurrency, lastPaymentOf,
   mergePeriods, paymentsOfService, proposeExtension,
 } from '@/lib/hosting';
 import { kyivDateString } from '@/lib/dates';
@@ -413,4 +413,124 @@ test('AI: виконання та контекст; повторне підтв�
   assert.equal(context.hosting.services.length, 1);
   assert.ok(context.hosting.services[0].status, 'стан покриття в контексті');
   assert.equal(context.hosting.payments.length, 1);
+});
+
+// ------------------------------------------------------------
+// Швидкі періоди оплати (календарні місяці/рік) і тариф картки
+// ------------------------------------------------------------
+
+/** Арифметика швидкого періоду з форми оплати: кінець включно. */
+function quickEnd(start: string, months: number): string {
+  return addCalendarDays(addCalendarMonths(start, months), -1);
+}
+
+test('швидкі періоди: 1/2/3 місяці та рік — календарні, включний кінець', () => {
+  assert.equal(quickEnd('2026-11-01', 1), '2026-11-30', '1 міс від 01.11 → 30.11');
+  assert.equal(quickEnd('2026-11-01', 2), '2026-12-31', '2 міс через рік → 31.12');
+  assert.equal(quickEnd('2026-11-01', 12), '2027-10-31', 'рік від 01.11 → 31.10 наступного');
+  assert.equal(quickEnd('2026-10-12', 12), '2027-10-11', 'рік від 12.10 → 11.10 (приклад ТЗ)');
+  assert.equal(quickEnd('2026-12-15', 1), '2027-01-14', 'перехід через кінець року');
+});
+
+test('швидкі періоди: кінець місяця та високосний рік', () => {
+  // 31.01 + 1 міс → наступне списання 28.02 (невисокосний), оплачено до 27.02.
+  assert.equal(quickEnd('2026-01-31', 1), '2026-02-27');
+  assert.equal(quickEnd('2024-01-31', 1), '2024-02-28', 'високосний: до 28.02, списання 29.02');
+  assert.equal(quickEnd('2024-01-31', 2), '2024-03-30', '31.01 + 2 міс → 30.03 (пригортання дня)');
+  assert.equal(quickEnd('2024-02-29', 12), '2025-02-27', '29.02.2024 + рік → до 28.02.2025');
+  assert.equal(quickEnd('2023-11-30', 3), '2024-02-28', '30.11.2023 + 3 міс → до 28.02.2024');
+});
+
+test('продовження від покриття; прострочення/прогалина — початок не підказується', () => {
+  const s = service();
+  // Чинне покриття до 31.12.2026: початок — 01.01.2027, рік → 31.12.2027.
+  const chain = [payment({ id: 'p1', periodStart: '2026-01-01', periodEnd: '2026-01-31' }), payment({ id: 'p2', periodStart: '2026-02-01', periodEnd: '2026-12-31' })];
+  const coverage = hostingCoverage(s, chain, '2026-10-13');
+  assert.equal(coverage.coverageEnd, '2026-12-31');
+  const start = addCalendarDays(coverage.coverageEnd!, 1);
+  assert.equal(quickEnd(start, 12), '2027-12-31', 'рік від 01.01 → 31.12');
+  // Прострочення: coverageEnd = null → форма бере «сьогодні» як початок і показує попередження.
+  const overdue = hostingCoverage(s, [payment({ periodStart: '2025-01-01', periodEnd: '2026-01-01' })], DAY);
+  assert.equal(overdue.coverageEnd, null);
+  assert.equal(overdue.status, 'overdue');
+  assert.ok(overdue.warnings.length > 0, 'попередження про прострочення є');
+  // Прогалина: наступний період відомий, але на сьогодні покриття немає.
+  const gap = hostingCoverage(s, [
+    payment({ id: 'p1', periodStart: '2025-01-01', periodEnd: '2026-01-01' }),
+    payment({ id: 'p2', periodStart: '2027-01-01', periodEnd: '2027-12-31' }),
+  ], DAY);
+  assert.equal(gap.hasGap, true);
+  assert.equal(gap.coverageEnd, null);
+});
+
+test('тариф картки: «$5 / міс», «₴225 / рік»; без ціни — порожньо', () => {
+  assert.equal(hostingTariffLabel({ expectedPrice: 5, currency: 'USD', billingPeriod: 'month' }), '$5 / міс');
+  assert.equal(hostingTariffLabel({ expectedPrice: 225, currency: 'UAH', billingPeriod: 'month' }), '₴225 / міс');
+  assert.equal(hostingTariffLabel({ expectedPrice: 1200, currency: 'UAH', billingPeriod: 'year' }), '₴1\u00A0200 / рік');
+  assert.equal(hostingTariffLabel({ expectedPrice: 60, currency: 'EUR' }), '€60', 'без періоду — лише ціна');
+  assert.equal(hostingTariffLabel({ currency: 'USD' }), '');
+});
+
+test('дії: payer і billingPeriod зберігаються; некоректний період відхилено', async () => {
+  clearAll();
+  await bootStore();
+  const created = await saveHostingService({
+    name: 'Квіти', provider: 'Vercel', payer: 'Клієнт Марія',
+    currency: 'USD', expectedPrice: 5, billingPeriod: 'month',
+  });
+  assert.equal(created.ok, true);
+  const saved = store.getSnapshot().hostingServices[0];
+  assert.equal(saved.payer, 'Клієнт Марія');
+  assert.equal(saved.billingPeriod, 'month');
+  // Порожній платник у старих записах — валідно (не вигадується автоматично).
+  const bare = await saveHostingService({ name: 'Без платника' });
+  assert.equal(bare.ok, true);
+  assert.equal(store.getSnapshot().hostingServices[1].payer, undefined);
+  // Некоректний період тарифу → відмова.
+  const bad = await saveHostingService({ name: 'X', billingPeriod: 'week' as unknown as 'month' });
+  assert.equal(bad.ok, false, 'період тарифу: лише місяць або рік');
+  // Редагування оновлює платника.
+  const id = saved.id;
+  await saveHostingService({ name: 'Квіти', payer: 'Іван' }, id);
+  assert.equal(store.getSnapshot().hostingServices[0].payer, 'Іван');
+});
+
+test('бекап: payer і billingPeriod проходять валідацію v3 без втрат', () => {
+  const raw = buildExportPayload(emptySnapshot());
+  raw.data.hostingServices = [service({ payer: 'Клієнт Марія', billingPeriod: 'year', expectedPrice: 60, currency: 'USD' })];
+  const validation = validateBackup(raw);
+  assert.equal(validation.ok, true);
+  const restored = validation.content!.hostingServices[0];
+  assert.equal(restored.payer, 'Клієнт Марія');
+  assert.equal(restored.billingPeriod, 'year');
+  // Сміттєвий період тарифу очищується з попередженням, запис лишається валідним.
+  raw.data.hostingServices = [{ ...raw.data.hostingServices[0], billingPeriod: 'week' as unknown as 'year' }];
+  const warned = validateBackup(raw);
+  assert.equal(warned.ok, true);
+  assert.equal(warned.content!.hostingServices[0].billingPeriod, undefined);
+  assert.ok(warned.recordIssues.length === 0);
+});
+
+test('оплата оновлює «Оплачено до», дні, стан; індикатор ≤5 днів за наявною умовою', async () => {
+  clearAll();
+  await bootStore();
+  const created = await saveHostingService({ name: 'Квіти' });
+  assert.ok(created.ok);
+  const serviceId = store.getSnapshot().hostingServices[0].id;
+  const s0 = store.getSnapshot().hostingServices[0];
+  assert.equal(hostingCoverage(s0, store.getSnapshot().hostingPayments).status, 'no_payment');
+  // Оплата: 13.10.2026 + 1 міс → до 12.11.2026 (включно).
+  await saveHostingPayment({ serviceId, date: DAY, amount: 100, periodStart: DAY, periodEnd: quickEnd(DAY, 1) });
+  const snap = store.getSnapshot();
+  const coverage = hostingCoverage(snap.hostingServices[0], snap.hostingPayments, DAY);
+  assert.equal(coverage.coverageEnd, '2026-11-12', '«Оплачено до» = кінець періоду включно');
+  assert.equal(coverage.daysLeft, 30);
+  assert.equal(coverage.status, 'ending');
+  // Рівно 5 днів → індикатор у меню спрацьовує; 6 — ні.
+  assert.equal(hostingExpiringWithin(snap.hostingServices, snap.hostingPayments, 5, '2026-11-07'), 1);
+  assert.equal(hostingExpiringWithin(snap.hostingServices, snap.hostingPayments, 5, '2026-11-06'), 0);
+  // Графік продовжень (hosting-view) рахує цю послугу в першому кошику.
+  const { hostingRenewalBuckets } = await import('@/lib/hosting-view');
+  const buckets = hostingRenewalBuckets(snap.hostingServices, snap.hostingPayments, '2026-11-07');
+  assert.equal(buckets[0].count, 1);
 });

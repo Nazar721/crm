@@ -3714,7 +3714,9 @@ tr.week-b .week-dot {
   .modal-overlay { align-items: stretch; justify-content: flex-end; }
   .modal:not(.modal--compact) { width: 100vw; height: 100dvh; max-height: 100dvh; border-radius: 0; border: 0; padding-bottom: env(safe-area-inset-bottom); }
   .modal:not(.modal--compact) .modal-header { padding-top: calc(16px + env(safe-area-inset-top)); }
-  .modal:not(.modal--compact) .modal-body { padding: 18px 16px calc(20px + env(safe-area-inset-bottom)); }
+  /* Таббар плаває над модалками (main-content z=1 проти tabbar z=200):
+     нижній відступ тримає футер форми вище за таббар після скролу. */
+  .modal:not(.modal--compact) .modal-body { padding: 18px 16px calc(92px + env(safe-area-inset-bottom)); }
   .modal--compact { align-self: center; margin: auto; }
   .assistant-drawer-page .page-header { align-items: flex-start; }
 }
@@ -4161,11 +4163,46 @@ tr.week-b .week-dot {
 .hosting-toolbar > input { max-width: 260px; }
 .hosting-toolbar > select { max-width: 180px; }
 .hosting-toolbar > select:last-child { max-width: 200px; }
+
+/* Quick period picker + period summary in the hosting payment form. */
+.hosting-quick-periods {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.hosting-quick-periods .btn {
+  min-height: 40px;
+  padding: 8px 14px;
+  font-size: 0.88rem;
+  border-radius: 8px;
+}
+.hosting-period-summary {
+  margin: 10px 0 2px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(101, 214, 161, 0.12);
+  border: 1px solid rgba(101, 214, 161, 0.35);
+  font-size: 0.88rem;
+  display: grid;
+  gap: 2px;
+}
+.hosting-period-summary__note { color: var(--text-secondary); font-size: 0.8rem; }
+.hosting-period-warning {
+  margin: 10px 0 2px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(232, 189, 105, 0.14);
+  border: 1px solid rgba(232, 189, 105, 0.4);
+  color: var(--warning, #b45309);
+  font-size: 0.85rem;
+}
+
 @media (max-width: 768px) {
   .hosting-overview { grid-template-columns: minmax(0, 1fr); }
   .hosting-overview .settings-card { align-self: start; }
   .hosting-page .hosting-toolbar > .form-input { width: 100%; max-width: none; }
   .hosting-page .header-actions .btn { justify-content: center; }
+  .hosting-quick-periods .btn { flex: 1 1 calc(50% - 4px); justify-content: center; }
   /* The sticky header already includes the top safe area; count it only once. */
   .main-content:has(.hosting-page) { padding-top: 14px; }
 }

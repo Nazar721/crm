@@ -7,8 +7,8 @@ import {
   archiveHostingService, deleteHostingPayment, saveHostingPayment, saveHostingService,
 } from '@/lib/actions';
 import {
-  HOSTING_STATUS_LABELS, filterHostingServices, hostingSummary,
-  paymentsOfService, type HostingStatus,
+  HOSTING_STATUS_LABELS, filterHostingServices, hostingCoverage, hostingSummary, hostingTariffLabel,
+  paymentsOfService, type HostingCoverage, type HostingStatus,
 } from '@/lib/hosting';
 import { emitToast } from '@/lib/toast-bus';
 import Modal from '@/components/ui/Modal';
@@ -47,6 +47,7 @@ export default function HostingPage() {
   const [editService, setEditService] = useState<HostingService | null>(null);
   const [paymentFormOpen, setPaymentFormOpen] = useState(false);
   const [paymentService, setPaymentService] = useState<HostingService | null>(null);
+  const [paymentCoverage, setPaymentCoverage] = useState<HostingCoverage | null>(null);
   const [editPayment, setEditPayment] = useState<HostingPayment | null>(null);
   const [historyService, setHistoryService] = useState<HostingService | null>(null);
   const { isOpen: confirmOpen, title: confirmTitle, text: confirmText, confirm, handleConfirm, cancel } = useConfirm();
@@ -108,6 +109,7 @@ export default function HostingPage() {
     if (!result.ok) { reportErrors(result.errors); return; }
     setPaymentFormOpen(false);
     setPaymentService(null);
+    setPaymentCoverage(null);
     setEditPayment(null);
     triggerRefresh();
   };
@@ -128,14 +130,16 @@ export default function HostingPage() {
 
   const openAddService = () => { setEditService(null); setServiceFormOpen(true); };
   const openEditService = (service: HostingService) => { setEditService(service); setServiceFormOpen(true); };
-  const openAddPayment = (service: HostingService) => {
+  const openAddPayment = (service: HostingService, coverage?: HostingCoverage) => {
     setPaymentService(service);
+    setPaymentCoverage(coverage || null);
     setEditPayment(null);
     setPaymentFormOpen(true);
   };
   const openEditPayment = (payment: HostingPayment) => {
     const service = services.find(s => s.id === payment.serviceId) || null;
     setPaymentService(service);
+    setPaymentCoverage(service ? hostingCoverage(service, payments) : null);
     setEditPayment(payment);
     setPaymentFormOpen(true);
   };
@@ -218,6 +222,8 @@ export default function HostingPage() {
                 <th>Проєкт</th>
                 <th>Домен</th>
                 <th>Провайдер</th>
+                <th>Хто оплачує</th>
+                <th>Тариф</th>
                 <th>Остання оплата</th>
                 <th>Оплачено до</th>
                 <th>Днів</th>
@@ -234,6 +240,8 @@ export default function HostingPage() {
                   </td>
                   <td data-label="Домен">{service.site || '—'}</td>
                   <td data-label="Провайдер">{service.provider || '—'}</td>
+                  <td data-label="Хто оплачує" className={service.payer ? '' : 'cell-secondary'}>{service.payer || '—'}</td>
+                  <td data-label="Тариф" className="cell-nowrap">{hostingTariffLabel(service) || <span className="cell-secondary">—</span>}</td>
                   <td data-label="Остання оплата">
                     {coverage.lastPayment
                       ? `${formatMoney(coverage.lastPayment.amount, coverage.lastPayment.currency || 'UAH')} від ${formatDate(coverage.lastPayment.date)}`
@@ -251,7 +259,7 @@ export default function HostingPage() {
                   </td>
                   <td data-label="Дії">
                     <div className="text-row-actions">
-                      <RowActionButton icon="payment" tone="payment" onClick={() => openAddPayment(service)}>Оплата</RowActionButton>
+                      <RowActionButton icon="payment" tone="payment" onClick={() => openAddPayment(service, coverage)}>Оплата</RowActionButton>
                       <RowActionButton icon="history" onClick={() => setHistoryService(service)}>Історія</RowActionButton>
                       <RowActionButton icon="edit" tone="edit" onClick={() => openEditService(service)}>Редагувати</RowActionButton>
                       <RowActionButton icon={service.archived ? 'restore' : 'archive'} onClick={() => handleArchive(service)}>
@@ -277,8 +285,9 @@ export default function HostingPage() {
         service={paymentService}
         payment={editPayment}
         defaultCurrency={paymentService?.currency || 'UAH'}
+        coverage={paymentCoverage}
         onSave={handlePaymentSave}
-        onCancel={() => { setPaymentFormOpen(false); setPaymentService(null); setEditPayment(null); }}
+        onCancel={() => { setPaymentFormOpen(false); setPaymentService(null); setPaymentCoverage(null); setEditPayment(null); }}
       />
 
       {/* Історія оплат */}

@@ -25,7 +25,7 @@ export const schemas:Partial<Record<AssistantDomain,Record<string,Spec>>>={
  partners:{name:text('Ім’я партнера'),currency,services:text('Послуги'),paidToPartner:number('Виплачено партнеру'),givenProjectsCount:number('Передано проєктів'),givenProjectsPrice:number('Ціна переданих проєктів'),ourCommission:number('Наша комісія'),paidToUs:number('Виплачено нам')},
  debts:{type:select('Тип боргу',['owed_to_me','my_debt']),person:text('Людина'),amount:number('Сума'),currency,note:text('Примітка'),date:date('Дата')},
  savings:{name:text('Назва'),bank,amount:number('Сума'),goal:number('Ціль'),currency,date:date('Дата')},
- hosting:{name:text('Назва послуги'),site:text('Сайт/домен'),provider:text('Провайдер'),plan:text('Тариф'),currency,expectedPrice:number('Очікувана ціна продовження'),note:text('Примітка'),archived:{label:'Архів',kind:'boolean'}},
+ hosting:{name:text('Назва послуги'),site:text('Сайт/домен'),provider:text('Провайдер'),plan:text('Тариф'),currency,expectedPrice:number('Очікувана ціна продовження'),billingPeriod:select('Період тарифу',['month','year']),payer:text('Хто оплачує'),note:text('Примітка'),archived:{label:'Архів',kind:'boolean'}},
   hostingPayments:{serviceId:text('ID картки хостингу'),date:date('Дата оплати'),amount:number('Сума'),currency,periodStart:date('Початок періоду'),periodEnd:date('Кінець періоду'),note:text('Примітка')},
   plannedProjects:{name:text('Назва проєкту'),category:select('Категорія',['IT','Design','Video']),clientName:text('Клієнт'),description:text('Опис'),clientId:text('ID клієнта')},
  history:{},

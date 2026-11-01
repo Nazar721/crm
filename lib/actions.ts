@@ -9,7 +9,7 @@ import {
   validateEnum, validatePercent, validatePositiveNumber, validateProjectBank, validateRate,
   validateRequiredText, validateTelegram, toFiniteNumber,
 } from '@/lib/validate';
-import { validateHostingPaymentInput, validateHostingServiceInput } from '@/lib/hosting';
+import { isHostingBillingPeriod, validateHostingPaymentInput, validateHostingServiceInput } from '@/lib/hosting';
 import { snoozeReminderIso, taskDateTimeFields, validateTaskInput, type TaskDraftInput } from '@/lib/tasks';
 import { kyivDateTimeToIso } from '@/lib/dates';
 import { autoMyPercent, DEFAULT_MY_SHARE } from '@/lib/my-share';
@@ -649,6 +649,8 @@ async function _saveHostingService(input: Partial<HostingService>, editId?: stri
     expectedPrice: input.expectedPrice === undefined || input.expectedPrice === null || input.expectedPrice === ('' as unknown)
       ? undefined
       : toFiniteNumber(input.expectedPrice) ?? undefined,
+    billingPeriod: isHostingBillingPeriod(input.billingPeriod) ? input.billingPeriod : undefined,
+    payer: (input.payer ?? '').toString().trim() || undefined,
     note: (input.note ?? '').toString().trim() || undefined,
   };
   if (editId) {
@@ -667,6 +669,8 @@ async function _saveHostingService(input: Partial<HostingService>, editId?: stri
     plan: normalized.plan,
     currency: normalized.currency,
     expectedPrice: normalized.expectedPrice,
+    billingPeriod: normalized.billingPeriod,
+    payer: normalized.payer,
     note: normalized.note,
     archived: false,
     createdAt: new Date().toISOString(),

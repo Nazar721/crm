@@ -1,5 +1,5 @@
-import type { HostingPayment, HostingService } from '@/types';
-import { daysBetween, today } from '@/lib/utils';
+import type { HostingBillingPeriod, HostingPayment, HostingService } from '@/types';
+import { daysBetween, today, currencySymbol } from '@/lib/utils';
 import { validateAmount, validateDate, validateRequiredText, toFiniteNumber } from '@/lib/validate';
 
 // ============================================================
@@ -258,7 +258,7 @@ export function hostingExpiringWithin(
   }, 0);
 }
 
-/** Пошук/фільтри сторінки (назва, домен, провайдер; стан, провайдер). */
+/** Пошук/фільтри сторінки (назва, домен, провайдер, платник; стан, провайдер). */
 export function filterHostingServices(
   services: HostingService[],
   payments: HostingPayment[],
@@ -273,7 +273,7 @@ export function filterHostingServices(
       if (filters.status && coverage.status !== filters.status) return false;
       if (provider && !(service.provider || '').toLowerCase().includes(provider)) return false;
       if (query) {
-        const haystack = [service.name, service.site, service.provider]
+        const haystack = [service.name, service.site, service.provider, service.payer]
           .map(v => String(v || '').toLowerCase());
         if (!haystack.some(v => v.includes(query))) return false;
       }
@@ -291,6 +291,35 @@ export function filterHostingServices(
 
 export const HOSTING_CURRENCIES = ['UAH', 'USD', 'EUR'] as const;
 
+/** Період тарифу картки; у старих записах значення може бути відсутнім. */
+export type { HostingBillingPeriod } from '@/types';
+
+export const HOSTING_BILLING_PERIODS: Record<HostingBillingPeriod, string> = {
+  month: 'місяць',
+  year: 'рік',
+};
+
+/** Короткі позначки періоду для списку («$5 / міс», «₴1200 / рік»). */
+export const HOSTING_BILLING_PERIODS_SHORT: Record<HostingBillingPeriod, string> = {
+  month: 'міс',
+  year: 'рік',
+};
+
+export function isHostingBillingPeriod(value: unknown): value is HostingBillingPeriod {
+  return value === 'month' || value === 'year';
+}
+
+/**
+ * Людина-читабельний тариф картки: «$5 / міс», «₴225 / рік».
+ * Без ціни повертається '' — тариф показується лише назвою плану.
+ */
+export function hostingTariffLabel(service: Pick<HostingService, 'expectedPrice' | 'currency' | 'billingPeriod'>): string {
+  const price = toFiniteNumber(service.expectedPrice);
+  if (price === null) return '';
+  const money = `${currencySymbol(service.currency)}${price.toLocaleString('uk-UA', { maximumFractionDigits: 2 })}`;
+  return service.billingPeriod ? `${money} / ${HOSTING_BILLING_PERIODS_SHORT[service.billingPeriod]}` : money;
+}
+
 export function validateHostingServiceInput(input: Partial<HostingService>): { field: string; message: string }[] {
   const errors = validateRequiredText(input.name, 'name', 'Назва послуги', 200);
   if (input.currency !== undefined && input.currency !== '' && !(HOSTING_CURRENCIES as readonly string[]).includes(String(input.currency))) {
@@ -299,6 +328,12 @@ export function validateHostingServiceInput(input: Partial<HostingService>): { f
   if (input.expectedPrice !== undefined && input.expectedPrice !== null && input.expectedPrice !== ('' as unknown)) {
     const price = toFiniteNumber(input.expectedPrice);
     if (price === null || price < 0) errors.push({ field: 'expectedPrice', message: 'Очікувана ціна: число ≥ 0' });
+  }
+  if (input.billingPeriod !== undefined && input.billingPeriod !== null && input.billingPeriod !== ('' as unknown) && !isHostingBillingPeriod(input.billingPeriod)) {
+    errors.push({ field: 'billingPeriod', message: 'Період тарифу: місяць або рік' });
+  }
+  if (input.payer !== undefined && String(input.payer).trim().length > 200) {
+    errors.push({ field: 'payer', message: 'Хто оплачує: до 200 символів' });
   }
   return errors;
 }

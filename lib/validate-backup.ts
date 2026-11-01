@@ -6,7 +6,7 @@ import { normalizeSettings } from '@/lib/settings';
 import { kyivDateString } from '@/lib/dates';
 import { toFiniteNumber } from '@/lib/validate';
 import { isPlannedDate } from '@/lib/planned-projects';
-import { HOSTING_CURRENCIES } from '@/lib/hosting';
+import { HOSTING_CURRENCIES, isHostingBillingPeriod } from '@/lib/hosting';
 import { isIsoInstant, isValidTaskDate, isValidTaskTime } from '@/lib/tasks';
 import { kyivDateTimeToIso } from '@/lib/dates';
 
@@ -403,6 +403,9 @@ function validateHostingServiceRecord(rec: unknown, ctx: Ctx, acc: Acc): Hosting
   if (r.expectedPrice !== undefined && r.expectedPrice !== null && toFiniteNumber(r.expectedPrice) === null) {
     acc.warnings.push({ ...ctx, message: 'некоректна очікувана ціна — поле очищено' });
   }
+  if (r.billingPeriod !== undefined && r.billingPeriod !== null && !isHostingBillingPeriod(r.billingPeriod)) {
+    acc.warnings.push({ ...ctx, message: 'невідомий період тарифу — поле очищено' });
+  }
   return {
     id: ctx.id,
     name: name.slice(0, 200),
@@ -411,6 +414,8 @@ function validateHostingServiceRecord(rec: unknown, ctx: Ctx, acc: Acc): Hosting
     plan: str(r.plan).slice(0, 200) || undefined,
     currency: (HOSTING_CURRENCIES as readonly string[]).includes(str(r.currency)) ? str(r.currency) : 'UAH',
     expectedPrice: toFiniteNumber(r.expectedPrice) ?? undefined,
+    billingPeriod: isHostingBillingPeriod(r.billingPeriod) ? r.billingPeriod : undefined,
+    payer: str(r.payer).slice(0, 200) || undefined,
     note: str(r.note).slice(0, 2000) || undefined,
     archived: r.archived === true,
     createdAt: typeof r.createdAt === 'string' ? r.createdAt : undefined,
