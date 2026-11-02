@@ -109,7 +109,7 @@ export default function ProjectsPage() {
   const completed = useMemo(() => {
     const list = filterList(allCompleted).filter(p =>
       inPeriod(p) &&
-      (!specFilter || (specFilter === 'none' ? projectExecutorIds(p).length === 0 : projectExecutorIds(p).includes(specFilter))) &&
+      (!specFilter || (specFilter === 'none' ? projectExecutorIds(p).length === 0 && !p.selfExecutor : specFilter === '__self__' ? !!p.selfExecutor : projectExecutorIds(p).includes(specFilter))) &&
       (!clientFilter || p.clientId === clientFilter)
     );
     return [...list].sort((a, b) => {
@@ -153,7 +153,7 @@ export default function ProjectsPage() {
   const hasCompletedFilters = !!(periodFilter || specFilter || clientFilter || typeFilter || search || completedSort !== 'date_desc');
 
   // Чи можна показати кнопку звіту: є період (місяць) + вибраний фахівець
-  const canExportReport = !!(periodFilter && specFilter && specFilter !== 'none' && completed.length > 0);
+  const canExportReport = !!(periodFilter && specFilter && specFilter !== 'none' && specFilter !== '__self__' && completed.length > 0);
 
   const periodTitle = useMemo(() => {
     if (!periodFilter) return 'Увесь час';
@@ -361,7 +361,8 @@ export default function ProjectsPage() {
             <select className="filter-select" value={specFilter} onChange={e => setSpecFilter(e.target.value)}>
               <option value="">Усі фахівці</option>
               {completedSpecialists.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-              <option value="none">Без фахівця</option>
+              <option value="__self__">Я</option>
+              <option value="none">Без виконавця</option>
             </select>
             <select className="filter-select" value={clientFilter} onChange={e => setClientFilter(e.target.value)}>
               <option value="">Усі клієнти</option>
