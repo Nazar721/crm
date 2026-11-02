@@ -462,7 +462,7 @@ export default function ProjectsPage() {
                       <td data-label="Днів" className="cell-nowrap">{(p as any).days ?? '—'} дн.</td>
                       <td data-label="Бюджет" className="cell-money">{formatMoney(c.budget, itemCurrency(p))}</td>
                       <td data-label="ФОП" className="cell-money">{formatMoney(c.fopAmount, itemCurrency(p))}</td>
-                      <td data-label="Фахівець"><div className="cell-nowrap">{executorLabel(p)}</div><div className="cell-secondary cell-nowrap">{formatMoney(c.specialistCost, itemCurrency(p))}</div></td>
+                      <td data-label="Фахівець"><div className="cell-nowrap">{executorLabel(p)}</div>{projectExecutorIds(p).length > 0 && <div className="cell-secondary cell-nowrap">{formatMoney(c.specialistCost, itemCurrency(p))}</div>}</td>
                       <td data-label="Мій дохід" className="cell-money" style={{ color: 'var(--accent-green)' }}>{formatMoney(c.myIncome, itemCurrency(p))}</td>
                       <td data-label="Дії">
                         <div className="actions-cell">
