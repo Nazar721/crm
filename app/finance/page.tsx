@@ -344,11 +344,30 @@ export default function FinancePage() {
               <tr key={t.id} className={weekClass(t.date || t.plannedDate)}>
                 <td data-label="Тип">{t.type === 'transfer' ? <span className="badge badge--blue">Конвертація</span> : <FinanceTypeBadge type={t.type} />}</td>
                 {t.type === 'transfer' ? (
-                  <td data-label="Сума" style={{ color: 'var(--accent-blue)', fontWeight: 600 }}>{formatBankAmount(t.amount, t.bank)} → {formatBankAmount(t.targetAmount ?? t.amount, t.toBank || '')}</td>
+                  // Конвертація: пара рядків, що вирівняні по колонках —
+                  // «звідки» без стрілки, «куди» зі стрілкою. Сума завжди
+                  // барвиться у валюті свого рахунку; перенесення можливе
+                  // лише між рядками, не всередині сум.
+                  <>
+                    <td data-label="Сума">
+                      <span className="conv-lines">
+                        <span className="conv-line conv-amount conv-amount--from">{formatBankAmount(t.amount, t.bank)}</span>
+                        <span className="conv-line conv-amount conv-amount--to"><span className="conv-arrow" aria-hidden="true">→</span>{formatBankAmount(t.targetAmount ?? t.amount, t.toBank || '')}</span>
+                      </span>
+                    </td>
+                    <td data-label="Банк">
+                      <span className="conv-lines">
+                        <span className="conv-line"><BankBadge bankId={t.bank} /></span>
+                        <span className="conv-line"><span className="conv-arrow" aria-hidden="true">→</span><BankBadge bankId={t.toBank || ''} /></span>
+                      </span>
+                    </td>
+                  </>
                 ) : (
-                  <td data-label="Сума" style={{ color: t.type === 'income' ? 'var(--accent-green)' : 'var(--accent-orange)', fontWeight: 600 }}>{t.type === 'income' ? '+' : '−'}{formatBankAmount(t.amount, t.bank)}</td>
+                  <>
+                    <td data-label="Сума" className="cell-money"><span className={t.type === 'income' ? 'tx-amount tx-amount--income' : 'tx-amount tx-amount--expense'}>{t.type === 'income' ? '+' : '−'}{formatBankAmount(t.amount, t.bank)}</span></td>
+                    <td data-label="Банк"><BankBadge bankId={t.bank} /></td>
+                  </>
                 )}
-                <td data-label="Банк">{t.type === 'transfer' ? <><BankBadge bankId={t.bank} /> → <BankBadge bankId={t.toBank || ''} /></> : <BankBadge bankId={t.bank} />}</td>
                 <td data-label="Категорія">{t.type === 'transfer' ? 'Конвертація' : (t.category || '—')}</td>
                 <td data-label="Опис">{t.description || '—'}</td>
                 <td data-label="Дата"><span className="week-date"><span className="week-dot"></span>{formatDate(t.date || t.plannedDate)}</span></td>

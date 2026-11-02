@@ -1,7 +1,7 @@
 'use client';
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
-import { project as calcProject, projectStartDate, projectEndDate, projectDaysUsed, getStatsContext, toDisplay } from '@/lib/calc';
+import { project as calcProject, projectStartDate, projectEndDate, projectDaysUsed, getStatsContext, toDisplay, projectExecutorIds, specialistShareOf } from '@/lib/calc';
 import { formatMoney, formatDate, today, daysBetween, getMonthKey, getMonthLabel, itemCurrency } from '@/lib/utils';
 import { saveProject, completeProject, deleteProject } from '@/lib/actions';
 import { initialProjectForCopy, copyMissingWarnings } from '@/lib/copy-project';
@@ -109,7 +109,7 @@ export default function ProjectsPage() {
   const completed = useMemo(() => {
     const list = filterList(allCompleted).filter(p =>
       inPeriod(p) &&
-      (!specFilter || (specFilter === 'none' ? !p.developerId : p.developerId === specFilter)) &&
+      (!specFilter || (specFilter === 'none' ? projectExecutorIds(p).length === 0 : projectExecutorIds(p).includes(specFilter))) &&
       (!clientFilter || p.clientId === clientFilter)
     );
     return [...list].sort((a, b) => {
@@ -185,9 +185,12 @@ export default function ProjectsPage() {
     completed.forEach((p, i) => {
       const c = calcProject(p);
       const cur = itemCurrency(p);
-      const specPay = c.specialistCost;
+      // Пакет 07: у звіті — саме частка вибраного фахівця, а не сума
+      // виплат усім виконавцям проєкту.
+      const share = specFilter && specFilter !== 'none' ? specialistShareOf(p, specFilter) : null;
+      const specPay = share ? share.amount : c.specialistCost;
       totalSpecPay += toDisplay(specPay, cur, statsCtx.settings);
-      const paid = Number(p.paidToSpecialist) || 0;
+      const paid = share ? share.paid : (Number(p.paidToSpecialist) || 0);
       const rest = specPay - paid;
       const status = rest <= 0 ? '✅ виплачено' : `⏳ залишок ${formatMoney(rest, cur)}`;
       lines.push(`${i + 1}. ${p.name}`);
@@ -219,9 +222,10 @@ export default function ProjectsPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Тільки ті фахівці/клієнти, які реально є в завершених
+  // Тільки ті фахівці/клієнти, які реально є в завершених (усі виконавці,
+  // Пакет 07 — включно з тими, хто бере участь у багатовиконавецьких проєктах)
   const completedSpecialists = useMemo(() => {
-    const ids = new Set(allCompleted.map(p => p.developerId).filter(Boolean));
+    const ids = new Set(allCompleted.flatMap(p => projectExecutorIds(p)));
     return specialists.filter(s => ids.has(s.id));
   }, [allCompleted, specialists]);
 
@@ -305,6 +309,13 @@ export default function ProjectsPage() {
 
   useScrollRestoration('projects', true);
 
+  // Пакет 07: підпис виконавців для таблиць — усі зовнішні фахівці + «Я».
+  const executorLabel = (p: Project) => {
+    const names = projectExecutorIds(p).map(id => statsCtx.specialistsById.get(id)?.name || 'фахівця видалено');
+    if (p.selfExecutor) names.push('Я');
+    return names.length ? names.join(', ') : '—';
+  };
+
   return (
     <section className="page active">
       <div className="page-header">
@@ -380,7 +391,6 @@ export default function ProjectsPage() {
               {!visibleActive.length ? <tr className="empty-row"><td colSpan={16}><EmptyState message="Немає активних проєктів" hint="Натисніть «Новий проєкт», щоб додати" /></td></tr> :
               visibleActive.map(p => {
                 const client = statsCtx.clientsById.get(p.clientId);
-                const spec = p.developerId ? statsCtx.specialistsById.get(p.developerId) : undefined;
                 const c = calcProject(p);
                 const dl = deadlineInfo(p);
                 return (
@@ -393,7 +403,7 @@ export default function ProjectsPage() {
                     <td data-label="Бюджет">{formatMoney(c.budget, itemCurrency(p))}</td>
                     <td data-label="Банк">{p.bank ? <BankBadge bankId={p.bank} /> : <span style={{ color: 'var(--text-secondary)' }}>—</span>}</td>
                     <td data-label="Борг клієнта" style={{ color: 'var(--accent-orange)' }}>{formatMoney(c.clientDebt, itemCurrency(p))}</td>
-                    <td data-label="Фахівець" className="cell-nowrap">{spec?.name || '—'}</td>
+                    <td data-label="Фахівець" className="cell-nowrap">{executorLabel(p)}</td>
                     <td data-label="Борг фахівцю" style={{ color: 'var(--accent-orange)' }}>{formatMoney(c.specialistDebt, itemCurrency(p))}</td>
                     <td data-label="Прибуток" style={{ color: 'var(--accent-green)' }}>{formatMoney(c.projectProfit, itemCurrency(p))}</td>
                     <td data-label="ФОП" style={{ color: 'var(--accent-orange)' }}>{formatMoney(c.fopAmount, itemCurrency(p))}</td>
@@ -439,7 +449,6 @@ export default function ProjectsPage() {
                 {!visibleCompleted.length ? <tr className="empty-row"><td colSpan={11}><EmptyState message="Немає завершених проєктів" hint={hasCompletedFilters ? 'Спробуйте змінити фільтри' : undefined} /></td></tr> :
                 visibleCompleted.map(p => {
                   const client = statsCtx.clientsById.get(p.clientId);
-                  const spec = p.developerId ? statsCtx.specialistsById.get(p.developerId) : undefined;
                   const c = calcProject(p);
                   const isBiggest = completedSummary.biggest?.id === p.id && completed.length > 1;
                   return (
@@ -452,7 +461,7 @@ export default function ProjectsPage() {
                       <td data-label="Днів" className="cell-nowrap">{(p as any).days ?? '—'} дн.</td>
                       <td data-label="Бюджет" className="cell-money">{formatMoney(c.budget, itemCurrency(p))}</td>
                       <td data-label="ФОП" className="cell-money">{formatMoney(c.fopAmount, itemCurrency(p))}</td>
-                      <td data-label="Фахівець"><div className="cell-nowrap">{spec?.name || '—'}</div><div className="cell-secondary cell-nowrap">{formatMoney(c.specialistCost, itemCurrency(p))}</div></td>
+                      <td data-label="Фахівець"><div className="cell-nowrap">{executorLabel(p)}</div><div className="cell-secondary cell-nowrap">{formatMoney(c.specialistCost, itemCurrency(p))}</div></td>
                       <td data-label="Мій дохід" className="cell-money" style={{ color: 'var(--accent-green)' }}>{formatMoney(c.myIncome, itemCurrency(p))}</td>
                       <td data-label="Дії">
                         <div className="actions-cell">

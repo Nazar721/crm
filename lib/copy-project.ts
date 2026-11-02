@@ -50,7 +50,7 @@ export const COPY_CONDITION_FIELDS = [
   'name', 'type', 'description', 'budget', 'currency',
   'myPercent', 'fop', 'partnerCommission', 'deadlineDays',
   'clientName', 'clientTelegram', 'clientSource', 'clientId',
-  'developerId', 'partnerId',
+  'developerId', 'partnerId', 'executors', 'selfExecutor',
 ] as const;
 
 function finite(value: unknown, fallback = 0): number {
@@ -65,8 +65,18 @@ function finite(value: unknown, fallback = 0): number {
  */
 export function initialProjectForCopy(source: Project, sources: CopyProjectSources): CopyProjectResult {
   const client = source.clientId ? sources.clients.find(c => c.id === source.clientId) : undefined;
-  const specialist = source.developerId ? sources.specialists.find(s => s.id === source.developerId) : undefined;
   const partner = source.partnerId ? sources.partners.find(p => p.id === source.partnerId) : undefined;
+  const hasSpecialist = (id: string) => sources.specialists.some(s => s.id === id);
+
+  // Пакет 07: копія зберігає ВСІХ виконавців із їхніми частками, але
+  // виплати скидаються (нова робота — нові гроші). Виконавця, картку
+  // якого видалено, не підставляємо: форма попередить і дасть обрати заново.
+  const sourceExecutors = Array.isArray(source.executors) && source.executors.length
+    ? source.executors.map(e => ({ specialistId: e.specialistId, percent: finite(e.percent), paid: 0 }))
+    : source.developerId
+      ? [{ specialistId: source.developerId, percent: Math.max(0, 100 - finite(source.myPercent)), paid: 0 }]
+      : [];
+  const executors = sourceExecutors.filter(e => hasSpecialist(e.specialistId));
 
   const prefill: Partial<Project> = {
     name: typeof source.name === 'string' ? source.name : '',
@@ -90,7 +100,11 @@ export function initialProjectForCopy(source: Project, sources: CopyProjectSourc
   prefill.clientSource = source.clientSource || 'Інше';
   if (client) prefill.clientId = source.clientId;
 
-  if (specialist) prefill.developerId = source.developerId;
+  if (executors.length) {
+    prefill.executors = executors;
+    prefill.developerId = executors[0].specialistId;
+  }
+  if (source.selfExecutor) prefill.selfExecutor = true;
   if (partner) prefill.partnerId = source.partnerId;
 
   // Тривалість дедлайну (дні) — умова нового замовлення; конкретні
@@ -102,7 +116,7 @@ export function initialProjectForCopy(source: Project, sources: CopyProjectSourc
     prefill,
     missing: {
       client: Boolean(source.clientId) && !client,
-      specialist: Boolean(source.developerId) && !specialist,
+      specialist: sourceExecutors.some(e => !hasSpecialist(e.specialistId)),
       partner: Boolean(source.partnerId) && !partner,
     },
   };
@@ -132,7 +146,7 @@ export function copyMissingWarnings(source: Project, missing: CopyProjectMissing
     warnings.push(`Картку клієнта «${source.clientName || source.clientId}» видалено — оберіть клієнта заново або підтвердьте створення картки при збереженні.`);
   }
   if (missing.specialist) {
-    warnings.push('Фахівця з цього проєкту більше немає — оберіть фахівця заново (поле порожнє).');
+    warnings.push('Одного або кількох фахівців із цього проєкту більше немає — оберіть їх заново (їхні рядки в формі порожні).');
   }
   if (missing.partner) {
     warnings.push('Партнера з цього проєкту більше немає — оберіть партнера заново (поле порожнє).');

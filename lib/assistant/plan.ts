@@ -18,7 +18,7 @@ const bank=select('Рахунок',BANKS.map(b=>b.id));
 export const schemas:Partial<Record<AssistantDomain,Record<string,Spec>>>={
  settings:{usdRate:number('Курс USD'),eurRate:number('Курс EUR'),usdtRate:number('Курс USDT'),displayCurrency:select('Валюта відображення',['UAH','USD','EUR'])},
  clients:{name:text('Ім’я клієнта'),telegram:text('Telegram'),source:text('Джерело'),isRegular:{label:'Постійний клієнт',kind:'boolean'}},
- projects:{name:text('Назва проєкту'),type:select('Тип',['IT','Design','Video']),status:select('Статус',['Очікування оплати','В роботі','На паузі','Завершено']),clientName:text('Клієнт'),clientTelegram:text('Telegram клієнта'),clientSource:text('Джерело клієнта'),budget:number('Бюджет'),currency,bank,prepayment:number('Загалом сплатив клієнт'),paidToSpecialist:number('Виплачено фахівцю'),myPercent:number('Мій %'),fop:number('ФОП %'),partnerCommission:number('Комісія партнеру %'),profitTaken:number('Забрав собі'),developerId:text('ID фахівця'),partnerId:text('ID партнера'),startDate:date('Дата початку'),endDate:date('Дата завершення'),deadlineDays:number('Дедлайн, днів'),description:text('Опис'),clientId:text('ID клієнта')},
+ projects:{name:text('Назва проєкту'),type:select('Тип',['IT','Design','Video']),status:select('Статус',['Очікування оплати','В роботі','На паузі','Завершено']),clientName:text('Клієнт'),clientTelegram:text('Telegram клієнта'),clientSource:text('Джерело клієнта'),budget:number('Бюджет'),currency,bank,prepayment:number('Загалом сплатив клієнт'),paidToSpecialist:number('Виплачено фахівцю'),myPercent:number('Мій %'),fop:number('ФОП %'),partnerCommission:number('Комісія партнеру %'),profitTaken:number('Забрав собі'),developerId:text('ID фахівця'),partnerId:text('ID партнера'),selfExecutor:{label:'Виконавець «Я» (власник)',kind:'boolean'},startDate:date('Дата початку'),endDate:date('Дата завершення'),deadlineDays:number('Дедлайн, днів'),description:text('Опис'),clientId:text('ID клієнта')},
  finance:{type:select('Тип',['income','expense']),amount:number('Сума у валюті рахунку'),bank,date:date('Дата'),description:text('Опис'),category:text('Категорія'),incomeStatus:select('Статус доходу',['earned','incoming']),projectId:text('ID проєкту'),hidden:{label:'Прихований у підсумках',kind:'boolean'}},
  payments:{amount:number('Додаткова оплата'),bank,date:date('Дата'),description:text('Опис')},
  specialists:{name:text('Ім’я фахівця'),specialization:text('Спеціалізація'),telegram:text('Telegram'),myShareThreshold:number('Поріг бюджету, грн'),mySharePercentUpTo:number('Відсоток до порогу, %'),mySharePercentAbove:number('Відсоток понад поріг, %')},
@@ -104,11 +104,18 @@ export function normalizePlan(raw:unknown,s:DataSnapshot):Omit<Plan,'base'>{
    if(!source)throw new Error('Початковий проєкт для копії не знайдено');
    const {prefill}=initialProjectForCopy(source,{clients:s.clients,specialists:s.specialists,partners:s.partners});
    const overrides=pickCopyOverrides(fields as Record<string,unknown>);
+   // Пакет 07: executors копії — системні дані (модель їх не передає).
+   // Явна заміна першого виконавця при збережених частках зробила б
+   // склад нечесним — відмовляємо до запису, склад змінюють у формі.
+   const copyExecutors=Array.isArray(prefill.executors)&&prefill.executors.length?prefill.executors.map(e=>({...e})):undefined;
+   if(copyExecutors&&typeof overrides.developerId==='string'&&overrides.developerId&&overrides.developerId!==copyExecutors[0].specialistId)
+    throw new Error('У проєкті кілька виконавців з частками — змініть склад виконавців у формі проєкту, щоб не втратити частки.');
    for(const key of Object.keys(fields))delete (fields as Record<string,unknown>)[key];
    // Нульові оплати явно; умови копії; дозволені умови моделі поверх.
    Object.assign(fields,{prepayment:0,paidToSpecialist:0,profitTaken:0},prefill,overrides);
    // Копіювання: службовий copyFromId не є даними проєкту й не зберігається.
    for(const key of Object.keys(fields))if(!(key in schemas.projects!))delete (fields as Record<string,unknown>)[key];
+   if(copyExecutors)(fields as Record<string,unknown>).executors=copyExecutors;
    // Вибір клієнта копії: явний overrides.clientId (перевіряється за чинними
    // clients) → картка за точним ім'ям з overrides → картка джерела. Якщо
    // вибрати нічого (картку видалено або ім'я не відповідає жодній картці) —
@@ -154,6 +161,13 @@ export function normalizePlan(raw:unknown,s:DataSnapshot):Omit<Plan,'base'>{
  // приведення; збігається з іншою наявною карткою → зв'язок міняється видимо
  // в чернетці (clientId); інакше — зрозуміла відмова з підказкою.
  if(action==='update'&&domain==='projects'){
+  // Пакет 07: у проєкті з явними виконавцями зміна developerId через
+  // помічника затерла б узгоджені частки/виплати. Склад виконавців
+  // змінюється лише у формі проєкту (там видно відсотки й суму 100%).
+  const existing=records(domain,s).find(x=>x.id===recordId) as Record<string,unknown>|undefined;
+  if(Array.isArray(existing?.executors)&&(existing!.executors as unknown[]).length&&'developerId' in fields){
+   throw new Error('У проєкті є явні виконавці з частками — змініть склад виконавців у формі проєкту, щоб не втратити виплати.');
+  }
   const rec=records(domain,s).find(x=>x.id===recordId);
   const recClientId=typeof rec?.clientId==='string'?rec.clientId:'';
   const recClientName=typeof rec?.clientName==='string'?rec.clientName:'';
@@ -221,7 +235,14 @@ export function missingQuestions(plan:Omit<Plan,'base'>,s:DataSnapshot){
 }
 export function draftReply(plan:Plan,s:DataSnapshot,id:string):AssistantReply{
  const specs=schemas[plan.domain]!,prev=plan.domain==='settings'?s.financeSettings as unknown as Record<string,unknown>:records(plan.domain,s).find(x=>x.id===plan.recordId);
- const fields=Object.entries(plan.fields).map(([key,value])=>({key,...specs[key],value}));
+ // Пакет 07: executors — системне поле копії (не редагується моделлю):
+ // показуємо людський перелік «фахівець — частка» замість сирого масиву.
+ const display=(key:string,value:unknown):string|number|boolean|null=>{
+  if(key==='executors'&&Array.isArray(value))return value.map((e:Record<string,unknown>)=>`${s.specialists.find(x=>x.id===e.specialistId)?.name||String(e.specialistId)} — ${e.percent}%`).join(', ');
+  return value as string|number|boolean|null;
+ };
+ const labelOf=(key:string)=>specs[key]?.label??(key==='executors'?'Виконавці (частки)':key);
+ const fields=Object.entries(plan.fields).map(([key,value])=>({key,label:labelOf(key),kind:specs[key]?.kind??('text' as const),options:specs[key]?.options,value:display(key,value)}));
  const changes=fields.map(f=>({key:f.key,label:f.label,before:String(prev?.[f.key]??'—'),after:String(f.value??'—')}));
  if(plan.domain==='payments'&&prev)changes.push({key:'totalPayment',label:'Загальна оплата проєкту',before:String(prev.prepayment||0),after:String(Number(prev.prepayment||0)+Number(plan.fields.amount||0))});
  if(plan.action==='delete')changes.push({key:'record',label:'Видалити запис',before:String(prev?.name||prev?.person||prev?.description||plan.recordId),after:'Буде видалено'});
@@ -241,6 +262,36 @@ export function projectSummary(s:DataSnapshot){
  };
  return {active:group(s.projectsActive),completed:group(s.projectsCompleted)};
 }
+/**
+ * Легкий контекст для звичайного спілкування (привітання, репліки поза
+ * даними CRM). Умисно НЕ містить списків клієнтів/проєктів/транзакцій:
+ * сама розмова не потребує даних CRM, а великий набір роздуває контекст
+ * моделі. Готові підсумки (баланси, статистика) лишаються, щоб короткі
+ * запити «як справи з грошима» отримували чесну відповідь без вигадок.
+ */
+export function modelContextLite(s:DataSnapshot){
+ return {date:today(),scope:'chat' as const,settings:s.financeSettings,stats:dashboardStats(s),projectSummary:projectSummary(s),bankBalances:accountBalances(s),banks:BANKS.map(({id,label,currency})=>({id,label,currency}))};
+}
+/**
+ * Безвтратне ущільнення записів контексту: прибирає лише пусті
+ * необов'язкові значення ('' / false / null) і типові значення за
+ * замовчуванням (incomeStatus 'earned', rate 0, hidden false). Жоден
+ * запис не пропускається: відсутнє поле означає те саме, що й типове
+ * (розрахунки CRM трактують їх однаково), тому жодних тихих втрат даних.
+ */
+export function compactRecord(rec:Record<string,unknown>):Record<string,unknown>{
+ const out:Record<string,unknown>={};
+ for(const [k,v] of Object.entries(rec)){
+  if(v===undefined||v===null||v===''||v===false)continue;
+  if(Array.isArray(v)&&!v.length)continue;
+  if(k==='incomeStatus'&&v==='earned')continue;
+  if(k==='rate'&&v===0)continue;
+  if(k==='hidden'&&v===false)continue;
+  out[k]=v;
+ }
+ return out;
+}
+
 export function modelContext(s:DataSnapshot){
  // Пакет 06: обмежена вибірка для контексту — великий CRM не має
  // вимикати помічника переповненням. Суми/підсумки рахуються за ВСІМА
@@ -252,16 +303,25 @@ export function modelContext(s:DataSnapshot){
  const hostingServicesLimited=[...s.hostingServices].sort((a,b)=>String(a.name).localeCompare(String(b.name))).slice(0,HOSTING_SERVICES_LIMIT);
  const hostingPaymentsLimited=[...s.hostingPayments].sort((a,b)=>String(a.date).localeCompare(String(b.date))).slice(-HOSTING_PAYMENTS_LIMIT);
  return {date:today(),settings:s.financeSettings,stats:dashboardStats(s),monthlyIncome:incomeHistory(s),projectSummary:projectSummary(s),bankBalances:accountBalances(s),
- clients:s.clients,specialists:s.specialists,partners:s.partners,debts:s.personalDebts,savings:s.savings,
- projects:[...s.projectsActive.map(p=>({...p,collection:'active'})),...s.projectsCompleted.map(p=>({...p,collection:'completed'}))].map(p=>({id:p.id,collection:p.collection,name:p.name,clientName:p.clientName,status:p.status,currency:p.currency||'UAH',displayBudget:{amount:toDisplay(Number(p.budget)||0,p.currency||'UAH',s.financeSettings),currency:s.financeSettings.displayCurrency||'UAH'},developerId:p.developerId,partnerId:p.partnerId,startDate:p.startDate,endDate:p.endDate,...project(p)})),
- transactions:s.transactions.map(t=>({id:t.id,type:t.type,amount:t.amount,bank:t.bank,date:t.date,category:t.category,description:t.description,projectId:t.projectId,hidden:t.hidden,incomeStatus:t.incomeStatus,source:t.source,plannedDate:t.plannedDate,toBank:t.toBank,targetAmount:t.targetAmount,rate:t.rate,status:t.status})),banks:BANKS.map(({id,label,currency})=>({id,label,currency})),
+ clients:s.clients.map(c=>compactRecord(c as unknown as Record<string,unknown>)),specialists:s.specialists.map(x=>compactRecord(x as unknown as Record<string,unknown>)),partners:s.partners.map(x=>compactRecord(x as unknown as Record<string,unknown>)),debts:s.personalDebts.map(x=>compactRecord(x as unknown as Record<string,unknown>)),savings:s.savings.map(x=>compactRecord(x as unknown as Record<string,unknown>)),
+ projects:[...s.projectsActive.map(p=>({...p,collection:'active'})),...s.projectsCompleted.map(p=>({...p,collection:'completed'}))].map(p=>{
+  const head:{[k:string]:unknown}={id:p.id,collection:p.collection,name:p.name,clientName:p.clientName,status:p.status,currency:p.currency||'UAH',displayBudget:{amount:toDisplay(Number(p.budget)||0,p.currency||'UAH',s.financeSettings),currency:s.financeSettings.displayCurrency||'UAH'},developerId:p.developerId,partnerId:p.partnerId,executors:p.executors,selfExecutor:p.selfExecutor,startDate:p.startDate,endDate:p.endDate,...project(p)};
+  // Старий запис (один developerId) не потребує у контексті дублювання
+  // часток: paidToSpecialist і specialistCost уже є, а похідні
+  // shares/selfShare/unallocated калькулятор виводить автоматично. Явні
+  // виконавці (Пакет 07) — реальні дані, лишаються повністю.
+  if(!(Array.isArray(p.executors)&&p.executors.length))delete head.shares;
+  delete head.selfShare;delete head.unallocated;
+  return compactRecord(head);
+ }),
+ transactions:s.transactions.map(t=>compactRecord({id:t.id,type:t.type,amount:t.amount,bank:t.bank,date:t.date,category:t.category,description:t.description,projectId:t.projectId,hidden:t.hidden,incomeStatus:t.incomeStatus,source:t.source,plannedDate:t.plannedDate,toBank:t.toBank,targetAmount:t.targetAmount,rate:t.rate,status:t.status})),banks:BANKS.map(({id,label,currency})=>({id,label,currency})),
  // Пакет 06: заплановані проєкти — обмежена вибірка з чесними прапорцями.
- plannedProjects:{list:plannedLimited.map(p=>({id:p.id,name:p.name,category:p.category,clientName:p.clientName,clientId:p.clientId||'',description:p.description||''})),total:s.plannedProjects.length,truncated:s.plannedProjects.length>plannedLimited.length},
+ plannedProjects:{list:plannedLimited.map(p=>compactRecord({id:p.id,name:p.name,category:p.category,clientName:p.clientName,clientId:p.clientId||'',description:p.description||''})),total:s.plannedProjects.length,truncated:s.plannedProjects.length>plannedLimited.length},
  // Пакет 04: хостинг — готові підсумки стану на «сьогодні» (спільний модуль),
  // щоб модель не перераховувала дати сама і не вигадувала покриття.
  hosting:{today:today(),
-  services:hostingServicesLimited.map(h=>{const c=hostingCoverage(h,s.hostingPayments,today());return{id:h.id,name:h.name,site:h.site||'',provider:h.provider||'',plan:h.plan||'',currency:h.currency||'UAH',expectedPrice:h.expectedPrice??null,note:h.note||'',archived:!!h.archived,status:c.status,coverageEnd:c.coverageEnd,daysLeft:c.daysLeft,nextPeriod:c.nextPeriod,hasGap:c.hasGap,warnings:c.warnings,lastPayment:c.lastPayment?{id:c.lastPayment.id,date:c.lastPayment.date,amount:c.lastPayment.amount,currency:c.lastPayment.currency||'UAH',periodStart:c.lastPayment.periodStart,periodEnd:c.lastPayment.periodEnd}:null};}),
-  payments:hostingPaymentsLimited.map(p=>({id:p.id,serviceId:p.serviceId,date:p.date,amount:p.amount,currency:p.currency||'UAH',periodStart:p.periodStart,periodEnd:p.periodEnd,note:p.note||''})),
+  services:hostingServicesLimited.map(h=>{const c=hostingCoverage(h,s.hostingPayments,today());return compactRecord({id:h.id,name:h.name,site:h.site||'',provider:h.provider||'',plan:h.plan||'',currency:h.currency||'UAH',expectedPrice:h.expectedPrice??null,note:h.note||'',archived:!!h.archived,status:c.status,coverageEnd:c.coverageEnd,daysLeft:c.daysLeft,nextPeriod:c.nextPeriod,hasGap:c.hasGap,warnings:c.warnings,lastPayment:c.lastPayment?compactRecord({id:c.lastPayment.id,date:c.lastPayment.date,amount:c.lastPayment.amount,currency:c.lastPayment.currency||'UAH',periodStart:c.lastPayment.periodStart,periodEnd:c.lastPayment.periodEnd}):null});}),
+  payments:hostingPaymentsLimited.map(p=>compactRecord({id:p.id,serviceId:p.serviceId,date:p.date,amount:p.amount,currency:p.currency||'UAH',periodStart:p.periodStart,periodEnd:p.periodEnd,note:p.note||''})),
   servicesTruncated:s.hostingServices.length>hostingServicesLimited.length,paymentsTruncated:s.hostingPayments.length>hostingPaymentsLimited.length,paymentsTotal:s.hostingPayments.length,
   totals:hostingTotalsByCurrency(s.hostingPayments)}};
 }

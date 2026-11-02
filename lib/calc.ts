@@ -1,7 +1,7 @@
 import type {
   Client, ClientStats, DashboardStats, DataSnapshot, FinanceSettings,
   Partner, PartnerStats, PersonalDebt, Project, ProjectCalc, Saving,
-  Specialist, SpecialistStats, Transaction,
+  Specialist, SpecialistShare, SpecialistStats, Transaction,
 } from '@/types';
 import * as Storage from '@/lib/storage';
 import { getMonthKey, displayCurrency, itemCurrency, daysBetween, today } from '@/lib/utils';
@@ -12,7 +12,6 @@ import * as store from '@/lib/store';
 export function project(p: Project): ProjectCalc {
   const budget = Number(p.budget) || 0;
   const prepayment = Number(p.prepayment) || 0;
-  const paidToSpecialist = Number(p.paidToSpecialist) || 0;
   const myPercent = Number(p.myPercent ?? 0);
   const profitTaken = Number(p.profitTaken) || 0;
   const fopPercent = Number(p.fop) || 0;
@@ -24,21 +23,99 @@ export function project(p: Project): ProjectCalc {
   const budgetAfterDeductions = budget - totalDeductions;
 
   const paidAmount = Math.min(budget, Math.max(prepayment, 0));
-  const projectProfit = Math.round(budgetAfterDeductions * myPercent / 100);
+  const clientDebt = budget - prepayment;
+  const remainingPayment = budget - prepayment;
+
+  // Пакет 07 (правила підтверджені власником 02.11.2026):
+  //  1) частки виконавців рахуються від суми ПІСЛЯ відрахувань ФОП і
+  //     комісії партнера — та сама база, що й у legacy-формулі «Мій %»;
+  //  2) нерозподілений залишок НЕ дозволяється: валідація збереження
+  //     вимагає, щоб myPercent + Σ часток = рівно 100%, тому у
+  //     збережених проєктах прибуток власника = myPercent від бази ±
+  //     копійки округлення (unallocated).
+  // Без явних executors працює СТАРА формула: фахівець неявно отримує
+  // решту 100 − myPercent (гілка сумісності зі старими проєктами).
+  const executors = Array.isArray(p.executors) ? p.executors.filter(e => e && typeof e.specialistId === 'string' && e.specialistId) : [];
+  let specialistCost: number;
+  let paidToSpecialist: number;
+  let specialistDebt: number;
+  let projectProfit: number;
+  let shares: SpecialistShare[];
+  let unallocated = 0;
+
+  if (executors.length) {
+    shares = executors.map(e => {
+      const percent = Math.min(100, Math.max(0, Number(e.percent) || 0));
+      const amount = Math.round(budgetAfterDeductions * percent / 100);
+      const paid = Math.max(0, Number(e.paid) || 0);
+      return { specialistId: e.specialistId, percent, amount, paid, debt: amount - paid };
+    });
+    specialistCost = shares.reduce((s, sh) => s + sh.amount, 0);
+    paidToSpecialist = shares.reduce((s, sh) => s + sh.paid, 0);
+    specialistDebt = specialistCost - paidToSpecialist;
+    // Прибуток власника = база мінус нараховане всім виконавцям; при
+    // чинній валідації (сума часток = 100%) це дорівнює myPercent від
+    // бази ± копійки округлення. Округлення поглинає частка власника,
+    // щоб сума всіх нарахувань дорівнювала базі.
+    projectProfit = budgetAfterDeductions - specialistCost;
+    const explicitMyIncome = Math.round(budgetAfterDeductions * myPercent / 100);
+    unallocated = projectProfit - explicitMyIncome;
+  } else {
+    const projectProfitLegacy = Math.round(budgetAfterDeductions * myPercent / 100);
+    const specialistCostLegacy = budgetAfterDeductions - projectProfitLegacy;
+    const paidLegacy = Math.max(0, Number(p.paidToSpecialist) || 0);
+    projectProfit = projectProfitLegacy;
+    specialistCost = specialistCostLegacy;
+    paidToSpecialist = paidLegacy;
+    specialistDebt = specialistCostLegacy - paidLegacy;
+    shares = p.developerId
+      ? [{
+        specialistId: p.developerId,
+        percent: 100 - myPercent,
+        amount: specialistCostLegacy,
+        paid: paidLegacy,
+        debt: specialistCostLegacy - paidLegacy,
+      }]
+      : [];
+  }
+
   const myIncome = projectProfit;
   const receivedProfit = Math.round(paidAmount * myPercent / 100);
-  const specialistCost = budgetAfterDeductions - projectProfit;
-  const clientDebt = budget - prepayment;
-  const specialistDebt = specialistCost - paidToSpecialist;
-  const remainingPayment = budget - prepayment;
   const profitLeft = myIncome - profitTaken;
+
+  // Частка «Я» (власник): показується завжди — боргу й виплат собі не
+  // ведеться. percent — збережене поле myPercent; amount — фактичний
+  // прибуток власника (у збережених проєктах збігається з myPercent
+  // від бази ± копійки округлення, див. обчислення вище).
+  const selfShare = { percent: myPercent, amount: myIncome };
 
   return {
     budget, specialistCost, prepayment, paidToSpecialist, myPercent, profitTaken,
     fopPercent, fopAmount, partnerCommissionPercent, partnerCommission, budgetAfterDeductions,
     projectProfit, myIncome, clientDebt, specialistDebt, remainingPayment, profitLeft,
     paidAmount, receivedProfit,
+    shares, selfShare, unallocated,
   };
+}
+
+/**
+ * Пакет 07: ID усіх зовнішніх виконавців проєкту. Нові записи — executors;
+ * старі — один developerId (синхронізований із першим виконавцем).
+ */
+export function projectExecutorIds(p: Project): string[] {
+  if (Array.isArray(p.executors) && p.executors.length) {
+    return p.executors.filter(e => e && typeof e.specialistId === 'string' && e.specialistId).map(e => e.specialistId);
+  }
+  return p.developerId ? [p.developerId] : [];
+}
+
+/**
+ * Частка конкретного фахівця у проєкті або null, якщо він не виконавець.
+ * Працює для обох шляхів: явні executors і старий developerId.
+ */
+export function specialistShareOf(p: Project, specialistId: string): SpecialistShare | null {
+  const calc = project(p);
+  return calc.shares.find(sh => sh.specialistId === specialistId) ?? null;
 }
 
 export function projectStartDate(p: Project): string {
@@ -113,12 +190,14 @@ export function createStatsContext(snapshot: DataSnapshot): StatsContext {
 
   for (const p of snapshot.projectsActive) {
     if (p.clientId) pushInto(byClient, p.clientId, p);
-    if (p.developerId) pushInto(bySpecialistActive, p.developerId, p);
+    // Пакет 07: проєкт індексується під КОЖНОГО виконавця (старий запис —
+    // один developerId); статистика нижче бере лише частку фахівця.
+    for (const id of projectExecutorIds(p)) pushInto(bySpecialistActive, id, p);
     if (p.partnerId) pushInto(byPartner, p.partnerId, p);
   }
   for (const p of snapshot.projectsCompleted) {
     if (p.clientId) pushInto(byClient, p.clientId, p);
-    if (p.developerId) pushInto(bySpecialistCompleted, p.developerId, p);
+    for (const id of projectExecutorIds(p)) pushInto(bySpecialistCompleted, id, p);
     if (p.partnerId) pushInto(byPartner, p.partnerId, p);
   }
 
@@ -179,11 +258,14 @@ export function specialistStats(specialistId: string, ctx?: StatsContext): Speci
   const completed = c.bySpecialistCompleted.get(specialistId) ?? [];
   let totalCost = 0, totalPaid = 0, debt = 0;
   for (const p of [...active, ...completed]) {
-    const calc = project(p);
+    // Пакет 07: лише ВЛАСНА частка фахівця (у багатовиконавецьких
+    // проєктах сусідні частки не залічуються цьому фахівцю).
+    const share = specialistShareOf(p, specialistId);
+    if (!share) continue;
     const cur = itemCurrency(p);
-    totalCost += toDisplay(calc.specialistCost, cur, c.settings);
-    totalPaid += toDisplay(calc.paidToSpecialist, cur, c.settings);
-    debt += toDisplay(calc.specialistDebt, cur, c.settings);
+    totalCost += toDisplay(share.amount, cur, c.settings);
+    totalPaid += toDisplay(share.paid, cur, c.settings);
+    debt += toDisplay(share.debt, cur, c.settings);
   }
   return { activeCount: active.length, count: completed.length, totalCost, totalPaid, debt };
 }

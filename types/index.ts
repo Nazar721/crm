@@ -1,4 +1,22 @@
 // Project types
+
+/**
+ * Пакет 07: виконавець проєкту — зовнішній фахівець з власною часткою.
+ * Частка рахується від суми ПІСЛЯ відрахувань ФОП і комісії партнера
+ * (підтверджено власником; та сама база, що й у «Мого прибутку»).
+ * Власник («Я») — окремий прапорець Project.selfExecutor; його частка —
+ * наявне поле myPercent (окремого запису виконавця для «Я» немає, бо
+ * борг чи виплата самому собі не ведуться).
+ */
+export interface ProjectExecutor {
+  /** ID картки фахівця. */
+  specialistId: string;
+  /** Частка фахівця у % від суми після відрахувань (0–100). */
+  percent: number;
+  /** Виплачено цьому фахівцю (у валюті проєкту). */
+  paid: number;
+}
+
 export interface Project {
   id: string;
   createdAt?: string;
@@ -23,6 +41,14 @@ export interface Project {
   myPercent: number;
   profitTaken: number;
   developerId?: string;
+  /**
+   * Пакет 07: усі зовнішні виконавці з частками. Порожньо/відсутнє —
+   * старий запис із одним developerId (явна частка 100 − myPercent).
+   * developerId синхронізується з першим виконавцем для старих звітів.
+   */
+  executors?: ProjectExecutor[];
+  /** Виконавець «Я» (власник). Частка — myPercent; боргу собі не створює. */
+  selfExecutor?: boolean;
   partnerId?: string;
   fop: number;
   partnerCommission: number;
@@ -295,6 +321,20 @@ export interface DataSnapshot extends ExportData {
 }
 
 // Calculated project stats
+
+/** Частка одного виконавця у розрахунку проєкту (Пакет 07). */
+export interface SpecialistShare {
+  specialistId: string;
+  /** Частка у % від розподілюваної суми. */
+  percent: number;
+  /** Нараховано фахівцю. */
+  amount: number;
+  /** Виплачено фахівцю. */
+  paid: number;
+  /** Залишок до виплати (може бути від'ємним при переплаті). */
+  debt: number;
+}
+
 export interface ProjectCalc {
   budget: number;
   specialistCost: number;
@@ -315,6 +355,20 @@ export interface ProjectCalc {
   profitLeft: number;
   paidAmount: number;
   receivedProfit: number;
+  /** Пакет 07: частки зовнішніх виконавців (старий запис — виведений один). */
+  shares: SpecialistShare[];
+  /**
+   * Частка «Я» (власник): percent — поле myPercent (може не дорівнювати
+   * фактичному прибутку в несбалансованих даних, збереження блокує
+   * валідація), amount — фактичний прибуток власника. Завжди присутня.
+   */
+  selfShare: { percent: number; amount: number };
+  /**
+   * Диагностика: різниця між фактичним прибутком власника і myPercent
+   * від суми після відрахувань. У збережених проєктах ≈ 0 (збирає
+   * округлення копійок; для явних часток валідація вимагає рівно 100%).
+   */
+  unallocated: number;
 }
 
 // Client stats

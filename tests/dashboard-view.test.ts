@@ -1,5 +1,5 @@
 import './setup';
-import { test } from 'node:test';
+import { test, beforeEach, afterEach, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import baseline from './fixtures/dashboard-metrics-baseline.json';
 import { dashboardFixture, MONTH_KEYS, SNAPSHOT_REF } from './fixtures/dashboard-fixture';
@@ -11,6 +11,17 @@ import { monthKeyOf } from '@/lib/dates';
 
 const fixture = dashboardFixture();
 const CURRENT_MONTH = monthKeyOf(SNAPSHOT_REF)!;
+
+// Показники «поточного місяця» в фікстурі прив'язані до SNAPSHOT_REF
+// (2026-10). Без зупиненого годинника dashboardStats бере реальну
+// «сьогодні», і baseline-тести ламалися б після закінчення жовтня.
+beforeEach(t => {
+  const ctx = t as TestContext;
+  ctx.mock.timers.enable({ apis: ['Date'], now: SNAPSHOT_REF.getTime() });
+});
+afterEach(t => {
+  (t as TestContext).mock.timers.reset();
+});
 
 test('головна: view-model віддає всі 15 KPI і дорівнює dashboardStats', () => {
   const view = viewMetrics(fixture, SNAPSHOT_REF);

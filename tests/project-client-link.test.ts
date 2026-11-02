@@ -64,11 +64,12 @@ function completedSource(overrides: Partial<Project> = {}): Project {
 
 const formValues = (): ProjectFormValues => ({
   name: 'Новий сайт', type: 'IT', status: 'Очікування оплати', startDate: today(),
-  deadlineDays: '5', endDate: '', developerId: '', partnerId: '',
+  deadlineDays: '5', endDate: '', partnerId: '',
   clientName: 'Анна', clientTelegram: '@old_ann', clientSource: 'Telegram',
-  budget: '100000', currency: 'UAH', bank: '', prepayment: '0', paidToSpecialist: '0',
+  budget: '100000', currency: 'UAH', bank: '', prepayment: '0',
   myPercent: '30', profitTaken: '0', fop: '10', partnerCommission: '0',
   description: '', selectedClientId: '',
+  executors: [], selfExecutor: false,
 });
 
 // ============================================================

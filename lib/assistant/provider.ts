@@ -47,7 +47,12 @@ export async function askProvider(messages:{role:string;content:string}[],config
   if(!res.ok){
    const detail=(await res.text()).slice(0,10000);
    if(res.status===403&&detail.includes('FreeTierError'))throw new ProviderError('model_incompatible','Безкоштовна MiMo доступна лише всередині OpenCode. Прямий API-запит із CRM провайдер відхилив.');
-   throw new ProviderError(res.status===401?'invalid_key':res.status===402?'insufficient_credits':res.status===429?'quota_exceeded':res.status===400||res.status===404?'model_incompatible':'unavailable','Провайдер відхилив запит');
+   // Великий CRM не влазить у вікно контексту обраної моделі — показуємо
+   // фактичну причину (назву обмеження провайдера), а не загальний збій.
+   if(/context (length|window|limit)|context_length|maximum context|max.?context|too many tokens|too large|too long|token limit|expecting token count|input length exceed/i.test(detail)){
+    throw new ProviderError('model_incompatible','Обрана модель не вміщує обсяг CRM у своє вікно контексту. Дані CRM залишаються повними; для роботи помічника обери в налаштуваннях модель із більшим контекстом.');
+   }
+   throw new ProviderError(res.status===401?'invalid_key':res.status===402?'insufficient_credits':res.status===429?'quota_exceeded':res.status===400||res.status===404||res.status===413?'model_incompatible':'unavailable','Провайдер відхилив запит');
   }
   const raw=await res.text();if(raw.length>1000000)throw new ProviderError('invalid_response','Завелика відповідь');
   const data=JSON.parse(raw);const content=data?.choices?.[0]?.message?.content;

@@ -7,7 +7,7 @@ import { formatMoney, today, displayCurrency, currencySymbol } from '@/lib/utils
 import { rateForCurrency } from '@/lib/calc';
 import { getClients, getAllProjects } from '@/lib/storage';
 import { normalizeBank, bankLabel } from '@/lib/banks';
-import { buildProjectPayload } from '@/lib/project-payload';
+import { buildProjectPayload, type ProjectExecutorValues } from '@/lib/project-payload';
 import type { Client } from '@/types';
 
 import Modal from '@/components/ui/Modal';
@@ -37,6 +37,32 @@ interface ProjectFormProps {
   onCancel: () => void;
 }
 
+/**
+ * Пакет 07: рядки виконавців для форми.
+ * - нові записи — збережений масив executors як є;
+ * - старі (один developerId) — один рядок: частка 100 − myPercent,
+ *   виплата з legacy-поля paidToSpecialist;
+ * - копія (resetPaid) — виплати завжди порожні.
+ */
+function executorValuesFromProject(source: Partial<Project>, resetPaid = false): ProjectExecutorValues[] {
+  if (Array.isArray(source.executors) && source.executors.length) {
+    return source.executors.map(e => ({
+      specialistId: e.specialistId,
+      percent: e.percent === undefined || e.percent === null ? '' : String(e.percent),
+      paid: resetPaid ? '' : String(e.paid ?? ''),
+    }));
+  }
+  if (source.developerId) {
+    const myPercent = Number(source.myPercent) || 0;
+    return [{
+      specialistId: source.developerId,
+      percent: String(Math.max(0, 100 - myPercent)),
+      paid: resetPaid ? '' : String(source.paidToSpecialist || ''),
+    }];
+  }
+  return [];
+}
+
 export default function ProjectForm({ isOpen, project, copyPrefill, copyWarnings, copyNeedsClientChoice, specialists, partners, onSave, onCancel }: ProjectFormProps) {
   const [name, setName] = useState('');
   const [type, setType] = useState('');
@@ -44,7 +70,11 @@ export default function ProjectForm({ isOpen, project, copyPrefill, copyWarnings
   const [startDate, setStartDate] = useState('');
   const [deadlineDays, setDeadlineDays] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [developerId, setDeveloperId] = useState('');
+  // Пакет 07: явні виконавці (може бути один або кілька) та «Я» (власник).
+  // Для «Я» окремого відсотка немає — використовується «Мій %».
+  const [executors, setExecutors] = useState<ProjectExecutorValues[]>([]);
+  const [selfExecutor, setSelfExecutor] = useState(false);
+  const [shareError, setShareError] = useState('');
   const [partnerId, setPartnerId] = useState('');
   const [clientName, setClientName] = useState('');
   const [clientTelegram, setClientTelegram] = useState('');
@@ -53,7 +83,6 @@ export default function ProjectForm({ isOpen, project, copyPrefill, copyWarnings
   const [currency, setCurrency] = useState('UAH');
   const [bank, setBank] = useState('');
   const [prepayment, setPrepayment] = useState('');
-  const [paidToSpecialist, setPaidToSpecialist] = useState('');
   const [myPercent, setMyPercent] = useState('');
   const [autoPercent, setAutoPercent] = useState(true);
   const [profitTaken, setProfitTaken] = useState('');
@@ -74,6 +103,7 @@ export default function ProjectForm({ isOpen, project, copyPrefill, copyWarnings
     // Кожне відкриття форми починає з чистої згоди/помилки вибору клієнта.
     setConfirmNewClient(false);
     setClientChoiceError('');
+    setShareError('');
     if (project) {
       // Картка клієнта (якщо ще існує) показується як джерело істини для
       // імені та контактів — форма показує саме те, що збереже спільна дія.
@@ -84,7 +114,8 @@ export default function ProjectForm({ isOpen, project, copyPrefill, copyWarnings
       setStartDate(project.startDate || '');
       setDeadlineDays(String(project.deadlineDays || ''));
       setEndDate(project.endDate || '');
-      setDeveloperId(project.developerId || '');
+      setExecutors(executorValuesFromProject(project));
+      setSelfExecutor(!!project.selfExecutor);
       setPartnerId(project.partnerId || '');
       setClientName(card ? card.name : project.clientName || '');
       setClientTelegram(card ? (card.telegram || '') : project.clientTelegram || '');
@@ -93,7 +124,6 @@ export default function ProjectForm({ isOpen, project, copyPrefill, copyWarnings
       setCurrency(project.currency || 'UAH');
       setBank(project.bank || '');
       setPrepayment(String(project.prepayment || ''));
-      setPaidToSpecialist(String(project.paidToSpecialist || ''));
       setMyPercent(String(project.myPercent ?? ''));
       setProfitTaken(String(project.profitTaken || ''));
       setFop(String(project.fop || ''));
@@ -113,7 +143,8 @@ export default function ProjectForm({ isOpen, project, copyPrefill, copyWarnings
       setStartDate(copyPrefill.startDate || today());
       setDeadlineDays(copyPrefill.deadlineDays !== undefined && copyPrefill.deadlineDays !== null ? String(copyPrefill.deadlineDays) : '');
       setEndDate('');
-      setDeveloperId(copyPrefill.developerId || '');
+      setExecutors(executorValuesFromProject(copyPrefill, true));
+      setSelfExecutor(!!copyPrefill.selfExecutor);
       setPartnerId(copyPrefill.partnerId || '');
       // Клієнт: якщо картка з ID копії ще існує — показуємо її поточні
       // ім'я/контакти (історичні значення проєкту не маскуємо як чинні);
@@ -126,7 +157,6 @@ export default function ProjectForm({ isOpen, project, copyPrefill, copyWarnings
       setCurrency(copyPrefill.currency || 'UAH');
       setBank('');
       setPrepayment('');
-      setPaidToSpecialist('');
       setMyPercent(copyPrefill.myPercent !== undefined && copyPrefill.myPercent !== null ? String(copyPrefill.myPercent) : '');
       setProfitTaken('');
       setFop(copyPrefill.fop !== undefined && copyPrefill.fop !== null ? String(copyPrefill.fop) : '');
@@ -136,9 +166,9 @@ export default function ProjectForm({ isOpen, project, copyPrefill, copyWarnings
       setAutoPercent(false);
     } else {
       setName(''); setType(''); setStatus('Очікування оплати'); setStartDate(today());
-      setDeadlineDays(''); setEndDate(''); setDeveloperId(''); setPartnerId('');
+      setDeadlineDays(''); setEndDate(''); setExecutors([]); setSelfExecutor(false); setPartnerId('');
       setClientName(''); setClientTelegram(''); setClientSource('Інше');
-      setBudget(''); setCurrency(displayCurrency()); setBank(''); setPrepayment(''); setPaidToSpecialist('');
+      setBudget(''); setCurrency(displayCurrency()); setBank(''); setPrepayment('');
       setMyPercent(''); setProfitTaken(''); setFop(''); setPartnerCommission('');
       setDescription(''); setSelectedClientId('');
       // Новий проєкт: автоправило фахівця увімкнене.
@@ -179,11 +209,13 @@ export default function ProjectForm({ isOpen, project, copyPrefill, copyWarnings
     setSelectedClientId('');
   };
 
-  // Обраний фахівець та його правило «Моя частка».
-  const activeSpecialist = useMemo(
-    () => specialists.find(d => d.id === developerId),
-    [specialists, developerId],
-  );
+  // Перший виконавець визначає правило «Моя частка» (як і раніше один
+  // обраний фахівець). Для кількох фахівців правило лишається підказкою
+  // для «Мого %», а частки решти вводяться вручну.
+  const activeSpecialist = useMemo(() => {
+    const id = executors[0]?.specialistId;
+    return id ? specialists.find(d => d.id === id) : undefined;
+  }, [specialists, executors]);
 
   // Автоматичний відсоток: null — фахівця не вибрано або бюджет
   // некоректний (порожній/не число/від'ємний) — тоді нічого не підставляємо.
@@ -211,6 +243,32 @@ export default function ProjectForm({ isOpen, project, copyPrefill, copyWarnings
     }
   };
 
+  const addExecutor = (specialistId: string) => {
+    if (!specialistId) return;
+    setShareError('');
+    setExecutors(rows => rows.some(r => r.specialistId === specialistId)
+      ? rows
+      : [...rows, { specialistId, percent: '', paid: '' }]);
+  };
+
+  const updateExecutor = (specialistId: string, patch: Partial<ProjectExecutorValues>) => {
+    setShareError('');
+    setExecutors(rows => rows.map(r => (r.specialistId === specialistId ? { ...r, ...patch } : r)));
+  };
+
+  const removeExecutor = (specialistId: string) => {
+    setShareError('');
+    setExecutors(rows => rows.filter(r => r.specialistId !== specialistId));
+  };
+
+  // Сума відсотків для підказки/попередньої перевірки. Значення ніколи
+  // не змінюються автоматично — лише показується, скільки лишилось.
+  const executorPercentSum = executors.reduce((sum, row) => sum + (Number(row.percent) || 0), 0);
+  const myPercentNumber = Number(effectiveMyPercent) || 0;
+  const sharesTotal = executorPercentSum + myPercentNumber;
+  // Правило 100% застосовується, коли виконавці явні (є зовнішні або «Я»).
+  const shareRuleActive = executors.length > 0 || selfExecutor;
+
   const calc = useMemo(() => {
     return calcProject({
       id: '',
@@ -223,13 +281,36 @@ export default function ProjectForm({ isOpen, project, copyPrefill, copyWarnings
       budget: Number(budget) || 0,
       currency,
       prepayment: Number(prepayment) || 0,
-      paidToSpecialist: Number(paidToSpecialist) || 0,
+      paidToSpecialist: 0,
       myPercent: Number(effectiveMyPercent) || 0,
       profitTaken: Number(profitTaken) || 0,
       fop: Number(fop) || 0,
       partnerCommission: Number(partnerCommission) || 0,
+      executors: executors.map(e => ({
+        specialistId: e.specialistId,
+        percent: Number(e.percent) || 0,
+        paid: Number(e.paid) || 0,
+      })),
+      selfExecutor,
     } as Project);
-  }, [budget, currency, prepayment, paidToSpecialist, effectiveMyPercent, profitTaken, fop, partnerCommission]);
+  }, [budget, currency, prepayment, effectiveMyPercent, profitTaken, fop, partnerCommission, executors, selfExecutor]);
+
+  const shareSummary = useMemo(() => {
+    if (!shareRuleActive) return null;
+    if (Math.abs(sharesTotal - 100) < 1e-9) {
+      return { tone: 'ok' as const, text: 'Розподілено рівно 100%' };
+    }
+    if (sharesTotal > 100) {
+      return {
+        tone: 'over' as const,
+        text: `Сума часток ${Math.round(sharesTotal * 1e6) / 1e6}% перевищує 100% — зменшіть частки або «Мій %».`,
+      };
+    }
+    return {
+      tone: 'under' as const,
+      text: `Нерозподілено ${Math.round((100 - sharesTotal) * 1e6) / 1e6}% — сума часток разом із «Мій %» має дорівнювати 100%.`,
+    };
+  }, [shareRuleActive, sharesTotal]);
 
   const handleSave = async () => {
     if (savingRef.current) return;
@@ -239,9 +320,18 @@ export default function ProjectForm({ isOpen, project, copyPrefill, copyWarnings
       setClientChoiceError('Оберіть клієнта зі списку або підтвердьте створення нової картки.');
       return;
     }
+    // Пакет 07: сума часток мусить дорівнювати 100%. Повідомлення
+    // показується, введені значення не змінюються автоматично.
+    if (shareRuleActive && Math.abs(sharesTotal - 100) >= 1e-9) {
+      setShareError(sharesTotal > 100
+        ? `Сума часток ${Math.round(sharesTotal * 1e6) / 1e6}% перевищує 100%. Зменшіть частки або «Мій %» — введені значення не змінено.`
+        : `Нерозподілений залишок ${Math.round((100 - sharesTotal) * 1e6) / 1e6}%. Сума часток разом із «Мій %» має дорівнювати 100% — введені значення не змінено.`);
+      return;
+    }
     savingRef.current = true;
     setSaving(true);
     setClientChoiceError('');
+    setShareError('');
     try {
       // Одне явне payload зі стану форми. Джерело clientId — поточний
       // selectedClientId (prefill лише ініціалізує); дані клієнта за наявної
@@ -250,25 +340,29 @@ export default function ProjectForm({ isOpen, project, copyPrefill, copyWarnings
         name, type, status, startDate,
         deadlineDays,
         endDate,
-        developerId, partnerId,
+        partnerId,
         clientName, clientTelegram, clientSource,
         budget,
         currency,
         bank,
         prepayment,
-        paidToSpecialist,
         myPercent: effectiveMyPercent,
         profitTaken,
         fop,
         partnerCommission,
         description,
         selectedClientId,
+        executors,
+        selfExecutor,
       }, getClients()));
     } finally {
       savingRef.current = false;
       setSaving(false);
     }
   };
+
+  const selectedExecutorIds = new Set(executors.map(e => e.specialistId));
+  const availableSpecialists = specialists.filter(s => !selectedExecutorIds.has(s.id));
 
   return (
     <Modal isOpen={isOpen} onClose={onCancel} title={project ? 'Редагувати проєкт' : 'Новий проєкт'} size="lg" onSubmit={handleSave}>
@@ -334,19 +428,106 @@ export default function ProjectForm({ isOpen, project, copyPrefill, copyWarnings
           <input type="date" className="form-input" value={endDate} onChange={e => setEndDate(e.target.value)} />
         </div>
         <div className="form-group">
-          <label className="form-label">Фахівець</label>
-          <select className="form-input" value={developerId} onChange={e => setDeveloperId(e.target.value)}>
-            <option value="">— без фахівця —</option>
-            {specialists.map(d => <option key={d.id} value={d.id}>{d.name} ({d.specialization})</option>)}
-          </select>
-        </div>
-        <div className="form-group">
           <label className="form-label">Партнер</label>
           <select className="form-input" value={partnerId} onChange={e => setPartnerId(e.target.value)}>
             <option value="">— без партнера —</option>
             {partners.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </div>
+
+        {/* Пакет 07: виконавці — один або кілька зовнішніх фахівців + «Я». */}
+        <div className="form-group form-group--full">
+          <label className="form-label">Виконавці</label>
+          <div className="executor-editor">
+            <label className="executor-self">
+              <input
+                type="checkbox"
+                checked={selfExecutor}
+                onChange={e => { setSelfExecutor(e.target.checked); setShareError(''); }}
+              />
+              <span>
+                <strong>Я</strong> — власник. Частка береться з поля «Мій %»;
+                виплат і боргу самому собі не створюється.
+              </span>
+            </label>
+
+            {executors.map(row => {
+              const specialist = specialists.find(s => s.id === row.specialistId);
+              const share = calc.shares.find(s => s.specialistId === row.specialistId);
+              return (
+                <div className="executor-row" key={row.specialistId}>
+                  <div className="executor-row__name">
+                    <strong>{specialist?.name || 'Фахівця видалено'}</strong>
+                    {specialist?.specialization && <span className="cell-secondary">{specialist.specialization}</span>}
+                  </div>
+                  <label className="executor-row__field">
+                    <span>Частка, %</span>
+                    <input
+                      type="number"
+                      className="form-input"
+                      value={row.percent}
+                      onChange={e => updateExecutor(row.specialistId, { percent: e.target.value })}
+                      min="0"
+                      max="100"
+                      step="any"
+                      placeholder="0"
+                    />
+                  </label>
+                  <label className="executor-row__field">
+                    <span>Виплачено, {currencySymbol(currency)}</span>
+                    <input
+                      type="number"
+                      className="form-input"
+                      value={row.paid}
+                      onChange={e => updateExecutor(row.specialistId, { paid: e.target.value })}
+                      min="0"
+                      placeholder="0"
+                    />
+                  </label>
+                  <div className="executor-row__debt">
+                    <span>Борг (авто)</span>
+                    <strong>{formatMoney(share?.debt ?? 0, currency)}</strong>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-icon btn-icon--danger"
+                    title="Прибрати виконавця"
+                    onClick={() => removeExecutor(row.specialistId)}
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" strokeWidth="2"/><line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" strokeWidth="2"/></svg>
+                  </button>
+                </div>
+              );
+            })}
+
+            {availableSpecialists.length > 0 && (
+              <select
+                className="form-input executor-add"
+                value=""
+                onChange={e => addExecutor(e.target.value)}
+              >
+                <option value="">+ Додати фахівця</option>
+                {availableSpecialists.map(d => <option key={d.id} value={d.id}>{d.name} ({d.specialization})</option>)}
+              </select>
+            )}
+            {!specialists.length && (
+              <small className="form-hint">Карток фахівців ще немає — додайте їх у розділі «Фахівці».</small>
+            )}
+
+            <div className={`executor-sum${shareSummary ? ` executor-sum--${shareSummary.tone}` : ''}`}>
+              {shareSummary
+                ? shareSummary.text
+                : 'Без зовнішніх виконавців і «Я» діє стара формула: фахівець (якщо вибраний) отримує 100 − «Мій %», боргу без фахівця не створюється.'}
+            </div>
+            {shareSummary && (
+              <small className="form-hint">
+                Розподілено: фахівці {Math.round(executorPercentSum * 1e6) / 1e6}% + «Мій %» {Math.round(myPercentNumber * 1e6) / 1e6}% = {Math.round(sharesTotal * 1e6) / 1e6}%
+              </small>
+            )}
+            {shareError && <div className="executor-error">{shareError}</div>}
+          </div>
+        </div>
+
         <div className="form-group">
           <label className="form-label">Ім&apos;я клієнта *</label>
           <AutocompleteInput
@@ -416,15 +597,15 @@ export default function ProjectForm({ isOpen, project, copyPrefill, copyWarnings
           <input type="text" className="form-input form-input--readonly" value={formatMoney(calc.remainingPayment, currency)} readOnly />
         </div>
         <div className="form-group">
-          <label className="form-label">Вартість фахівця (авто)</label>
+          <label className="form-label">Вартість фахівців (авто)</label>
           <input type="text" className="form-input form-input--readonly" value={formatMoney(calc.specialistCost, currency)} readOnly />
         </div>
         <div className="form-group">
-          <label className="form-label">Виплачено фахівцю ({currencySymbol(currency)})</label>
-          <input type="number" className="form-input" value={paidToSpecialist} onChange={e => setPaidToSpecialist(e.target.value)} min="0" placeholder="0" />
+          <label className="form-label">Виплачено фахівцям (авто)</label>
+          <input type="text" className="form-input form-input--readonly" value={formatMoney(calc.paidToSpecialist, currency)} readOnly />
         </div>
         <div className="form-group">
-          <label className="form-label">Борг фахівцю (авто)</label>
+          <label className="form-label">Борг фахівцям (авто)</label>
           <input type="text" className="form-input form-input--readonly" value={formatMoney(calc.specialistDebt, currency)} readOnly />
         </div>
         <div className="form-group">
@@ -433,7 +614,7 @@ export default function ProjectForm({ isOpen, project, copyPrefill, copyWarnings
             type="number"
             className="form-input"
             value={effectiveMyPercent}
-            onChange={e => { setMyPercent(e.target.value); setAutoPercent(false); }}
+            onChange={e => { setMyPercent(e.target.value); setAutoPercent(false); setShareError(''); }}
             min="0"
             max="100"
             step="any"

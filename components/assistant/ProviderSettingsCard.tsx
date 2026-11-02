@@ -74,9 +74,7 @@ export default function ProviderSettingsCard({ settings, onSave }: ProviderSetti
   return (
     <div className="settings-card">
       <h3 className="settings-title">Провайдер та модель</h3>
-      <p className="settings-text">
-        Оберіть провайдера і модель для AI-помічника. Налаштування зберігаються локально.
-      </p>
+      <p className="settings-text">Оберіть джерело моделі та збережіть. Налаштування живуть у браузері.</p>
 
       <div className="form-grid" style={{ marginTop: 12 }}>
         <div className="form-group">
@@ -116,20 +114,17 @@ export default function ProviderSettingsCard({ settings, onSave }: ProviderSetti
             </small>
           )}
           <small className="form-hint">
-            Ключ не зберігається: ні у localStorage, ні у sessionStorage, ні в URL, ні в логах, ні в резервній копії.
-            Захищене серверне сховище ключів додається на етапі 2 (див. .env.example).
+            Ключ не зберігається: ні у браузері, ні в резервній копії.
           </small>
         </div>
         }
-        {provider === 'openrouter' && <p className="settings-text">Ключ OpenRouter зберігається на сервері. Free Models Router обирає безкоштовну модель; платні моделі заблоковані. Перед записом перевірте чернетку.</p>}
-        {provider === 'opencode' && <p className="settings-text">OpenCode Zen використовує ключ на сервері. Ключ налаштований на сервері. MiMo Free відхиляє прямий API-доступ із CRM; для робочого чату потрібно обрати іншу API-доступну модель.</p>}
         <div className="form-group form-group--full">
           <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
             <input type="checkbox" checked={demo} onChange={e => { setDemo(e.target.checked); setSaved(false); setDirty(true); }} />
             Demo-режим (без реальних записів)
           </label>
           <small className="form-hint">
-            У demo-режимі помічник показує ілюстрацію чернеток і ніколи не створює справжні фінансові записи.
+            Чернетки показуються як ілюстрація; фінансові записи не створюються.
           </small>
         </div>
       </div>
@@ -139,9 +134,21 @@ export default function ProviderSettingsCard({ settings, onSave }: ProviderSetti
         {saved && <span style={{ color: 'var(--accent-green)', fontSize: '0.85rem' }}>Збережено (без ключа)</span>}
       </div>
 
-      <p className="settings-text" style={{ marginTop: 10, fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>
-        Службовий ключ налаштувань: <code>{DEMO_STORAGE_KEY}</code> — містить лише провайдер, модель і прапорець demo.
-      </p>
+      {(provider === 'openrouter' || provider === 'opencode') && (
+        <details className="ai-details" style={{ marginTop: 12 }}>
+          <summary>Де живе ключ {provider === 'openrouter' ? 'OpenRouter' : 'OpenCode'}</summary>
+          {provider === 'openrouter' && <p className="settings-text" style={{ margin: '8px 0 0' }}>Ключ OpenRouter зберігається на сервері. Free Models Router обирає безкоштовну модель; платні моделі заблоковані. Перед записом перевірте чернетку.</p>}
+          {provider === 'opencode' && <p className="settings-text" style={{ margin: '8px 0 0' }}>OpenCode Zen використовує ключ на сервері. MiMo Free відхиляє прямий API-доступ із CRM; для робочого чату потрібно обрати іншу API-доступну модель.</p>}
+        </details>
+      )}
+      <details className="ai-details" style={{ marginTop: 8 }}>
+        <summary>Технічні деталі</summary>
+        <p className="settings-text" style={{ margin: '8px 0 0' }}>
+          Службовий ключ налаштувань: <code>{DEMO_STORAGE_KEY}</code> — містить лише провайдер, модель, Base URL і прапорець demo.
+          Ключ API не зберігається: ні у localStorage, ні у sessionStorage, ні в URL, ні в логах, ні в резервній копії.
+          Захищене серверне сховище ключів налаштовується окремо (див. .env.example).
+        </p>
+      </details>
     </div>
   );
 }

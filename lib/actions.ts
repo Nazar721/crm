@@ -161,6 +161,91 @@ export function resolveDeadlineTracking(next: Partial<Project>, prev?: Project):
 const PROJECT_TYPES = ['IT', 'Design', 'Video'] as const;
 const PROJECT_STATUSES = ['Очікування оплати', 'В роботі', 'На паузі', 'Завершено'] as const;
 
+/**
+ * Пакет 07: префікс полю помилки для часток — форма підсвічує блок
+ * «Виконавці» за цим полем.
+ */
+const EXECUTORS_FIELD = 'executors' as const;
+
+/** Частка в % порівнюється з допуском копійок (десяткові відсотки). */
+const PERCENT_EPSILON = 1e-9;
+
+/** Нормалізація рядка часток від форми/AI: валідні рядки лишаються. */
+function normalizeExecutorsInput(raw: unknown): { specialistId: string; percent: number; paid: number }[] | null {
+  if (raw === undefined || raw === null) return null;
+  if (!Array.isArray(raw)) return []; // некоректне значення → порожній масив → валідатор повідомить помилку
+  const out: { specialistId: string; percent: number; paid: number }[] = [];
+  for (const e of raw) {
+    if (!e || typeof e !== 'object') continue;
+    const rec = e as Record<string, unknown>;
+    const specialistId = typeof rec.specialistId === 'string' ? rec.specialistId : '';
+    if (!specialistId) continue;
+    // Нечислове значення НЕ перетворюємо мовчки на 0 — валідатор нижче
+    // відхилить запис із зрозумілим повідомленням.
+    out.push({
+      specialistId,
+      percent: toFiniteNumber(rec.percent) ?? Number.NaN,
+      paid: toFiniteNumber(rec.paid) ?? Number.NaN,
+    });
+  }
+  return out;
+}
+
+/**
+ * Пакет 07: перевірка явних виконавців проєкту.
+ * Правила (підтверджені власником):
+ *  1) частки рахуються від суми після відрахувань — на формулу не впливає;
+ *  2) сума часток (myPercent + Σ percent) має бути рівно 100%:
+ *     більше — перевищення, менше — нерозподілений залишок; введені
+ *     значення ніхто не виправляє мовчки (форма показує підказку).
+ * Правило суми застосовується ЛИШЕ коли явні executors передані: старі
+ * проєкти з одним developerId мають продовжити зберігатися без нього.
+ * `enforceSum=false` — часткове оновлення без myPercent (AI): суму не
+ * перевіряємо, бо чинний myPercent живе в записі, а не в payload.
+ */
+function validateProjectExecutors(
+  normalized: NonNullable<ReturnType<typeof normalizeExecutorsInput>>,
+  myPercent: number,
+  specialists: Specialist[],
+  enforceSum: boolean,
+): FieldError[] {
+  const errors: FieldError[] = [];
+  const seen = new Set<string>();
+  for (const e of normalized) {
+    if (!specialists.some(s => s.id === e.specialistId)) {
+      errors.push({ field: EXECUTORS_FIELD, message: `Фахівця з ID ${e.specialistId} не знайдено — обери чинного фахівця.` });
+      continue;
+    }
+    if (seen.has(e.specialistId)) {
+      errors.push({ field: EXECUTORS_FIELD, message: 'Кожен фахівець може бути виконавцем лише один раз.' });
+      continue;
+    }
+    seen.add(e.specialistId);
+    if (!Number.isFinite(e.percent) || e.percent < 0 || e.percent > 100) {
+      errors.push({ field: EXECUTORS_FIELD, message: 'Частка фахівця: має бути числом від 0 до 100%' });
+    }
+    if (!Number.isFinite(e.paid) || e.paid < 0) {
+      errors.push({ field: EXECUTORS_FIELD, message: 'Виплачено фахівцю: має бути числом ≥ 0' });
+    }
+  }
+  if (errors.length || !enforceSum) return errors;
+
+  const total = normalized.reduce((sum, e) => sum + e.percent, 0) + myPercent;
+  if (total > 100 + PERCENT_EPSILON) {
+    errors.push({
+      field: EXECUTORS_FIELD,
+      message: `Сума часток (${Math.round(total * 1e6) / 1e6}%) перевищує 100% — зменшіть частки або «Мій %». Введені значення не змінено.`,
+    });
+  } else if (total < 100 - PERCENT_EPSILON) {
+    const rest = Math.round((100 - total) * 1e6) / 1e6;
+    errors.push({
+      field: EXECUTORS_FIELD,
+      message: `Нерозподілений залишок ${rest}% — сума часток разом із «Мій %» має дорівнювати 100%. Розподіліть залишок вручну.`,
+    });
+  }
+  return errors;
+}
+
 export function validateProjectInput(input: Partial<Project>): FieldError[] {
   const errors: FieldError[] = [
     ...validateRequiredText(input.name, 'name', 'Назва проєкту', 200),
@@ -181,6 +266,24 @@ export function validateProjectInput(input: Partial<Project>): FieldError[] {
   if (input.deadlineDays !== undefined && input.deadlineDays !== null) {
     const n = toFiniteNumber(input.deadlineDays);
     if (n === null || n < 0) errors.push({ field: 'deadlineDays', message: 'Дедлайн: має бути числом днів ≥ 0' });
+  }
+  // Пакет 07: явні виконавці. Суму перевіряємо лише разом із заданим
+  // myPercent (форма/створення завжди передають його числом) і коли
+  // виконавці справді явні: є зовнішній фахівець або позначено «Я».
+  // Старі проєкти без executors і без «Я» зберігаються за старою формулою.
+  const normalizedExecutors = normalizeExecutorsInput(input.executors);
+  if (normalizedExecutors !== null) {
+    const myPercentValue = toFiniteNumber(input.myPercent);
+    const hasExplicitExecutors = normalizedExecutors.length > 0 || input.selfExecutor === true;
+    errors.push(...validateProjectExecutors(
+      normalizedExecutors,
+      myPercentValue ?? 0,
+      Storage.getSpecialists(),
+      myPercentValue !== null && hasExplicitExecutors,
+    ));
+  }
+  if (input.selfExecutor !== undefined && typeof input.selfExecutor !== 'boolean') {
+    errors.push({ field: 'selfExecutor', message: 'Прапорець «Я» має бути так/ні' });
   }
   return errors;
 }
@@ -244,6 +347,21 @@ async function _saveProject(input: Partial<Project>, editId?: string): Promise<A
   }
 
   const payload: Partial<Project> = { ...input, clientId, clientName, clientTelegram, clientSource };
+  // Пакет 07: явні виконавці. developerId і paidToSpecialist лишаються
+  // дзеркалами для старих звітів/експорту: перший виконавець і сума
+  // виплат. Порожній масив — явне «без зовнішніх виконавців».
+  const executors = normalizeExecutorsInput(input.executors);
+  if (executors !== null) {
+    payload.executors = executors;
+    if (executors.length) {
+      payload.developerId = executors[0].specialistId;
+      payload.paidToSpecialist = executors.reduce((sum, e) => sum + e.paid, 0);
+    } else {
+      // Без виконавців не тримаємо «фантомного» developerId.
+      payload.developerId = '';
+    }
+  }
+  if (input.selfExecutor !== undefined) payload.selfExecutor = input.selfExecutor === true;
   // AI може створити проєкт без явно заданого відсотка — тоді діє те саме
   // правило фахівця, що й у формі. Явно задане значення не змінюється.
   const explicitPercent: unknown = payload.myPercent;

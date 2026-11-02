@@ -132,7 +132,7 @@ test('видалені сутності: попередження та відс�
   const warnings = copyMissingWarnings(source, missing);
   assert.equal(warnings.length, 3);
   assert.ok(warnings[0].includes('Клієнт А'));
-  assert.ok(warnings[1].includes('фахівця'));
+  assert.ok(warnings[1].includes('фахів'));
   assert.ok(warnings[2].includes('партнера'));
 });
 

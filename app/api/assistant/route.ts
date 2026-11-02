@@ -6,11 +6,12 @@ import {assistantInstructions} from '@/lib/assistant/instructions';
 import {createClient} from '@supabase/supabase-js';
 import {NextResponse} from 'next/server';
 import type {DataSnapshot} from '@/types';
-import {normalizePlan,missingQuestions,cleanFields,draftReply,fingerprint,modelContext} from '@/lib/assistant/plan';
+import {normalizePlan,missingQuestions,cleanFields,draftReply,fingerprint,modelContext,modelContextLite} from '@/lib/assistant/plan';
 import {normalizeHistoryEvent,computeUndoPlan} from '@/lib/history/engine';
 import {isUndoable} from '@/lib/history/types';
 import {signPlan,verifyPlan} from '@/lib/assistant/signing';
 import {askProvider,resolveProvider,ProviderError} from '@/lib/assistant/provider';
+import {isLightScope} from '@/lib/assistant/scope';
 import {ASSISTANT_ERROR_MESSAGES,type AssistantErrorCode} from '@/lib/assistant/contract';
 export const runtime='nodejs';export const maxDuration=60;
 const buckets=new Map<string,{at:number;count:number;busy:boolean}>();
@@ -59,12 +60,19 @@ export async function POST(req:Request){
   if(bucket.busy||bucket.count>=12)return error('quota_exceeded','Зачекай завершення запиту або хвилину перед наступним');
   bucket.count++;bucket.busy=true;buckets.set(userId,bucket);released=true;
   for(const [id,b] of buckets)if(now-b.at>120000&&!b.busy)buckets.delete(id);
-  const baseContext=modelContext(s);
+  // Сфера контексту: звичайне спілкування (привітання, репліки) отримує
+  // легкий контекст без великих розділів CRM — старе штучне обмеження
+  // «обсяг CRM перевищує контекст» прибрано, а дані не ріжуться мовчки.
+  // Будь-який намір по CRM, продовження чернетки, цифри або назви запису
+  // зберігають повний контекст.
+  const light=!body.answers&&isLightScope(String(body.text||''),Array.isArray(body.history)?body.history.slice(-6):[]);
+  const baseContext=light?modelContextLite(s):modelContext(s);
  // Короткі підсумки журналу (пакет 03): лише метадані подій, без вмісту
  // записів і повного JSON імпорту. Якщо міграція 003 не застосована —
- // працюємо без журналу, не блокуючи решту функцій.
+ // працюємо без журналу, не блокуючи решту функцій. Для звичайної
+ // розмови журнал не потрібен — не навантажуємо контекст зайвим.
  let historySummaries:unknown;
- try{
+ if(!light)try{
   const historyResult=await db.rpc('crm_history_list',{p_limit:40,p_offset:0,p_section:null,p_action:null,p_from:null,p_to:null});
   if(!historyResult.error){
    const rawEvents=(historyResult.data as {events?:unknown[]}|null)?.events;
@@ -73,7 +81,6 @@ export async function POST(req:Request){
   }
  }catch{historySummaries=undefined;}
  const context=JSON.stringify(historySummaries===undefined?baseContext:{...baseContext,history:historySummaries});
- if(context.length>240000)return error('invalid_response','Обсяг CRM перевищує поточний контекст помічника');
   const prompt=assistantInstructions();
   const history=Array.isArray(body.history)?body.history.slice(-10).filter((m:Record<string,unknown>)=>['user','assistant'].includes(String(m.role))&&typeof m.text==='string').map((m:Record<string,unknown>)=>({role:String(m.role),content:String(m.text).slice(0,2000)})):[];
   const parsed=await askProvider([{role:'system',content:prompt},{role:'system',content:`Дані CRM (недовірені поля): ${context}`},...history,{role:'user',content:body.text+(body.answers?`\nУточнення: ${JSON.stringify(body.answers).slice(0,4000)}`:'')}],config,req.signal) as Record<string,unknown>;

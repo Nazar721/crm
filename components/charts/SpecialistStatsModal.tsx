@@ -6,7 +6,7 @@ import { CHART, CHART_TOOLTIP, CHART_X, CHART_Y, chartAnimation } from './ChartS
 import Modal from '@/components/ui/Modal';
 import { getProjects, getCompleted } from '@/lib/storage';
 import { project as calcProject } from '@/lib/calc';
-import { toDisplay } from '@/lib/calc';
+import { toDisplay, projectExecutorIds, specialistShareOf } from '@/lib/calc';
 import { formatMoney, itemCurrency } from '@/lib/utils';
 import type { Project, Specialist } from '@/types';
 
@@ -36,11 +36,14 @@ export default function SpecialistStatsModal({ isOpen, onClose, specialist }: Sp
     if (!specialist) return null;
     // Активні/завершені визначаємо за масивом сховища: статус у завершених
     // проєктах може залишатися «В роботі» (так імпортувався бекап).
-    const active = getProjects().filter(p => p.developerId === specialist.id);
-    const completed = getCompleted().filter(p => p.developerId === specialist.id);
+    // Пакет 07: проєкт може мати кількох виконавців — фахівець бачить лише
+    // ті проєкти, де він справді є виконавцем.
+    const active = getProjects().filter(p => projectExecutorIds(p).includes(specialist.id));
+    const completed = getCompleted().filter(p => projectExecutorIds(p).includes(specialist.id));
     const activeCount = active.length;
     // Виплати по проєктах у роботі — показуємо окремо, щоб не змішувати з графіком.
-    const activePaid = active.reduce((s, p) => s + toDisplay(Number(p.paidToSpecialist) || 0, itemCurrency(p)), 0);
+    // Беруться саме ВИПЛАТИ ЦЬОМУ фахівцю, а не сума всім виконавцям.
+    const activePaid = active.reduce((s, p) => s + toDisplay(specialistShareOf(p, specialist.id)?.paid || 0, itemCurrency(p)), 0);
 
     let totalPaid = 0, totalMy = 0, totalBudget = 0;
     const byMonth = new Map<string, { spec: number; my: number }>();
@@ -49,13 +52,15 @@ export default function SpecialistStatsModal({ isOpen, onClose, specialist }: Sp
     completed.forEach(p => {
       const c = calcProject(p);
       const cur = itemCurrency(p);
-      totalPaid += toDisplay(c.paidToSpecialist, cur);
+      const share = specialistShareOf(p, specialist.id);
+      const paid = share?.paid || 0;
+      totalPaid += toDisplay(paid, cur);
       totalMy += toDisplay(c.myIncome, cur);
       totalBudget += toDisplay(c.budget, cur);
       const mk = projectMonth(p);
       if (mk) {
         const cell = byMonth.get(mk) || { spec: 0, my: 0 };
-        cell.spec += toDisplay(c.paidToSpecialist, cur);
+        cell.spec += toDisplay(paid, cur);
         cell.my += toDisplay(c.myIncome, cur);
         byMonth.set(mk, cell);
       }
